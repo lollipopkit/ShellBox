@@ -3,7 +3,7 @@
 #include "emu/cpu.h"
 #include "emu/tlb.h"
 
-void cpu() {
+void cpu(void) {
 #if defined(GUEST_X86) || !defined(GUEST_ARM64)
     // x86 register offsets
     OFFSET(CPU, cpu_state, eax);

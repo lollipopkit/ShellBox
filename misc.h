@@ -22,6 +22,7 @@
 
 // compiler check
 #define is_gcc(version) (__GNUC__ >= version)
+#define is_clang(version) (__clang_major__ >= version)
 
 // Cached check for ISH_EXEC_TRACE env var. getenv() walks the entire
 // environ table and is called from hot paths (every sys_write, every

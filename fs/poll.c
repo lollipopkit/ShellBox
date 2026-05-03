@@ -50,7 +50,7 @@ static inline void safe_close(int fd) {
 
 // lock order: fd, then poll
 
-struct poll *poll_create() {
+struct poll *poll_create(void) {
     struct poll *poll = malloc(sizeof(struct poll));
     if (poll == NULL)
         return ERR_PTR(_ENOMEM);
