@@ -117,7 +117,7 @@
 		<key>author</key>
 		<string>@peterlewis</string>
 		<key>description</key>
-		<string>iSH: Reworked</string>
+		<string>Shell Box: Reworked</string>
 	</dict>
 	<key>rgb</key>
 	<dict>
@@ -180,7 +180,7 @@
 		<key>author</key>
 		<string>@huxl3</string>
 		<key>description</key>
-		<string>iOS iSH Free Ios Terminal</string>
+		<string>iOS Shell Box Free iOS Terminal</string>
 	</dict>
 	<key>ishcolontildehash</key>
 	<dict>
@@ -189,7 +189,7 @@
 		<key>author</key>
 		<string>@moontr3</string>
 		<key>description</key>
-		<string>iSH:~# dark</string>
+		<string>Shell Box:~# dark</string>
 	</dict>
 </dict>
 </plist>

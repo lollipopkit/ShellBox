@@ -1,5 +1,5 @@
 #!/bin/sh
-# Guest-side benchmark — runs INSIDE iSH, measures with /proc/uptime
+# Guest-side benchmark — runs INSIDE Shell Box, measures with /proc/uptime
 # Outputs: "category|name|milliseconds" per line
 # No eval, no bash-isms — pure POSIX sh
 
@@ -111,7 +111,7 @@ fi
 
 # ── C benchmark (prefer pre-compiled binary, fallback to gcc) ──
 # Run BEFORE Node.js/Go so that platforms with incomplete runtime support
-# (e.g. x86 iSH missing io_uring syscall used by Node 22) still produce C data.
+# (e.g. x86 Shell Box missing io_uring syscall used by Node 22) still produce C data.
 # Prebuilt binaries pushed to /tmp/cbench_prebuilt by the host runner.
 # On native macOS, the script directory is probed for cbench_lite_macos.
 _cbench=""
@@ -139,7 +139,7 @@ if command -v go >/tmp/_null 2>&1; then
 fi
 
 # ── Node.js (if available) ─────────────────────────────────
-# Each test wrapped in timeout so x86 iSH (missing io_uring syscall 425)
+# Each test wrapped in timeout so x86 Shell Box (missing io_uring syscall 425)
 # can't hang the whole bench script.
 if command -v node >/tmp/_null 2>&1; then
     _start; timeout 30 node -e 'process.exit(0)';            _end Node.js "startup"

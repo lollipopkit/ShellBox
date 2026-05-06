@@ -1,6 +1,6 @@
 //
 //  AppGroup.m
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 2/28/20.
 //
@@ -113,7 +113,7 @@ NSURL *ContainerURL(void) {
 
     NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
                                                           inDomains:NSUserDomainMask].firstObject;
-    NSURL *fallback = [support URLByAppendingPathComponent:NSBundle.mainBundle.bundleIdentifier ?: @"iSH"];
+    NSURL *fallback = [support URLByAppendingPathComponent:NSBundle.mainBundle.bundleIdentifier ?: @"Shell Box"];
     [NSFileManager.defaultManager createDirectoryAtURL:fallback
                            withIntermediateDirectories:YES
                                             attributes:@{}

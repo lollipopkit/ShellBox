@@ -1,6 +1,6 @@
 //
 //  ViewController.m
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 10/17/17.
 //
@@ -282,7 +282,7 @@
     NSAssert(NSThread.isMainThread, @"This method needs to be called on the main thread");
     NSTimeInterval duration = animated ? 0.1 : 0;
     [UIView animateWithDuration:duration animations:^{
-        self.view.backgroundColor = [[UIColor alloc] ish_initWithHexString:UserPreferences.shared.palette.backgroundColor];
+        self.view.backgroundColor = [[UIColor alloc] shellBox_initWithHexString:UserPreferences.shared.palette.backgroundColor];
         UIKeyboardAppearance keyAppearance = UserPreferences.shared.keyboardAppearance;
         self.termView.keyboardAppearance = keyAppearance;
         for (BarButton *button in self.barButtons) {

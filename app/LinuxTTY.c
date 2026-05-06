@@ -1,6 +1,6 @@
 //
 //  LinuxTTY.c
-//  libiSHLinux
+//  libShellBoxLinux
 //
 //  Created by Theodore Dubois on 8/15/21.
 //

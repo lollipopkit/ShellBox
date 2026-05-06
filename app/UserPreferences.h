@@ -1,6 +1,6 @@
 //
 //  UserPreferences.h
-//  iSH
+//  Shell Box
 //
 //  Created by Charlie Melbye on 11/12/18.
 //

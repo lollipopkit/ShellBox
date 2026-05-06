@@ -239,7 +239,7 @@ void handle_interrupt(int interrupt) {
 #ifdef GUEST_ARM64
         // Demand-map unmapped pages near existing heap mappings. On native
         // Linux, heap regions are contiguous so stray accesses land on
-        // adjacent allocations (no SIGSEGV). In iSH, mmap can leave
+        // adjacent allocations (no SIGSEGV). In Shell Box, mmap can leave
         // unmapped gaps. Map the faulting page (readable for reads,
         // readable+writable for writes) when a mapped neighbor exists.
         //
@@ -297,7 +297,7 @@ void handle_interrupt(int interrupt) {
                 page_t fault_page = PAGE(cpu->segfault_addr);
                 // V8 heap cage writes: always demand-map (no neighbor
                 // check). V8 tagged pointers may land on a fresh cage
-                // page that iSH hasn't allocated yet — the neighbor
+                // page that Shell Box hasn't allocated yet — the neighbor
                 // heuristic is too conservative for V8 which mmaps in
                 // large reserved ranges.
                 // Other faults: require a mapped neighbor within 16
@@ -763,7 +763,7 @@ void handle_interrupt(int interrupt) {
             // memory, set destination register to 0 and advance PC.
             // This handles cases where guest code makes out-of-bounds reads
             // that work on native Linux (because adjacent heap pages are always
-            // mapped) but crash in iSH (because we have unmapped gaps).
+            // mapped) but crash in Shell Box (because we have unmapped gaps).
             // Rate-limited to prevent infinite loops on true null-pointer derefs.
 #ifdef GUEST_ARM64
             if (!cpu->segfault_was_write) {
@@ -914,7 +914,7 @@ void handle_interrupt(int interrupt) {
 
             // musl malloc corruption BRK #0x3e8 inside
             // malloc_usable_size / free / realloc family. Occurs when an
-            // iSH CoW/TLB race presents stale arena metadata to musl's
+            // Shell Box CoW/TLB race presents stale arena metadata to musl's
             // consistency check. On native Linux this is a genuine
             // musl abort, but in our setup the actual malloc state is
             // fine — it's a transient read-side anomaly.
@@ -957,7 +957,7 @@ void handle_interrupt(int interrupt) {
             // this loop (observed: pc=0xedaefbb8 in node repeating ~1M+
             // times during `npx @larksuite/cli install`).
             //
-            // iSH is not a debugger host — reset the action to SIG_DFL
+            // Shell Box is not a debugger host — reset the action to SIG_DFL
             // unconditionally so the default terminate action runs. This
             // also unblocks SIGTRAP (force_sig_fault semantics).
             if (current->sighand != NULL) {

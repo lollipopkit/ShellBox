@@ -5,8 +5,11 @@ user_path="$(sudo -n -u "$USER" -i printenv PATH 2>/dev/null || true)"
 if [[ -n "$user_path" ]]; then
     export PATH="$PATH:$user_path"
 fi
+if [[ -n "$SRCROOT" && -d "$SRCROOT/.venv/bin" ]]; then
+    export PATH="$SRCROOT/.venv/bin:$PATH"
+fi
 if ! command -v meson >/dev/null 2>&1; then
-    echo "error: meson is required to build iSH. Install it with Homebrew or pip, then rebuild." >&2
+    echo "error: meson is required to build Shell Box. Install it with Homebrew or pip, then rebuild." >&2
     exit 127
 fi
 

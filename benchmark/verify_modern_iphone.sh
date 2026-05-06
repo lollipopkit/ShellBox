@@ -5,7 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SCHEME="iSH-ARM64"
+SCHEME="Shell Box"
+TARGET="Shell Box ARM64"
 SIM_DESTINATION="${SIM_DESTINATION:-platform=iOS Simulator,name=iPhone 17,OS=26.4.1}"
 RUN_SIM_BUILD=0
 RUN_DEVICE_BUILD=0
@@ -19,10 +20,11 @@ RUN_LAUNCH_DEVICE=0
 SIM_DEVICE_ID="${SIM_DEVICE_ID:-}"
 SIM_APP_PATH="${SIM_APP_PATH:-}"
 DEBUG_SERVER_URL="${DEBUG_SERVER_URL:-http://127.0.0.1:1234/}"
+SIM_TERMINATE_BUNDLE_IDS="${SIM_TERMINATE_BUNDLE_IDS:-}"
 DEVICE_LAUNCH_SETTLE_SECONDS="${DEVICE_LAUNCH_SETTLE_SECONDS:-2}"
 DEVICE_ID="${DEVICE_ID:-}"
 APP_PATH="${APP_PATH:-}"
-BUNDLE_ID="${BUNDLE_ID:-app.ish.iSH.arm64}"
+BUNDLE_ID="${BUNDLE_ID:-com.lollipopkit.shellbox}"
 
 usage() {
     cat <<EOF
@@ -47,6 +49,8 @@ Environment:
   SIM_LAUNCH_SETTLE_SECONDS
                      Seconds to wait before checking simulator process survival. Default: 2.
   DEBUG_SERVER_URL   URL probed after simulator launch. Default: ${DEBUG_SERVER_URL}
+  SIM_TERMINATE_BUNDLE_IDS
+                     Space-separated simulator bundle ids to terminate before launch. Default: ${SIM_TERMINATE_BUNDLE_IDS}
   DEVICE_LAUNCH_SETTLE_SECONDS
                      Seconds to wait before checking physical-device process survival. Default: ${DEVICE_LAUNCH_SETTLE_SECONDS}
   DEVICE_ID           Physical device id/name. If omitted, the first online CoreDevice iPhone/iPad is used.
@@ -124,7 +128,7 @@ require_cmd xcrun
 ok "meson $(meson --version)"
 
 infer_sim_app_path() {
-    xcodebuild -project iSH.xcodeproj \
+    xcodebuild -project ShellBox.xcodeproj \
         -scheme "$SCHEME" \
         -configuration Release \
         -destination "$SIM_DESTINATION" \
@@ -153,7 +157,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-xcodebuild -project iSH.xcodeproj -list >"$schemes"
+xcodebuild -project ShellBox.xcodeproj -list >"$schemes"
 if grep -q "^[[:space:]]*${SCHEME}$" "$schemes"; then
     ok "scheme ${SCHEME} is shared"
 else
@@ -161,7 +165,7 @@ else
     exit 1
 fi
 
-xcodebuild -project iSH.xcodeproj -scheme "$SCHEME" -showdestinations >"$destinations"
+xcodebuild -project ShellBox.xcodeproj -scheme "$SCHEME" -showdestinations >"$destinations"
 if grep -q "name:iPhone 17" "$destinations"; then
     ok "iPhone 17 simulator destination is available"
 else
@@ -234,7 +238,7 @@ if [ "$RUN_LAUNCH_DEVICE" -eq 1 ]; then
 fi
 
 if [ "$RUN_SIM_BUILD" -eq 1 ]; then
-    xcodebuild -project iSH.xcodeproj \
+    xcodebuild -project ShellBox.xcodeproj \
         -scheme "$SCHEME" \
         -configuration Release \
         -destination "$SIM_DESTINATION" \
@@ -273,6 +277,9 @@ fi
 
 if [ "$RUN_LAUNCH_SIM" -eq 1 ]; then
     require_cmd curl
+    for stale_bundle_id in $SIM_TERMINATE_BUNDLE_IDS; do
+        xcrun simctl terminate "$SIM_DEVICE_ID" "$stale_bundle_id" >/dev/null 2>&1 || true
+    done
     launch_output="$(xcrun simctl launch --terminate-running-process "$SIM_DEVICE_ID" "$BUNDLE_ID" 2>&1)" || {
         printf '%s\n' "$launch_output" >&2
         exit 1
@@ -312,8 +319,8 @@ if [ "$RUN_LAUNCH_SIM" -eq 1 ]; then
 fi
 
 if [ "$RUN_DEVICE_BUILD" -eq 1 ]; then
-    xcodebuild -project iSH.xcodeproj \
-        -target "$SCHEME" \
+    xcodebuild -project ShellBox.xcodeproj \
+        -target "$TARGET" \
         -configuration Release \
         CODE_SIGNING_ALLOWED=NO \
         build

@@ -1,6 +1,6 @@
 //
 //  AppDelegate.h
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 10/17/17.
 //

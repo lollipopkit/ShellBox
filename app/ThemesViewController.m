@@ -1,6 +1,6 @@
 //
 //  ThemesViewController.m
-//  iSH
+//  Shell Box
 //
 //  Created by Saagar Jha on 2/25/22.
 //
@@ -136,7 +136,7 @@ enum {
         case DefaultSection:
             return self->_preferUserTheme ? [NSString stringWithFormat:@"The default theme \"%@\" is currently being overridden by a user theme.", self->_theme.name] : nil;
         case ImportSection:
-            return @"User themes are stored in the iSH documents directory, under the \"themes\" folder. You can access them within iSH by running\n\n# mount -t real \"$(cat /proc/ish/documents)/themes\" [folder]\n\nand manipulating them from there.";
+            return @"User themes are stored in the Shell Box documents directory, under the \"themes\" folder. You can access them within Shell Box by running\n\n# mount -t real \"$(cat /proc/ish/documents)/themes\" [folder]\n\nand manipulating them from there.";
         default:
             return nil;
     }

@@ -1,6 +1,6 @@
 //
 //  AppDelegate.m
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 10/17/17.
 //
@@ -65,7 +65,7 @@ static void ios_handle_exit(struct task *task, int code) {
 
 static void ios_handle_die(const char *msg) {
     NSString *message = [NSString stringWithFormat:@"%s: %s", __func__, msg];
-    iSHExceptionHandler([[NSException alloc] initWithName:NSGenericException reason:message userInfo:nil]);
+    ShellBoxExceptionHandler([[NSException alloc] initWithName:NSGenericException reason:message userInfo:nil]);
 }
 #elif ISH_LINUX
 void ReportPanic(const char *message) {
@@ -96,7 +96,7 @@ static NSString *const kSkipStartupMessage = @"Skip Startup Message";
 
 #ifdef ISH_FFMPEG_TEST
     // Register built-in native handlers (fake_ffmpeg) for the ffmpeg test target.
-    // This is NOT called in the standard iSH ARM64 target.
+    // This is NOT called in the standard Shell Box ARM64 target.
     native_builtins_init();
 #endif
 
@@ -249,8 +249,8 @@ void SyncHostname(void) {
     if ([NSUserDefaults.standardUserDefaults integerForKey:kSkipStartupMessage] >= 1)
         return;
     if (!FsIsManaged()) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Install iSH’s built-in APK?"
-                                                                       message:@"iSH now includes the APK package manager, but it must be manually activated."
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Install Shell Box’s built-in APK?"
+                                                                       message:@"Shell Box now includes the APK package manager, but it must be manually activated."
                                                                 preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Show me how"
                                                   style:UIAlertActionStyleDefault
@@ -300,7 +300,7 @@ void NetworkReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
         [UIView setAnimationsEnabled:NO];
 
 #if !ISH_LINUX
-    NSString *ishVersion = [NSString stringWithFormat:@"iSH %@ (%@)",
+    NSString *ishVersion = [NSString stringWithFormat:@"Shell Box %@ (%@)",
                          [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
                          [NSBundle.mainBundle objectForInfoDictionaryKey:(NSString *) kCFBundleVersionKey]];
     extern const char *proc_ish_version;

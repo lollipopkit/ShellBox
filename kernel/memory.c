@@ -341,7 +341,7 @@ static page_t pt_find_hole_high(struct mem *mem, pages_t size) {
 //    used for large V8 heap-cage reservations (PROT_NONE chunks ≥32MB)
 //    so their contents cannot be confused with legitimate low-address
 //    guest pointers. Node V8 without pointer compression stores full
-//    64-bit tagged pointers into heap slots: when iSH places the heap
+//    64-bit tagged pointers into heap slots: when Shell Box places the heap
 //    in 0xc0000000..0xd0000000 (low 4GB), a slot containing garbage
 //    24-bit value 0x00c39b1b looks indistinguishable from a real heap
 //    pointer and V8's later deref lands on an unmapped page. Placing

@@ -1,6 +1,6 @@
 //
 //  ExceptionExfiltrator.m
-//  libiSHApp
+//  libShellBoxApp
 //
 //  Created by Saagar Jha on 5/5/23.
 //
@@ -216,15 +216,15 @@ static void (*character2function[256])(void) = {
 
 #undef f
 
-void __ish_exception_exfiltrate_NAME__(void) {
+void __shellbox_exception_exfiltrate_NAME__(void) {
 	__asm__("nop");
 }
 
-void __ish_exception_exfiltrate_REASON__(void) {
+void __shellbox_exception_exfiltrate_REASON__(void) {
 	__asm__("nop");
 }
 
-void __ish_exception_exfiltrate_BACKTRACE__(void) {
+void __shellbox_exception_exfiltrate_BACKTRACE__(void) {
 	__asm__("nop");
 }
 
@@ -241,22 +241,22 @@ struct frame {
 	void *address;
 };
 
-static void *__ish_exception_exfiltrate_THREAD__(void *frames) {
+static void *__shellbox_exception_exfiltrate_THREAD__(void *frames) {
 	*(void **)__builtin_frame_address(0) = frames;
 	__builtin_trap();
 }
 
-void iSHExceptionHandler(NSException *exception) {
+void ShellBoxExceptionHandler(NSException *exception) {
 	NSArray<NSNumber *> *backtrace = exception.callStackReturnAddresses;
 	NSString *name = exception.name;
 	NSString *reason = exception.reason;
 	size_t size =
 	    backtrace.count + /* backtrace frames */
-	    1 +               /* __ish_exception_exfiltrate_BACKTRACE__ */
+	    1 +               /* __shellbox_exception_exfiltrate_BACKTRACE__ */
 	    name.length +     /* name */
-	    1 +               /* __ish_exception_exfiltrate__NAME__ */
+	    1 +               /* __shellbox_exception_exfiltrate__NAME__ */
 	    reason.length +   /* reason */
-	    1;                /* __ish_exception_exfiltrate__REASON__ */
+	    1;                /* __shellbox_exception_exfiltrate__REASON__ */
 	struct frame *frames = malloc(sizeof(struct frame) * size);
 	frames[0].next = NULL;
 
@@ -270,21 +270,21 @@ void iSHExceptionHandler(NSException *exception) {
 		frames[index++].address = address.pointerValue;
 	}
 
-	frames[index++].address = address_for_function(__ish_exception_exfiltrate_BACKTRACE__);
+	frames[index++].address = address_for_function(__shellbox_exception_exfiltrate_BACKTRACE__);
 
 	for (NSUInteger i = 0; i < reason.length; ++i, ++index) {
 		frames[index].address = address_for_function(function_for_character([reason characterAtIndex:reason.length - i - 1]));
 	}
 
-	frames[index++].address = address_for_function(__ish_exception_exfiltrate_REASON__);
+	frames[index++].address = address_for_function(__shellbox_exception_exfiltrate_REASON__);
 
 	for (NSUInteger i = 0; i < name.length; ++i, ++index) {
 		frames[index].address = address_for_function(function_for_character([name characterAtIndex:name.length - i - 1]));
 	}
 
-	frames[index++].address = address_for_function(__ish_exception_exfiltrate_NAME__);
+	frames[index++].address = address_for_function(__shellbox_exception_exfiltrate_NAME__);
 
 	pthread_t thread;
-	pthread_create(&thread, NULL, __ish_exception_exfiltrate_THREAD__, frames + size - 1);
+	pthread_create(&thread, NULL, __shellbox_exception_exfiltrate_THREAD__, frames + size - 1);
 	pthread_join(thread, NULL);
 }

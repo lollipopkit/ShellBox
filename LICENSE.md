@@ -1,4 +1,4 @@
-iSH is licensed under the [GPLv3][]. The additional terms in LICENSE.IOS also apply.
+Shell Box is distributed under the upstream iSH [GPLv3][] license. The additional terms in LICENSE.IOS also apply.
 
 Contributions made after commit 0e3a4144f93135c4fd618c8397d2cfd87194f69f are
 additionally licensed under the [GPLv2][]. This is intended to allow linking

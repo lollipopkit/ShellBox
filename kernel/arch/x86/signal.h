@@ -18,7 +18,7 @@
 static inline void x86_setup_sigcontext(struct sigcontext_ *sc, struct cpu_state *cpu) {
 #if defined(GUEST_X86) || !defined(GUEST_ARM64)
     sc->gs = cpu->gs;
-    sc->fs = 0;  // Not used in iSH
+    sc->fs = 0;  // Not used in Shell Box
     sc->es = 0;
     sc->ds = 0;
     sc->di = cpu->edi;

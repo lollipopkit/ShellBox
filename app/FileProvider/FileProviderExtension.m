@@ -1,6 +1,6 @@
 //
 //  FileProviderExtension.m
-//  iSHFiles
+//  Shell Box Files
 //
 //  Created by Theodore Dubois on 9/20/18.
 //
@@ -8,7 +8,7 @@
 #import "FileProviderExtension.h"
 #import "FileProviderItem.h"
 #import "FileProviderEnumerator.h"
-#import "NSError+ISHErrno.h"
+#import "NSError+ShellBoxErrno.h"
 #import "../AppGroup.h"
 #import "../ExceptionExfiltrator.h"
 #include "fs/fake-db.h"
@@ -44,7 +44,7 @@
             if (err < 0) {
                 NSLog(@"error opening root: %d", err);
                 close(_mount.root_fd);
-                *error = [NSError errorWithISHErrno:err itemIdentifier:NSFileProviderRootContainerItemIdentifier];
+                *error = [NSError errorWithShellBoxErrno:err itemIdentifier:NSFileProviderRootContainerItemIdentifier];
                 return NO;
             }
             *mount = &_mount;
@@ -443,7 +443,7 @@
 }
 
 + (void)load {
-    NSSetUncaughtExceptionHandler(iSHExceptionHandler);
+    NSSetUncaughtExceptionHandler(ShellBoxExceptionHandler);
 }
 
 @end

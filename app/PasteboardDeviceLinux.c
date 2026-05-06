@@ -1,6 +1,6 @@
 //
 //  PasteboardDeviceLinux.c
-//  iSH+Linux
+//  Shell Box Linux
 //
 //  Created by Theodore Dubois on 2/19/22.
 //

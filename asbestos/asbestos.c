@@ -25,8 +25,8 @@
 // to cpu_state via the _cpu pointer (x1) from ucontext.
 __thread volatile sig_atomic_t in_jit;
 __thread volatile addr_t jit_saved_pc;  // block start PC, read by signal handler
-// Marker set to 1 on iSH execution threads so the signal handler can distinguish
-// iSH threads from app threads (Swift async, networking, UI).
+// Marker set to 1 on Shell Box execution threads so the signal handler can distinguish
+// Shell Box threads from app threads (Swift async, networking, UI).
 __thread int ish_thread_marker;
 
 // Architecture-specific instruction pointer access
@@ -325,7 +325,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         }
         // Guard: null guest PC means corrupted state (e.g., RET with LR=0
         // after a BL return-address got clobbered, or BR to NULL). Native
-        // Linux would deliver SIGSEGV and terminate. In iSH the fault
+        // Linux would deliver SIGSEGV and terminate. In Shell Box the fault
         // address resolves to the guard-page zeros we map at 0x0-0x1MB,
         // so no SIGSEGV fires from the JIT; instead handle_interrupt
         // re-enters the loop forever. Force-exit with 139 (128+SIGSEGV) so

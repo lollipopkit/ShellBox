@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-# iSH Unified Benchmark — Performance & Compatibility
+# Shell Box Unified Benchmark — Performance & Compatibility
 #
 # Usage:
 #   ./run.sh             # Run both performance + compatibility suites
@@ -139,7 +139,7 @@ push_asset() {
 # ═══════════════════════════════════════════════════════════════════
 # SUITE 1: Shell — guest-side timing (eliminates startup overhead)
 #
-# Runs assets/shellbench.sh INSIDE each iSH instance. The script
+# Runs assets/shellbench.sh INSIDE each Shell Box instance. The script
 # measures each test with guest-side monotonic clock, so fakefs/realfs
 # startup cost is paid once and does NOT affect individual test times.
 # ═══════════════════════════════════════════════════════════════════
@@ -328,7 +328,7 @@ _md_shell_arm64_section() {
     {
         echo "## 1. ARM64 Shell Benchmark (Native vs ARM64)"
         echo ""
-        echo "> **Guest-side timing** — each test measured inside ARM64 iSH with"
+        echo "> **Guest-side timing** — each test measured inside ARM64 Shell Box with"
         echo "> monotonic clock. Startup overhead (fakefs init) is excluded."
         echo "> Use \`./run.sh arm64\` for a fast modern-iPhone/ARM64 performance pass"
         echo "> when x86 rootfs is not available."
@@ -736,7 +736,7 @@ _md_compat() {
     shift 5; local rows=("$@")
 
     cat > "$COMPAT_MD" << EOF
-# iSH Compatibility: x86 vs ARM64
+# Shell Box Compatibility: x86 vs ARM64
 
 > **Generated:** $(date '+%Y-%m-%d %H:%M:%S') | **Tests:** $total | **Host:** macOS $(sw_vers -productVersion)
 >
@@ -828,7 +828,7 @@ write_perf_header() {
     fi
 
     cat > "$PERF_MD" << HEADER
-# iSH Performance Benchmark
+# Shell Box Performance Benchmark
 
 > **Generated:** $(date '+%Y-%m-%d %H:%M:%S')
 > **Host:** macOS $(sw_vers -productVersion) / $(uname -m)
@@ -859,7 +859,7 @@ main() {
 
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
-    echo "  iSH Unified Benchmark"
+    echo "  Shell Box Unified Benchmark"
     echo "  $(date '+%Y-%m-%d %H:%M:%S')"
     echo "═══════════════════════════════════════════════════════════════"
     echo ""

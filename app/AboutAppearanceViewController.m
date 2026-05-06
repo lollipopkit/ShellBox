@@ -1,6 +1,6 @@
 //
 //  ThemeViewController.m
-//  iSH
+//  Shell Box
 //
 //  Created by Charlie Melbye on 11/12/18.
 //
@@ -20,38 +20,38 @@
 @end
 
 char *previewString = "# cat /proc/ish/colors\r\n"
-"\x1B[30m" "iSH" "\x1B[39m "
-"\x1B[31m" "iSH" "\x1B[39m "
-"\x1B[32m" "iSH" "\x1B[39m "
-"\x1B[33m" "iSH" "\x1B[39m "
-"\x1B[34m" "iSH" "\x1B[39m "
-"\x1B[35m" "iSH" "\x1B[39m "
-"\x1B[36m" "iSH" "\x1B[39m "
-"\x1B[37m" "iSH" "\x1B[39m" "\r\n\x1B[7m"
-"\x1B[40m" "iSH" "\x1B[39m "
-"\x1B[41m" "iSH" "\x1B[39m "
-"\x1B[42m" "iSH" "\x1B[39m "
-"\x1B[43m" "iSH" "\x1B[39m "
-"\x1B[44m" "iSH" "\x1B[39m "
-"\x1B[45m" "iSH" "\x1B[39m "
-"\x1B[46m" "iSH" "\x1B[39m "
-"\x1B[47m" "iSH" "\x1B[39m" "\x1B[0m\x1B[1m\r\n"
-"\x1B[90m" "iSH" "\x1B[39m "
-"\x1B[91m" "iSH" "\x1B[39m "
-"\x1B[92m" "iSH" "\x1B[39m "
-"\x1B[93m" "iSH" "\x1B[39m "
-"\x1B[94m" "iSH" "\x1B[39m "
-"\x1B[95m" "iSH" "\x1B[39m "
-"\x1B[96m" "iSH" "\x1B[39m "
-"\x1B[97m" "iSH" "\x1B[39m" "\r\n\x1B[7m"
-"\x1B[100m" "iSH" "\x1B[39m "
-"\x1B[101m" "iSH" "\x1B[39m "
-"\x1B[102m" "iSH" "\x1B[39m "
-"\x1B[103m" "iSH" "\x1B[39m "
-"\x1B[104m" "iSH" "\x1B[39m "
-"\x1B[105m" "iSH" "\x1B[39m "
-"\x1B[106m" "iSH" "\x1B[39m "
-"\x1B[107m" "iSH" "\x1B[39m" "\x1B[0m\r\n"
+"\x1B[30m" "Shell Box" "\x1B[39m "
+"\x1B[31m" "Shell Box" "\x1B[39m "
+"\x1B[32m" "Shell Box" "\x1B[39m "
+"\x1B[33m" "Shell Box" "\x1B[39m "
+"\x1B[34m" "Shell Box" "\x1B[39m "
+"\x1B[35m" "Shell Box" "\x1B[39m "
+"\x1B[36m" "Shell Box" "\x1B[39m "
+"\x1B[37m" "Shell Box" "\x1B[39m" "\r\n\x1B[7m"
+"\x1B[40m" "Shell Box" "\x1B[39m "
+"\x1B[41m" "Shell Box" "\x1B[39m "
+"\x1B[42m" "Shell Box" "\x1B[39m "
+"\x1B[43m" "Shell Box" "\x1B[39m "
+"\x1B[44m" "Shell Box" "\x1B[39m "
+"\x1B[45m" "Shell Box" "\x1B[39m "
+"\x1B[46m" "Shell Box" "\x1B[39m "
+"\x1B[47m" "Shell Box" "\x1B[39m" "\x1B[0m\x1B[1m\r\n"
+"\x1B[90m" "Shell Box" "\x1B[39m "
+"\x1B[91m" "Shell Box" "\x1B[39m "
+"\x1B[92m" "Shell Box" "\x1B[39m "
+"\x1B[93m" "Shell Box" "\x1B[39m "
+"\x1B[94m" "Shell Box" "\x1B[39m "
+"\x1B[95m" "Shell Box" "\x1B[39m "
+"\x1B[96m" "Shell Box" "\x1B[39m "
+"\x1B[97m" "Shell Box" "\x1B[39m" "\r\n\x1B[7m"
+"\x1B[100m" "Shell Box" "\x1B[39m "
+"\x1B[101m" "Shell Box" "\x1B[39m "
+"\x1B[102m" "Shell Box" "\x1B[39m "
+"\x1B[103m" "Shell Box" "\x1B[39m "
+"\x1B[104m" "Shell Box" "\x1B[39m "
+"\x1B[105m" "Shell Box" "\x1B[39m "
+"\x1B[106m" "Shell Box" "\x1B[39m "
+"\x1B[107m" "Shell Box" "\x1B[39m" "\x1B[0m\r\n"
 "# ";
 
 @implementation AboutAppearanceViewController {
@@ -260,7 +260,7 @@ enum {
 
 - (void)changePreviewTheme:(UISegmentedControl *)sender {
     _terminalView.overrideAppearance = sender.selectedSegmentIndex ? OverrideAppearanceDark : OverrideAppearanceLight;
-    _terminalView.backgroundColor = [[UIColor alloc] ish_initWithHexString:(sender.selectedSegmentIndex ? UserPreferences.shared.theme.darkPalette : UserPreferences.shared.theme.lightPalette).backgroundColor];
+    _terminalView.backgroundColor = [[UIColor alloc] shellBox_initWithHexString:(sender.selectedSegmentIndex ? UserPreferences.shared.theme.darkPalette : UserPreferences.shared.theme.lightPalette).backgroundColor];
 }
 
 - (void)selectFont:(id)sender {

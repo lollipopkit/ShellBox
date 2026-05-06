@@ -14,28 +14,37 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BBEF1964268066D1001225BD"
-               BuildableName = "iSH.app"
-               BlueprintName = "iSH+Linux"
-               ReferencedContainer = "container:iSH.xcodeproj">
+               BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
+               BuildableName = "Shell Box.app"
+               BlueprintName = "Shell Box Legacy"
+               ReferencedContainer = "container:ShellBox.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "DebugLinux"
+      buildConfiguration = "Debug-ApplePleaseFixFB19282108"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
+            BuildableName = "Shell Box.app"
+            BlueprintName = "Shell Box Legacy"
+            ReferencedContainer = "container:ShellBox.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
       <Testables>
          <TestableReference
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "BB41591B255EF9E300E0950C"
-               BuildableName = "iSHUITests.xctest"
-               BlueprintName = "iSHUITests"
-               ReferencedContainer = "container:iSH.xcodeproj">
+               BuildableName = "Shell Box UITests.xctest"
+               BlueprintName = "Shell Box UITests"
+               ReferencedContainer = "container:ShellBox.xcodeproj">
             </BuildableReference>
             <SkippedTests>
                <Test
@@ -46,7 +55,7 @@
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "DebugLinux"
+      buildConfiguration = "Debug-ApplePleaseFixFB19282108"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -59,34 +68,35 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BBEF1964268066D1001225BD"
-            BuildableName = "iSH.app"
-            BlueprintName = "iSH+Linux"
-            ReferencedContainer = "container:iSH.xcodeproj">
+            BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
+            BuildableName = "Shell Box.app"
+            BlueprintName = "Shell Box Legacy"
+            ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
    <ProfileAction
-      buildConfiguration = "ReleaseLinux"
+      buildConfiguration = "Release"
       shouldUseLaunchSchemeArgsEnv = "YES"
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <MacroExpansion>
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BBEF1964268066D1001225BD"
-            BuildableName = "iSH.app"
-            BlueprintName = "iSH+Linux"
-            ReferencedContainer = "container:iSH.xcodeproj">
+            BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
+            BuildableName = "Shell Box.app"
+            BlueprintName = "Shell Box Legacy"
+            ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
-      </MacroExpansion>
+      </BuildableProductRunnable>
    </ProfileAction>
    <AnalyzeAction
-      buildConfiguration = "DebugLinux">
+      buildConfiguration = "Debug-ApplePleaseFixFB19282108">
    </AnalyzeAction>
    <ArchiveAction
-      buildConfiguration = "ReleaseLinux"
+      buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
    </ArchiveAction>
 </Scheme>

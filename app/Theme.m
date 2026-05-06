@@ -1,6 +1,6 @@
 //
 //  Theme.m
-//  iSH
+//  Shell Box
 //
 //  Created by Saagar Jha on 2/25/22.
 //
@@ -15,8 +15,8 @@ char *get_documents_directory_impl(void) {
 
 #define THEME_VERSION 1
 
-@implementation UIColor (iSH)
-- (nullable instancetype)ish_initWithHexString:(NSString *)string {
+@implementation UIColor (ShellBox)
+- (nullable instancetype)shellBox_initWithHexString:(NSString *)string {
     if (![string hasPrefix:@"#"]) {
         return nil;
     }
@@ -102,7 +102,7 @@ char *get_documents_directory_impl(void) {
 }
 
 - (instancetype)initWithSerializedRepresentation:(NSDictionary *)serializedRepresentation {
-#define VALID_COLOR(color) (color && [color isKindOfClass:NSString.class] && [[UIColor alloc] ish_initWithHexString:color])
+#define VALID_COLOR(color) (color && [color isKindOfClass:NSString.class] && [[UIColor alloc] shellBox_initWithHexString:color])
     id foregroundColor = serializedRepresentation[@"foregroundColor"];
     id backgroundColor = serializedRepresentation[@"backgroundColor"];
     id cursorColor = serializedRepresentation[@"cursorColor"];

@@ -30,13 +30,13 @@ while getopts "hvyf:e:" OPTION; do
             YES_MODE=true
             ;;
         h)
-            echo "iSH E2E Testing"
+            echo "Shell Box E2E Testing"
             echo "==============="
             echo "Automates e2e tests defined in tests/e2e."
             echo ""
             echo "  -h        Display help text."
             echo "  -v        Verbosely show test output as it is received."
-            echo "  -f fs     Use \"fs\" as the -f option for iSH. Default \"alpine\"."
+            echo "  -f fs     Use \"fs\" as the -f option for Shell Box. Default \"alpine\"."
             echo "  -e pat    Use pattern \"pat\" to pattern match tests to run."
             echo "            Syntax is same as grep -E for local system."
             echo "  -y        Accept creation of test file system if it does not exist"
@@ -69,7 +69,7 @@ if [ ! -d "$FS" ]; then
             wget "$ALPINE_IMAGE" -O e2e_out/alpine.tar.gz
             echo "###### Unpacking Alpine"
             ./build/tools/fakefsify e2e_out/alpine.tar.gz "$FS"
-            echo "###### Configuring iSH and installing base libraries"
+            echo "###### Configuring Shell Box and installing base libraries"
             grep -E "^nameserver" /etc/resolv.conf | head -1 | $ISH /bin/sed -n "w /etc/resolv.conf"
             $ISH /bin/sh -c "apk update && apk add build-base python2 python3"
             ;;

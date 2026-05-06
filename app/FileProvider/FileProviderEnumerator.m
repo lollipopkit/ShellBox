@@ -1,6 +1,6 @@
 //
 //  FileProviderEnumerator.m
-//  iSHFiles
+//  Shell Box Files
 //
 //  Created by Theodore Dubois on 9/20/18.
 //
@@ -10,7 +10,7 @@
 #import "FileProviderExtension.h"
 #import "FileProviderEnumerator.h"
 #import "FileProviderItem.h"
-#import "NSError+ISHErrno.h"
+#import "NSError+ShellBoxErrno.h"
 #include "fs/fake-db.h"
 
 @interface FileProviderEnumerator ()

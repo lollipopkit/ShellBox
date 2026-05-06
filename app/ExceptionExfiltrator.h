@@ -1,6 +1,6 @@
 //
 //  ExceptionExfiltrator.h
-//  iSH
+//  Shell Box
 //
 //  Created by Saagar Jha on 5/5/23.
 //
@@ -10,6 +10,6 @@
 
 #import <Foundation/Foundation.h>
 
-void iSHExceptionHandler(NSException *exception);
+void ShellBoxExceptionHandler(NSException *exception);
 
 #endif /* ExceptionExfiltrator_h */

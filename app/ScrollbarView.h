@@ -1,6 +1,6 @@
 //
 //  ScrollbarView.h
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 9/2/19.
 //

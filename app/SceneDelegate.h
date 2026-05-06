@@ -1,6 +1,6 @@
 //
 //  SceneDelegate.h
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 10/26/19.
 //

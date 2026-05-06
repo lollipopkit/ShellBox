@@ -1,6 +1,6 @@
 //
 //  ThemeViewController.m
-//  libiSHApp
+//  libShellBoxApp
 //
 //  Created by Saagar Jha on 7/16/22.
 //
@@ -317,7 +317,7 @@ enum {
     [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:NameSection] withRowAnimation:UITableViewRowAnimationNone];
     BOOL validColors = YES;
     BOOL (^validColor)(UITextField *) = ^(UITextField *textField) {
-        BOOL valid = !![[UIColor alloc] ish_initWithHexString:textField.text];
+        BOOL valid = !![[UIColor alloc] shellBox_initWithHexString:textField.text];
         textField.textColor = valid ? nil : UIColor.systemRedColor;
         return valid;
     };

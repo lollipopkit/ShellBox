@@ -1,6 +1,6 @@
 //
 //  Theme.h
-//  iSH
+//  Shell Box
 //
 //  Created by Saagar Jha on 2/25/22.
 //
@@ -46,8 +46,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)replaceWithUserTheme:(Theme *)theme;
 @end
 
-@interface UIColor (iSH)
-- (nullable instancetype)ish_initWithHexString:(NSString *)string;
+@interface UIColor (ShellBox)
+- (nullable instancetype)shellBox_initWithHexString:(NSString *)string;
 @end
 
 extern NSString *const ThemesUpdatedNotification;

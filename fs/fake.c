@@ -249,7 +249,7 @@ static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, 
     struct fakefs_db *fs = &mount->fakefs;
 
     /* Reject any write-intent open under a read-only bind mount.
-     * iSH processes run as root and bypass the meta.db mode DAC check,
+     * Shell Box processes run as root and bypass the meta.db mode DAC check,
      * so the 0555 bits on the mount dir don't actually block anything. */
     if ((flags & (O_WRONLY_ | O_RDWR_ | O_CREAT_ | O_TRUNC_ | O_APPEND_)) &&
         is_under_readonly_bind_mount(path)) {

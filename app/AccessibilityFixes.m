@@ -1,6 +1,6 @@
 //
 //  AccessibilityFixes.m
-//  iSH
+//  Shell Box
 //
 //  Created by Saagar Jha on 12/31/22.
 //

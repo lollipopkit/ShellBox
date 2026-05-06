@@ -1,26 +1,26 @@
 //
-//  NSError+ISHErrno.m
-//  iSH
+//  NSError+ShellBoxErrno.m
+//  Shell Box
 //
 //  Created by Theodore Dubois on 12/15/18.
 //
 
 #import <FileProvider/FileProvider.h>
-#import "NSError+ISHErrno.h"
+#import "NSError+ShellBoxErrno.h"
 #include "kernel/errno.h"
 
-@implementation NSError (ISHErrno)
+@implementation NSError (ShellBoxErrno)
 
-+ (NSError *)errorWithISHErrno:(long)err itemIdentifier:(nonnull NSFileProviderItemIdentifier)identifier {
++ (NSError *)errorWithShellBoxErrno:(long)err itemIdentifier:(nonnull NSFileProviderItemIdentifier)identifier {
     switch (err) {
         case _ENOENT:
             return [NSError fileProviderErrorForNonExistentItemWithIdentifier:identifier];
     }
-    return [NSError errorWithDomain:ISHErrnoDomain
+    return [NSError errorWithDomain:ShellBoxErrnoDomain
                                code:err
                            userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"error code %ld", err]}];
 }
 
 @end
 
-NSString *const ISHErrnoDomain = @"ISHErrnoDomain";
+NSString *const ShellBoxErrnoDomain = @"ShellBoxErrnoDomain";

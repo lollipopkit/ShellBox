@@ -1,4 +1,4 @@
-# [iSH](https://ish.app)
+# Shell Box
 
 [![Build Status](https://github.com/ish-app/ish/actions/workflows/ci.yml/badge.svg)](https://github.com/ish-app/ish/actions)
 [![goto counter](https://img.shields.io/github/search/ish-app/ish/goto.svg)](https://github.com/ish-app/ish/search?q=goto)
@@ -11,7 +11,7 @@
 </a>
 </p>
 
-iSH 是一个运行在 iOS 上的 Linux shell。本项目使用了 x86 用户模式仿真和系统调用翻译转换。
+Shell Box 是一个运行在 iOS 上的 Linux shell。本项目使用了 x86 用户模式仿真和系统调用翻译转换。
 
 请查看 issue 和提交记录以了解本项目当前的状态。
 
@@ -35,7 +35,7 @@ iSH 是一个运行在 iOS 上的 Linux shell。本项目使用了 x86 用户模
 
 ## 创建iOS应用
 
-使用 Xcode 打开项目，选择 iSH.xcconfig，并且修改 `ROOT_BUNDLE_IDENTIFIER` 为你的[唯一值](https://help.apple.com/xcode/mac/current/#/dev91fe7130a)。此外，还需要在项目（project）的构建设置（build settings）中更新开发团队 ID，注意这里指的不是目标（target）的构建设置（build settings）。然后点击 `运行`，之后应该有脚本帮你自动执行相关操作。如果遇到了任何问题，请提交 issue，我们会帮你解决。
+使用 Xcode 打开项目，选择 ShellBox.xcconfig，并且修改 `ROOT_BUNDLE_IDENTIFIER` 为你的[唯一值](https://help.apple.com/xcode/mac/current/#/dev91fe7130a)。此外，还需要在项目（project）的构建设置（build settings）中更新开发团队 ID，注意这里指的不是目标（target）的构建设置（build settings）。然后点击 `运行`，之后应该有脚本帮你自动执行相关操作。如果遇到了任何问题，请提交 issue，我们会帮你解决。
 
 ## 为测试构建命令行工具
 
@@ -47,9 +47,9 @@ iSH 是一个运行在 iOS 上的 Linux shell。本项目使用了 x86 用户模
 
 ## 日志
 
-在编译过程中，iSH 提供数种日志类型，默认情况下它们都被禁用，想要启用它们需要:
+在编译过程中，Shell Box 提供数种日志类型，默认情况下它们都被禁用，想要启用它们需要:
 
-- 在 Xcode 中将 iSH.xcconfig 中 `ISH_LOG` 设置为以空格分隔的日志类型列表。
+- 在 Xcode 中将 ShellBox.xcconfig 中 `ISH_LOG` 设置为以空格分隔的日志类型列表。
 - 在 Meson (测试使用的命令行工具) 中执行命令 `meson configure -Dlog="<space-separated list of log channels>"`。
 
 可用的日志类型:
@@ -61,7 +61,7 @@ iSH 是一个运行在 iOS 上的 Linux shell。本项目使用了 x86 用户模
 
 # 关于 JIT
 
-可能我在写 iSH 中最有趣的部分就是 JIT 了。实际上它不是真正的 JIT，因为它不并以机器代码为目标，而是生成一个称为 gadgets 的函数指针数组，并且每个 gadget 都以对下一个函数的尾调用结束，类似于一些 Forth 解释器使用的线程化代码技术。好处就是，与纯仿真相比，它的速度提高了 3-5 倍。
+可能我在写 Shell Box 中最有趣的部分就是 JIT 了。实际上它不是真正的 JIT，因为它不并以机器代码为目标，而是生成一个称为 gadgets 的函数指针数组，并且每个 gadget 都以对下一个函数的尾调用结束，类似于一些 Forth 解释器使用的线程化代码技术。好处就是，与纯仿真相比，它的速度提高了 3-5 倍。
 
 但不幸的是，我最开始决定用汇编语言编写几乎所有的 gadgets。这可能从性能方面来说是一个好的决定（虽然我永远也无法确定），但是对可读性、可维护性和我的理智来说，这是一个可怕的决定。我承受了大量来自编译器、汇编程序以及链接器的乱七八糟的东西。那里面就像有一个魔鬼，把我的代码搞得畸形，就算没有畸形，也会编造一些愚蠢的理由说它不能够编译。为了在编写代码时保持理智，我不得不忽略代码结构和命名方面的最佳实践。你会发现宏和变量具有诸如 `ss`、`s` 和 `a` 等描述性的名称，并且汇编器的宏嵌套层数超乎你的想象。最重要的是，代码中几乎没有任何注释。
 

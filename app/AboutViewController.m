@@ -1,6 +1,6 @@
 //
 //  AboutViewController.m
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 9/23/18.
 //
@@ -54,7 +54,7 @@
                                                                                  action:@selector(exitRecovery:)];
         self.navigationItem.leftBarButtonItem = nil;
     }
-    _versionLabel.text = [NSString stringWithFormat:@"iSH %@ (Build %@)",
+    _versionLabel.text = [NSString stringWithFormat:@"Shell Box %@ (Build %@)",
                           [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
                           [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"]];
 
@@ -105,7 +105,7 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
     if (cell == self.sendFeedback) {
-        [UIApplication openURL:@"mailto:tblodt@icloud.com?subject=Feedback%20for%20iSH"];
+        [UIApplication openURL:@"mailto:tblodt@icloud.com?subject=Feedback%20for%20Shell%20Box"];
     } else if (cell == self.openGithub) {
         [UIApplication openURL:@"https://github.com/ish-app/ish"];
     } else if (cell == self.openFediverse) {
@@ -133,7 +133,7 @@
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 1) { // filesystems / upgrade
         if (!FsIsManaged()) {
-            return @"The current filesystem is not managed by iSH.";
+            return @"The current filesystem is not managed by Shell Box.";
         } else if (!FsNeedsRepositoryUpdate()) {
             return [NSString stringWithFormat:@"The current filesystem is using %s, which is the latest version.", CURRENT_APK_VERSION_STRING];
         } else {

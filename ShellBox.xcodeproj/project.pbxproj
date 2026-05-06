@@ -7,16 +7,16 @@
 	objects = {
 
 /* Begin PBXAggregateTarget section */
-		BB4A922324ED9402002F5A96 /* iSH pre */ = {
+		BB4A922324ED9402002F5A96 /* Shell Box pre */ = {
 			isa = PBXAggregateTarget;
-			buildConfigurationList = BB4A922424ED9402002F5A96 /* Build configuration list for PBXAggregateTarget "iSH pre" */;
+			buildConfigurationList = BB4A922424ED9402002F5A96 /* Build configuration list for PBXAggregateTarget "Shell Box pre" */;
 			buildPhases = (
 				BB4A922A24ED9421002F5A96 /* Add icons to Info.plist */,
 			);
 			dependencies = (
 			);
-			name = "iSH pre";
-			productName = "iSH pre";
+			name = "Shell Box pre";
+			productName = "Shell Box pre";
 		};
 /* End PBXAggregateTarget section */
 
@@ -195,7 +195,7 @@
 		BB28C7A626896B1F00BDC834 /* AboutViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB5578215876CD00DFE6DE /* AboutViewController.m */; };
 		BB28C7A726896B1F00BDC834 /* UIViewController+Extras.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557021586C4800DFE6DE /* UIViewController+Extras.m */; };
 		BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.m in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */; };
-		BB28C7AE26896C1D00BDC834 /* libiSHApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBEF191E26806364001225BD /* libiSHApp.a */; };
+		BB28C7AE26896C1D00BDC834 /* libShellBoxApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBEF191E26806364001225BD /* libShellBoxApp.a */; };
 		BB28C7B226896C4600BDC834 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B621F96D90D00FFB7A4 /* main.m */; };
 		BB28C7B826896CE600BDC834 /* ArrowBarButton.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557F21587B6800DFE6DE /* ArrowBarButton.m */; };
 		BB28C7BA268975AA00BDC834 /* iOSFS.m in Sources */ = {isa = PBXBuildFile; fileRef = 408A2639236440F8008A4E81 /* iOSFS.m */; };
@@ -249,23 +249,23 @@
 		BBBCE7E321D2F02200CA00B3 /* About.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BBBCE7E521D2F02200CA00B3 /* About.storyboard */; };
 		BBBD741426B7BE2E00321AC5 /* libfakefs.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB21A16F2689041500BD19B4 /* libfakefs.a */; };
 		BBBDDF922CE0122F0071F1F3 /* emu_asbestos.c in Sources */ = {isa = PBXBuildFile; fileRef = BBBDDF912CE0122F0071F1F3 /* emu_asbestos.c */; };
-		BBBDDF932CE0132F0071F1F3 /* libiSHLinuxUser.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBBDDF8F2CE00F6B0071F1F3 /* libiSHLinuxUser.a */; };
+		BBBDDF932CE0132F0071F1F3 /* libShellBoxLinuxUser.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBBDDF8F2CE00F6B0071F1F3 /* libShellBoxLinuxUser.a */; };
 		BBBF7B5C2415CDBB00EC4C14 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = BBBF7B5B2415CDBB00EC4C14 /* Settings.bundle */; };
 		BBBF9CBD27C217B6002A30F7 /* PasteboardDeviceLinux.c in Sources */ = {isa = PBXBuildFile; fileRef = BBBF9CBB27C217A6002A30F7 /* PasteboardDeviceLinux.c */; };
-		BBBF9CBF27C44114002A30F7 /* iSHFileProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BB88F4902154760800A341FD /* iSHFileProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		BBBFE94921C5CFF100509DD5 /* NSError+ISHErrno.m in Sources */ = {isa = PBXBuildFile; fileRef = BB13F4DD21C5770000343E17 /* NSError+ISHErrno.m */; };
+		BBBF9CBF27C44114002A30F7 /* Shell Box FileProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BB88F4902154760800A341FD /* Shell Box FileProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrno.m in Sources */ = {isa = PBXBuildFile; fileRef = BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */; };
 		BBC3863E276817A900CC8C2E /* UpgradeRootViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BBA5D87D27536E7600B39D77 /* UpgradeRootViewController.m */; };
 		BBC3863F276817AD00CC8C2E /* CurrentRoot.m in Sources */ = {isa = PBXBuildFile; fileRef = BB565EA32734F1FB00C93EAE /* CurrentRoot.m */; };
 		BBD23D5F258DA450003DCB40 /* Screenshots.m in Sources */ = {isa = PBXBuildFile; fileRef = BBD23D5E258DA450003DCB40 /* Screenshots.m */; };
 		BBD23D77258DA4BC003DCB40 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD23D76258DA4BC003DCB40 /* SnapshotHelper.swift */; };
 		BBE64AC22A198FCC00589372 /* ExceptionExfiltrator.m in Sources */ = {isa = PBXBuildFile; fileRef = 49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */; };
 		BBECF3AD269132F400DEC937 /* LinuxInterop.c in Sources */ = {isa = PBXBuildFile; fileRef = BBECF39D2691313B00DEC937 /* LinuxInterop.c */; };
-		BBECF3AE2691330F00DEC937 /* libiSHLinux.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBECF3A22691314C00DEC937 /* libiSHLinux.a */; };
+		BBECF3AE2691330F00DEC937 /* libShellBoxLinux.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBECF3A22691314C00DEC937 /* libShellBoxLinux.a */; };
 		BBECF3B9269136FB00DEC937 /* liblinux.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBECF3B8269136E100DEC937 /* liblinux.a */; };
 		BBECF3BC26913F1600DEC937 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B541F96D90D00FFB7A4 /* AppDelegate.m */; };
 		BBEEA9E8277D25090069495B /* LinuxRoot.c in Sources */ = {isa = PBXBuildFile; fileRef = BBEEA9E7277D25090069495B /* LinuxRoot.c */; };
 		BBEEA9EA277DAB400069495B /* LinuxPTY.c in Sources */ = {isa = PBXBuildFile; fileRef = BBEEA9E9277DAB400069495B /* LinuxPTY.c */; };
-		BBEF1970268066D1001225BD /* libiSHApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBEF191E26806364001225BD /* libiSHApp.a */; };
+		BBEF1970268066D1001225BD /* libShellBoxApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBEF191E26806364001225BD /* libShellBoxApp.a */; };
 		BBEF1972268066D1001225BD /* libish_emu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB2C5B2590257E00545EAB /* libish_emu.a */; };
 		BBEF1973268066D1001225BD /* libarchive.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB10E5C8248DBAA1009C7A74 /* libarchive.a */; };
 		BBEF1974268066D1001225BD /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB235536235D49B300139E00 /* CoreLocation.framework */; };
@@ -347,7 +347,7 @@
 			containerPortal = BB792B461F96D8E000FFB7A4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = BB4A922324ED9402002F5A96;
-			remoteInfo = "iSH pre";
+			remoteInfo = "Shell Box pre";
 		};
 		BB10E5C7248DBAA1009C7A74 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -396,14 +396,14 @@
 			containerPortal = BB792B461F96D8E000FFB7A4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = BB792B4F1F96D90D00FFB7A4;
-			remoteInfo = iSH;
+			remoteInfo = "Shell Box Legacy";
 		};
 		BB4A922724ED940C002F5A96 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BB792B461F96D8E000FFB7A4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = BB4A922324ED9402002F5A96;
-			remoteInfo = "iSH pre";
+			remoteInfo = "Shell Box pre";
 		};
 		BBBDDF822CE00F6A0071F1F3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -431,21 +431,21 @@
 			containerPortal = BB792B461F96D8E000FFB7A4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = BBEF191D26806364001225BD;
-			remoteInfo = libiSH;
+			remoteInfo = libShellBox;
 		};
 		BBEF1966268066D1001225BD /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BB792B461F96D8E000FFB7A4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = BB4A922324ED9402002F5A96;
-			remoteInfo = "iSH pre";
+			remoteInfo = "Shell Box pre";
 		};
 		BBEF1968268066D1001225BD /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BB792B461F96D8E000FFB7A4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = BBEF191D26806364001225BD;
-			remoteInfo = libiSH;
+			remoteInfo = libShellBox;
 		};
 		BBEF196A268066D1001225BD /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -489,7 +489,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				BBBF9CBF27C44114002A30F7 /* iSHFileProvider.appex in Embed Foundation Extensions */,
+				BBBF9CBF27C44114002A30F7 /* Shell Box FileProvider.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -666,11 +666,11 @@
 		8632A7BE219A59FB00F02325 /* UserPreferences.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UserPreferences.m; sourceTree = "<group>"; };
 		9A28E4E8219A8B670073D200 /* AboutAppearanceViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AboutAppearanceViewController.h; sourceTree = "<group>"; };
 		9A28E4E9219A8B670073D200 /* AboutAppearanceViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AboutAppearanceViewController.m; sourceTree = "<group>"; };
-		AA0000021F96D90D00FFB7A4 /* iSH ARM64.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "iSH ARM64.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000021F96D90D00FFB7A4 /* Shell Box.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shell Box.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppARM64.xcconfig; sourceTree = "<group>"; };
 		AA000131AF96D90D00FFB7A4 /* DebugServer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = DebugServer.c; sourceTree = "<group>"; };
 		AA000132AF96D90D00FFB7A4 /* DebugServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DebugServer.h; sourceTree = "<group>"; };
-		AA9C2BB72F44A3DD00F41633 /* iSH ARM64 ffmpeg.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "iSH ARM64 ffmpeg.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA9C2BB72F44A3DD00F41633 /* Shell Box FFmpeg.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shell Box FFmpeg.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0B848E2586A4CF00208600 /* XcodeDefault.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeDefault.xcconfig; sourceTree = "<group>"; };
 		BB0B859B2586F13200208600 /* XcodeDebug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeDebug.xcconfig; sourceTree = "<group>"; };
 		BB0B859C2586F19000208600 /* XcodeRelease.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeRelease.xcconfig; sourceTree = "<group>"; };
@@ -704,8 +704,8 @@
 		BB10E5D2248DCFEA009C7A74 /* RootsTableViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RootsTableViewController.m; sourceTree = "<group>"; };
 		BB123ACB26C9EFD900419CDA /* LinuxTTY.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxTTY.c; sourceTree = "<group>"; };
 		BB123ACD26C9F13500419CDA /* IOSCalls.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IOSCalls.m; sourceTree = "<group>"; };
-		BB13F4DC21C5770000343E17 /* NSError+ISHErrno.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSError+ISHErrno.h"; sourceTree = "<group>"; };
-		BB13F4DD21C5770000343E17 /* NSError+ISHErrno.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSError+ISHErrno.m"; sourceTree = "<group>"; };
+		BB13F4DC21C5770000343E17 /* NSError+ShellBoxErrno.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSError+ShellBoxErrno.h"; sourceTree = "<group>"; };
+		BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSError+ShellBoxErrno.m"; sourceTree = "<group>"; };
 		BB13F7C8200ACC24003D1C4D /* xcode-meson.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; name = "xcode-meson.sh"; path = "app/xcode-meson.sh"; sourceTree = "<group>"; };
 		BB13F7DC200AD81D003D1C4D /* libish.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libish.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB149E7E256DC97C00F57815 /* PassthroughView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PassthroughView.h; sourceTree = "<group>"; };
@@ -732,7 +732,7 @@
 		BB38597B27BCEC78000A1082 /* freeiosterminal.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = freeiosterminal.png; sourceTree = "<group>"; };
 		BB38598227BCEC83000A1082 /* ishcolontildehash.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = ishcolontildehash.png; sourceTree = "<group>"; };
 		BB38598327BCEC83000A1082 /* is.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = is.png; sourceTree = "<group>"; };
-		BB41591C255EF9E300E0950C /* iSHUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iSHUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB41591C255EF9E300E0950C /* Shell Box UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Shell Box UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB41591E255EF9E300E0950C /* UITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UITests.m; sourceTree = "<group>"; };
 		BB415920255EF9E300E0950C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB455E0F1FB37F6600AFB48B /* DelayedUITask.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DelayedUITask.h; sourceTree = "<group>"; };
@@ -750,7 +750,7 @@
 		BB6DB260216435330047A611 /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 		BB78AB291FAD22440013E782 /* TerminalView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TerminalView.h; sourceTree = "<group>"; };
 		BB78AB2A1FAD22440013E782 /* TerminalView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TerminalView.m; sourceTree = "<group>"; };
-		BB792B501F96D90D00FFB7A4 /* iSH.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iSH.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB792B501F96D90D00FFB7A4 /* Shell Box.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shell Box.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB792B531F96D90D00FFB7A4 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		BB792B541F96D90D00FFB7A4 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		BB792B561F96D90D00FFB7A4 /* TerminalViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TerminalViewController.h; sourceTree = "<group>"; };
@@ -766,7 +766,7 @@
 		BB7D93822087C2890008DA78 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		BB82A7FB21B4C2E8006AA5FD /* AboutExternalKeyboardViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AboutExternalKeyboardViewController.h; sourceTree = "<group>"; };
 		BB82A7FC21B4C2E8006AA5FD /* AboutExternalKeyboardViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AboutExternalKeyboardViewController.m; sourceTree = "<group>"; };
-		BB88F4902154760800A341FD /* iSHFileProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = iSHFileProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB88F4902154760800A341FD /* Shell Box FileProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Shell Box FileProvider.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB88F4922154760800A341FD /* FileProviderExtension.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FileProviderExtension.h; sourceTree = "<group>"; };
 		BB88F4932154760800A341FD /* FileProviderExtension.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = FileProviderExtension.m; sourceTree = "<group>"; };
 		BB88F4952154760800A341FD /* FileProviderItem.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FileProviderItem.h; sourceTree = "<group>"; };
@@ -774,12 +774,12 @@
 		BB88F4982154760800A341FD /* FileProviderEnumerator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FileProviderEnumerator.h; sourceTree = "<group>"; };
 		BB88F4992154760800A341FD /* FileProviderEnumerator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = FileProviderEnumerator.m; sourceTree = "<group>"; };
 		BB88F49B2154760800A341FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		BB88F49C2154760800A341FD /* iSHFileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iSHFileProvider.entitlements; sourceTree = "<group>"; };
-		BB88F4A4215476BA00A341FD /* iSH.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iSH.entitlements; sourceTree = "<group>"; };
+		BB88F49C2154760800A341FD /* ShellBoxFileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShellBoxFileProvider.entitlements; sourceTree = "<group>"; };
+		BB88F4A4215476BA00A341FD /* ShellBox.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShellBox.entitlements; sourceTree = "<group>"; };
 		BB8C3AFD26B7B8AF00E38DDC /* fakefs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = fakefs.c; path = linux/fakefs.c; sourceTree = SOURCE_ROOT; };
 		BB9C7B84240A240E00F5D4F0 /* AppGroup.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppGroup.m; sourceTree = "<group>"; };
 		BB9C7B86240A29DE00F5D4F0 /* AppGroup.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppGroup.h; sourceTree = "<group>"; };
-		BB9C7B88240A343400F5D4F0 /* iSH.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = iSH.xcconfig; path = app/iSH.xcconfig; sourceTree = "<group>"; };
+		BB9C7B88240A343400F5D4F0 /* ShellBox.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = ShellBox.xcconfig; path = app/ShellBox.xcconfig; sourceTree = "<group>"; };
 		BBA5D87C27536E7600B39D77 /* UpgradeRootViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UpgradeRootViewController.h; sourceTree = "<group>"; };
 		BBA5D87D27536E7600B39D77 /* UpgradeRootViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UpgradeRootViewController.m; sourceTree = "<group>"; };
 		BBA8E2C0236FF5EA00515F76 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
@@ -787,7 +787,7 @@
 		BBAEE33A249BDADC0069EBB5 /* ProgressReportViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProgressReportViewController.h; sourceTree = "<group>"; };
 		BBAEE33B249BDADC0069EBB5 /* ProgressReportViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ProgressReportViewController.m; sourceTree = "<group>"; };
 		BBBCE7E421D2F02200CA00B3 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/About.storyboard; sourceTree = "<group>"; };
-		BBBDDF8F2CE00F6B0071F1F3 /* libiSHLinuxUser.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libiSHLinuxUser.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		BBBDDF8F2CE00F6B0071F1F3 /* libShellBoxLinuxUser.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libShellBoxLinuxUser.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBBDDF902CE00F8D0071F1F3 /* StaticLibLinuxUser.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = StaticLibLinuxUser.xcconfig; sourceTree = "<group>"; };
 		BBBDDF912CE0122F0071F1F3 /* emu_asbestos.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = emu_asbestos.c; path = linux/emu_asbestos.c; sourceTree = SOURCE_ROOT; };
 		BBBF7B5B2415CDBB00EC4C14 /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = Settings.bundle; sourceTree = "<group>"; };
@@ -807,14 +807,14 @@
 		BBD23D95258DEF6B003DCB40 /* Screenshots.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Screenshots.xctestplan; sourceTree = "<group>"; };
 		BBECF39B2691311D00DEC937 /* LinuxInterop.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LinuxInterop.h; sourceTree = "<group>"; };
 		BBECF39D2691313B00DEC937 /* LinuxInterop.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxInterop.c; sourceTree = "<group>"; };
-		BBECF3A22691314C00DEC937 /* libiSHLinux.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libiSHLinux.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		BBECF3A22691314C00DEC937 /* libShellBoxLinux.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libShellBoxLinux.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBECF3B8269136E100DEC937 /* liblinux.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = liblinux.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBECF3BA2691379100DEC937 /* StaticLibLinux.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = StaticLibLinux.xcconfig; sourceTree = "<group>"; };
 		BBEEA9E7277D25090069495B /* LinuxRoot.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxRoot.c; sourceTree = "<group>"; };
 		BBEEA9E9277DAB400069495B /* LinuxPTY.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxPTY.c; sourceTree = "<group>"; };
-		BBEF191E26806364001225BD /* libiSHApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libiSHApp.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		BBEF191E26806364001225BD /* libShellBoxApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libShellBoxApp.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBEF192C26806546001225BD /* AppLib.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppLib.xcconfig; sourceTree = "<group>"; };
-		BBEF199C268066D1001225BD /* iSH.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iSH.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BBEF199C268066D1001225BD /* Shell Box.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shell Box.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBEF19BA26806D7E001225BD /* Linux.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Linux.xcconfig; sourceTree = "<group>"; };
 		BBFB2C5B2590257E00545EAB /* libish_emu.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libish_emu.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBFB2CDA259028DC00545EAB /* StaticLib.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = StaticLib.xcconfig; sourceTree = "<group>"; };
@@ -866,7 +866,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB28C7AE26896C1D00BDC834 /* libiSHApp.a in Frameworks */,
+				BB28C7AE26896C1D00BDC834 /* libShellBoxApp.a in Frameworks */,
 				BB21A18426890C7E00BD19B4 /* libfakefs.a in Frameworks */,
 				BB13F7EA200ADCED003D1C4D /* libish.a in Frameworks */,
 				BBFB2CEC2590296B00545EAB /* libish_emu.a in Frameworks */,
@@ -893,9 +893,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				BBECF3B9269136FB00DEC937 /* liblinux.a in Frameworks */,
-				BBECF3AE2691330F00DEC937 /* libiSHLinux.a in Frameworks */,
-				BBBDDF932CE0132F0071F1F3 /* libiSHLinuxUser.a in Frameworks */,
-				BBEF1970268066D1001225BD /* libiSHApp.a in Frameworks */,
+				BBECF3AE2691330F00DEC937 /* libShellBoxLinux.a in Frameworks */,
+				BBBDDF932CE0132F0071F1F3 /* libShellBoxLinuxUser.a in Frameworks */,
+				BBEF1970268066D1001225BD /* libShellBoxApp.a in Frameworks */,
 				BBBD741426B7BE2E00321AC5 /* libfakefs.a in Frameworks */,
 				BBEF1972268066D1001225BD /* libish_emu.a in Frameworks */,
 				BBEF1973268066D1001225BD /* libarchive.a in Frameworks */,
@@ -1110,7 +1110,7 @@
 			isa = PBXGroup;
 			children = (
 				BB792B521F96D90D00FFB7A4 /* app */,
-				BB9C7B88240A343400F5D4F0 /* iSH.xcconfig */,
+				BB9C7B88240A343400F5D4F0 /* ShellBox.xcconfig */,
 				BB4A53931FAA393B00A72ACE /* most of the code */,
 				BB18B27F1F97F2590059FCD8 /* Scripts */,
 				BB792B511F96D90D00FFB7A4 /* Products */,
@@ -1122,21 +1122,21 @@
 		BB792B511F96D90D00FFB7A4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BB792B501F96D90D00FFB7A4 /* iSH.app */,
-				AA0000021F96D90D00FFB7A4 /* iSH ARM64.app */,
-				BB88F4902154760800A341FD /* iSHFileProvider.appex */,
+				BB792B501F96D90D00FFB7A4 /* Shell Box.app */,
+				AA0000021F96D90D00FFB7A4 /* Shell Box.app */,
+				BB88F4902154760800A341FD /* Shell Box FileProvider.appex */,
 				BB13F7DC200AD81D003D1C4D /* libish.a */,
 				BBFB2C5B2590257E00545EAB /* libish_emu.a */,
-				BB41591C255EF9E300E0950C /* iSHUITests.xctest */,
+				BB41591C255EF9E300E0950C /* Shell Box UITests.xctest */,
 				497F6D47254E605F00C82F46 /* ish */,
 				497F6CE4254E5E4C00C82F46 /* MakeXcodeAutoCompleteWork */,
-				BBEF191E26806364001225BD /* libiSHApp.a */,
-				BBEF199C268066D1001225BD /* iSH.app */,
+				BBEF191E26806364001225BD /* libShellBoxApp.a */,
+				BBEF199C268066D1001225BD /* Shell Box.app */,
 				BB21A16F2689041500BD19B4 /* libfakefs.a */,
-				BBECF3A22691314C00DEC937 /* libiSHLinux.a */,
+				BBECF3A22691314C00DEC937 /* libShellBoxLinux.a */,
 				BBECF3B8269136E100DEC937 /* liblinux.a */,
-				BBBDDF8F2CE00F6B0071F1F3 /* libiSHLinuxUser.a */,
-				AA9C2BB72F44A3DD00F41633 /* iSH ARM64 ffmpeg.app */,
+				BBBDDF8F2CE00F6B0071F1F3 /* libShellBoxLinuxUser.a */,
+				AA9C2BB72F44A3DD00F41633 /* Shell Box FFmpeg.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1175,7 +1175,7 @@
 				BB792B611F96D90D00FFB7A4 /* Info.plist */,
 				BB792B621F96D90D00FFB7A4 /* main.m */,
 				BB0B848D2586A4B100208600 /* Configs */,
-				BB88F4A4215476BA00A341FD /* iSH.entitlements */,
+				BB88F4A4215476BA00A341FD /* ShellBox.entitlements */,
 				BB88F4912154760800A341FD /* FileProvider */,
 				BB41591D255EF9E300E0950C /* UITests */,
 			);
@@ -1366,10 +1366,10 @@
 				BB88F4962154760800A341FD /* FileProviderItem.m */,
 				BB88F4982154760800A341FD /* FileProviderEnumerator.h */,
 				BB88F4992154760800A341FD /* FileProviderEnumerator.m */,
-				BB13F4DC21C5770000343E17 /* NSError+ISHErrno.h */,
-				BB13F4DD21C5770000343E17 /* NSError+ISHErrno.m */,
+				BB13F4DC21C5770000343E17 /* NSError+ShellBoxErrno.h */,
+				BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */,
 				BB88F49B2154760800A341FD /* Info.plist */,
-				BB88F49C2154760800A341FD /* iSHFileProvider.entitlements */,
+				BB88F49C2154760800A341FD /* ShellBoxFileProvider.entitlements */,
 			);
 			path = FileProvider;
 			sourceTree = "<group>";
@@ -1523,9 +1523,9 @@
 			productReference = 497F6D47254E605F00C82F46 /* ish */;
 			productType = "com.apple.product-type.tool";
 		};
-		74B674687BE68C2FE768F439 /* iSH-ARM64-ffmpeg */ = {
+		74B674687BE68C2FE768F439 /* Shell Box FFmpeg */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = ACF7C657334FB697AE177303 /* Build configuration list for PBXNativeTarget "iSH-ARM64-ffmpeg" */;
+			buildConfigurationList = ACF7C657334FB697AE177303 /* Build configuration list for PBXNativeTarget "Shell Box FFmpeg" */;
 			buildPhases = (
 				AA000300AF96D90D00FFB7A4 /* Build Meson (ARM64) */,
 				AA0000081F96D90D00FFB7A4 /* Sources */,
@@ -1543,14 +1543,14 @@
 				AA000060AF96D90D00FFB7A4 /* PBXTargetDependency */,
 				AA000062AF96D90D00FFB7A4 /* PBXTargetDependency */,
 			);
-			name = "iSH-ARM64-ffmpeg";
-			productName = "iSH ARM64 ffmpeg";
-			productReference = AA9C2BB72F44A3DD00F41633 /* iSH ARM64 ffmpeg.app */;
+			name = "Shell Box FFmpeg";
+			productName = "Shell Box FFmpeg";
+			productReference = AA9C2BB72F44A3DD00F41633 /* Shell Box FFmpeg.app */;
 			productType = "com.apple.product-type.application";
 		};
-		AA0000011F96D90D00FFB7A4 /* iSH-ARM64 */ = {
+		AA0000011F96D90D00FFB7A4 /* Shell Box ARM64 */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AA0000031F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "iSH-ARM64" */;
+			buildConfigurationList = AA0000031F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "Shell Box ARM64" */;
 			buildPhases = (
 				AA000300AF96D90D00FFB7A4 /* Build Meson (ARM64) */,
 				AA0000081F96D90D00FFB7A4 /* Sources */,
@@ -1568,9 +1568,9 @@
 				AA000060AF96D90D00FFB7A4 /* PBXTargetDependency */,
 				AA000062AF96D90D00FFB7A4 /* PBXTargetDependency */,
 			);
-			name = "iSH-ARM64";
-			productName = "iSH ARM64";
-			productReference = AA0000021F96D90D00FFB7A4 /* iSH ARM64.app */;
+			name = "Shell Box ARM64";
+			productName = "Shell Box";
+			productReference = AA0000021F96D90D00FFB7A4 /* Shell Box.app */;
 			productType = "com.apple.product-type.application";
 		};
 		BB13F7DB200AD81D003D1C4D /* libish */ = {
@@ -1605,9 +1605,9 @@
 			productReference = BB21A16F2689041500BD19B4 /* libfakefs.a */;
 			productType = "com.apple.product-type.library.static";
 		};
-		BB41591B255EF9E300E0950C /* iSHUITests */ = {
+		BB41591B255EF9E300E0950C /* Shell Box UITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BB415925255EF9E300E0950C /* Build configuration list for PBXNativeTarget "iSHUITests" */;
+			buildConfigurationList = BB415925255EF9E300E0950C /* Build configuration list for PBXNativeTarget "Shell Box UITests" */;
 			buildPhases = (
 				BB415918255EF9E300E0950C /* Sources */,
 				BB415919255EF9E300E0950C /* Frameworks */,
@@ -1618,14 +1618,14 @@
 			dependencies = (
 				BB415922255EF9E300E0950C /* PBXTargetDependency */,
 			);
-			name = iSHUITests;
-			productName = iSHUITests;
-			productReference = BB41591C255EF9E300E0950C /* iSHUITests.xctest */;
+			name = "Shell Box UITests";
+			productName = "Shell Box UITests";
+			productReference = BB41591C255EF9E300E0950C /* Shell Box UITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-		BB792B4F1F96D90D00FFB7A4 /* iSH */ = {
+		BB792B4F1F96D90D00FFB7A4 /* Shell Box Legacy */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BB792B661F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "iSH" */;
+			buildConfigurationList = BB792B661F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "Shell Box Legacy" */;
 			buildPhases = (
 				BB21A17826890A5B00BD19B4 /* Sources */,
 				BB792B4D1F96D90D00FFB7A4 /* Frameworks */,
@@ -1642,14 +1642,14 @@
 				BB10E5CB248DBAB7009C7A74 /* PBXTargetDependency */,
 				BB13F7E7200AD874003D1C4D /* PBXTargetDependency */,
 			);
-			name = iSH;
-			productName = iSH;
-			productReference = BB792B501F96D90D00FFB7A4 /* iSH.app */;
+			name = "Shell Box Legacy";
+			productName = "Shell Box Legacy";
+			productReference = BB792B501F96D90D00FFB7A4 /* Shell Box.app */;
 			productType = "com.apple.product-type.application";
 		};
-		BB88F48F2154760800A341FD /* iSHFileProvider */ = {
+		BB88F48F2154760800A341FD /* Shell Box FileProvider */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BB88F4A22154760800A341FD /* Build configuration list for PBXNativeTarget "iSHFileProvider" */;
+			buildConfigurationList = BB88F4A22154760800A341FD /* Build configuration list for PBXNativeTarget "Shell Box FileProvider" */;
 			buildPhases = (
 				BB88F48C2154760800A341FD /* Sources */,
 				BB88F48D2154760800A341FD /* Frameworks */,
@@ -1659,14 +1659,14 @@
 			);
 			dependencies = (
 			);
-			name = iSHFileProvider;
-			productName = iSHFiles;
-			productReference = BB88F4902154760800A341FD /* iSHFileProvider.appex */;
+			name = "Shell Box FileProvider";
+			productName = ShellBoxFiles;
+			productReference = BB88F4902154760800A341FD /* Shell Box FileProvider.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		BBBDDF802CE00F6A0071F1F3 /* libiSHLinuxUser */ = {
+		BBBDDF802CE00F6A0071F1F3 /* libShellBoxLinuxUser */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BBBDDF8A2CE00F6A0071F1F3 /* Build configuration list for PBXNativeTarget "libiSHLinuxUser" */;
+			buildConfigurationList = BBBDDF8A2CE00F6A0071F1F3 /* Build configuration list for PBXNativeTarget "libShellBoxLinuxUser" */;
 			buildPhases = (
 				BBBDDF832CE00F6A0071F1F3 /* Sources */,
 			);
@@ -1675,14 +1675,14 @@
 			dependencies = (
 				BBBDDF812CE00F6A0071F1F3 /* PBXTargetDependency */,
 			);
-			name = libiSHLinuxUser;
-			productName = iSHLinux;
-			productReference = BBBDDF8F2CE00F6B0071F1F3 /* libiSHLinuxUser.a */;
+			name = libShellBoxLinuxUser;
+			productName = ShellBoxLinux;
+			productReference = BBBDDF8F2CE00F6B0071F1F3 /* libShellBoxLinuxUser.a */;
 			productType = "com.apple.product-type.library.static";
 		};
-		BBECF3A12691314C00DEC937 /* libiSHLinux */ = {
+		BBECF3A12691314C00DEC937 /* libShellBoxLinux */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BBECF3A82691314C00DEC937 /* Build configuration list for PBXNativeTarget "libiSHLinux" */;
+			buildConfigurationList = BBECF3A82691314C00DEC937 /* Build configuration list for PBXNativeTarget "libShellBoxLinux" */;
 			buildPhases = (
 				BBECF39E2691314C00DEC937 /* Sources */,
 			);
@@ -1691,9 +1691,9 @@
 			dependencies = (
 				BBECF3BE2691417C00DEC937 /* PBXTargetDependency */,
 			);
-			name = libiSHLinux;
-			productName = iSHLinux;
-			productReference = BBECF3A22691314C00DEC937 /* libiSHLinux.a */;
+			name = libShellBoxLinux;
+			productName = ShellBoxLinux;
+			productReference = BBECF3A22691314C00DEC937 /* libShellBoxLinux.a */;
 			productType = "com.apple.product-type.library.static";
 		};
 		BBECF3AF269136E100DEC937 /* liblinux */ = {
@@ -1712,9 +1712,9 @@
 			productReference = BBECF3B8269136E100DEC937 /* liblinux.a */;
 			productType = "com.apple.product-type.library.static";
 		};
-		BBEF191D26806364001225BD /* libiSHApp */ = {
+		BBEF191D26806364001225BD /* libShellBoxApp */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BBEF192626806364001225BD /* Build configuration list for PBXNativeTarget "libiSHApp" */;
+			buildConfigurationList = BBEF192626806364001225BD /* Build configuration list for PBXNativeTarget "libShellBoxApp" */;
 			buildPhases = (
 				BBEF191A26806364001225BD /* Sources */,
 			);
@@ -1723,14 +1723,14 @@
 			);
 			dependencies = (
 			);
-			name = libiSHApp;
-			productName = libiSH;
-			productReference = BBEF191E26806364001225BD /* libiSHApp.a */;
+			name = libShellBoxApp;
+			productName = libShellBox;
+			productReference = BBEF191E26806364001225BD /* libShellBoxApp.a */;
 			productType = "com.apple.product-type.library.static";
 		};
-		BBEF1964268066D1001225BD /* iSH+Linux */ = {
+		BBEF1964268066D1001225BD /* Shell Box Linux */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BBEF1999268066D1001225BD /* Build configuration list for PBXNativeTarget "iSH+Linux" */;
+			buildConfigurationList = BBEF1999268066D1001225BD /* Build configuration list for PBXNativeTarget "Shell Box Linux" */;
 			buildPhases = (
 				BB21A1722689084800BD19B4 /* Sources */,
 				BBEF196F268066D1001225BD /* Frameworks */,
@@ -1747,9 +1747,9 @@
 				BBEF1967268066D1001225BD /* PBXTargetDependency */,
 				BBEF1969268066D1001225BD /* PBXTargetDependency */,
 			);
-			name = "iSH+Linux";
-			productName = iSH;
-			productReference = BBEF199C268066D1001225BD /* iSH.app */;
+			name = "Shell Box Linux";
+			productName = "Shell Box Legacy";
+			productReference = BBEF199C268066D1001225BD /* Shell Box.app */;
 			productType = "com.apple.product-type.application";
 		};
 		BBFB2C542590257E00545EAB /* libish_emu */ = {
@@ -1841,7 +1841,7 @@
 					};
 				};
 			};
-			buildConfigurationList = BB792B491F96D8E000FFB7A4 /* Build configuration list for PBXProject "iSH" */;
+			buildConfigurationList = BB792B491F96D8E000FFB7A4 /* Build configuration list for PBXProject "ShellBox" */;
 			compatibilityVersion = "Xcode 6.3";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -1860,24 +1860,24 @@
 			);
 			projectRoot = "";
 			targets = (
-				BB792B4F1F96D90D00FFB7A4 /* iSH */,
-				AA0000011F96D90D00FFB7A4 /* iSH-ARM64 */,
-				BBEF191D26806364001225BD /* libiSHApp */,
-				BBEF1964268066D1001225BD /* iSH+Linux */,
-				BBECF3A12691314C00DEC937 /* libiSHLinux */,
-				BBBDDF802CE00F6A0071F1F3 /* libiSHLinuxUser */,
-				BB88F48F2154760800A341FD /* iSHFileProvider */,
-				BB41591B255EF9E300E0950C /* iSHUITests */,
+				BB792B4F1F96D90D00FFB7A4 /* Shell Box Legacy */,
+				AA0000011F96D90D00FFB7A4 /* Shell Box ARM64 */,
+				BBEF191D26806364001225BD /* libShellBoxApp */,
+				BBEF1964268066D1001225BD /* Shell Box Linux */,
+				BBECF3A12691314C00DEC937 /* libShellBoxLinux */,
+				BBBDDF802CE00F6A0071F1F3 /* libShellBoxLinuxUser */,
+				BB88F48F2154760800A341FD /* Shell Box FileProvider */,
+				BB41591B255EF9E300E0950C /* Shell Box UITests */,
 				BB13F7CA200ACC31003D1C4D /* Meson */,
 				BB13F7D0200ACCA2003D1C4D /* Ninja */,
 				BB13F7DB200AD81D003D1C4D /* libish */,
 				BB21A1662689041500BD19B4 /* libfakefs */,
 				BBFB2C542590257E00545EAB /* libish_emu */,
 				BBECF3AF269136E100DEC937 /* liblinux */,
-				BB4A922324ED9402002F5A96 /* iSH pre */,
+				BB4A922324ED9402002F5A96 /* Shell Box pre */,
 				497F6CE3254E5E4C00C82F46 /* MakeXcodeAutoCompleteWork */,
 				497F6D46254E605F00C82F46 /* ish */,
-				74B674687BE68C2FE768F439 /* iSH-ARM64-ffmpeg */,
+				74B674687BE68C2FE768F439 /* Shell Box FFmpeg */,
 			);
 		};
 /* End PBXProject section */
@@ -2445,7 +2445,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BB88F49A2154760800A341FD /* FileProviderEnumerator.m in Sources */,
-				BBBFE94921C5CFF100509DD5 /* NSError+ISHErrno.m in Sources */,
+				BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrno.m in Sources */,
 				BB9C7B87240A2B1E00F5D4F0 /* AppGroup.m in Sources */,
 				BB88F4942154760800A341FD /* FileProviderExtension.m in Sources */,
 				BBE64AC22A198FCC00589372 /* ExceptionExfiltrator.m in Sources */,
@@ -2527,7 +2527,7 @@
 		};
 		AA000060AF96D90D00FFB7A4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = BB4A922324ED9402002F5A96 /* iSH pre */;
+			target = BB4A922324ED9402002F5A96 /* Shell Box pre */;
 			targetProxy = AA000070AF96D90D00FFB7A4 /* PBXContainerItemProxy */;
 		};
 		AA000062AF96D90D00FFB7A4 /* PBXTargetDependency */ = {
@@ -2561,12 +2561,12 @@
 		};
 		BB415922255EF9E300E0950C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = BB792B4F1F96D90D00FFB7A4 /* iSH */;
+			target = BB792B4F1F96D90D00FFB7A4 /* Shell Box Legacy */;
 			targetProxy = BB415921255EF9E300E0950C /* PBXContainerItemProxy */;
 		};
 		BB4A922824ED940C002F5A96 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = BB4A922324ED9402002F5A96 /* iSH pre */;
+			target = BB4A922324ED9402002F5A96 /* Shell Box pre */;
 			targetProxy = BB4A922724ED940C002F5A96 /* PBXContainerItemProxy */;
 		};
 		BBBDDF812CE00F6A0071F1F3 /* PBXTargetDependency */ = {
@@ -2586,17 +2586,17 @@
 		};
 		BBEF1929268063FD001225BD /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = BBEF191D26806364001225BD /* libiSHApp */;
+			target = BBEF191D26806364001225BD /* libShellBoxApp */;
 			targetProxy = BBEF1928268063FD001225BD /* PBXContainerItemProxy */;
 		};
 		BBEF1965268066D1001225BD /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = BB4A922324ED9402002F5A96 /* iSH pre */;
+			target = BB4A922324ED9402002F5A96 /* Shell Box pre */;
 			targetProxy = BBEF1966268066D1001225BD /* PBXContainerItemProxy */;
 		};
 		BBEF1967268066D1001225BD /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = BBEF191D26806364001225BD /* libiSHApp */;
+			target = BBEF191D26806364001225BD /* libShellBoxApp */;
 			targetProxy = BBEF1968268066D1001225BD /* PBXContainerItemProxy */;
 		};
 		BBEF1969268066D1001225BD /* PBXTargetDependency */ = {
@@ -2673,7 +2673,8 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.ffmpeg;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Release;
@@ -2682,7 +2683,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = "Debug-ApplePleaseFixFB19282108";
 		};
@@ -2690,7 +2694,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = DebugLinux;
 		};
@@ -2698,7 +2705,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Release;
 		};
@@ -2706,21 +2716,24 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = ReleaseLinux;
 		};
 		AA9C2BB52F44A3C700F41633 /* DebugLinux */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PRODUCT_NAME = "iSH ARM64 ffmpeg";
+				PRODUCT_NAME = "Shell Box FFmpeg";
 			};
 			name = DebugLinux;
 		};
 		AA9C2BB62F44A3C700F41633 /* ReleaseLinux */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PRODUCT_NAME = "iSH ARM64 ffmpeg";
+				PRODUCT_NAME = "Shell Box FFmpeg";
 			};
 			name = ReleaseLinux;
 		};
@@ -2730,7 +2743,8 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.ffmpeg;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = "Debug-ApplePleaseFixFB19282108";
@@ -2806,17 +2820,22 @@
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/UITests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).UITests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.UITests;
+				PRODUCT_MODULE_NAME = ShellBoxUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = iSH;
+				TEST_TARGET_NAME = "Shell Box Legacy";
 			};
 			name = "Debug-ApplePleaseFixFB19282108";
 		};
@@ -2825,16 +2844,21 @@
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/UITests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).UITests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.UITests;
+				PRODUCT_MODULE_NAME = ShellBoxUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = iSH;
+				TEST_TARGET_NAME = "Shell Box Legacy";
 			};
 			name = Release;
 		};
@@ -2855,6 +2879,7 @@
 			baseConfigurationReference = BB0B85A42586F1CB00208600 /* ProjectDebug.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 805;
+				DEVELOPMENT_TEAM = BA88US33G6;
 			};
 			name = "Debug-ApplePleaseFixFB19282108";
 		};
@@ -2863,6 +2888,7 @@
 			baseConfigurationReference = BB0B85A52586F1E100208600 /* ProjectRelease.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 805;
+				DEVELOPMENT_TEAM = BA88US33G6;
 			};
 			name = Release;
 		};
@@ -2870,7 +2896,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86CD2586FD8800208600 /* App.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = "Debug-ApplePleaseFixFB19282108";
 		};
@@ -2878,7 +2907,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86CD2586FD8800208600 /* App.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = Release;
 		};
@@ -2887,6 +2919,7 @@
 			baseConfigurationReference = BB28C7532689522C00BDC834 /* ProjectDebugLinux.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 805;
+				DEVELOPMENT_TEAM = BA88US33G6;
 			};
 			name = DebugLinux;
 		};
@@ -2894,7 +2927,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86CD2586FD8800208600 /* App.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = DebugLinux;
 		};
@@ -2916,11 +2952,14 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = app/FileProvider/iSHFileProvider.entitlements;
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_ENTITLEMENTS = app/FileProvider/ShellBoxFileProvider.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/FileProvider/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).FileProvider";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.FileProvider;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 			};
 			name = DebugLinux;
@@ -2930,17 +2969,22 @@
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/UITests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).UITests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.UITests;
+				PRODUCT_MODULE_NAME = ShellBoxUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = iSH;
+				TEST_TARGET_NAME = "Shell Box Legacy";
 			};
 			name = DebugLinux;
 		};
@@ -2994,11 +3038,14 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = app/FileProvider/iSHFileProvider.entitlements;
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_ENTITLEMENTS = app/FileProvider/ShellBoxFileProvider.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/FileProvider/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).FileProvider";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.FileProvider;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 			};
 			name = "Debug-ApplePleaseFixFB19282108";
@@ -3007,11 +3054,14 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = app/FileProvider/iSHFileProvider.entitlements;
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_ENTITLEMENTS = app/FileProvider/ShellBoxFileProvider.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/FileProvider/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).FileProvider";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.FileProvider;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 			};
 			name = Release;
@@ -3137,6 +3187,7 @@
 			baseConfigurationReference = BB28C7522689522700BDC834 /* ProjectReleaseLinux.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 805;
+				DEVELOPMENT_TEAM = BA88US33G6;
 			};
 			name = ReleaseLinux;
 		};
@@ -3144,7 +3195,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86CD2586FD8800208600 /* App.xcconfig */;
 			buildSettings = {
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
 			name = ReleaseLinux;
 		};
@@ -3166,11 +3220,14 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = app/FileProvider/iSHFileProvider.entitlements;
-				DEVELOPMENT_TEAM = K8Q74NT2BG;
+				CODE_SIGN_ENTITLEMENTS = app/FileProvider/ShellBoxFileProvider.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/FileProvider/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).FileProvider";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.FileProvider;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 			};
 			name = ReleaseLinux;
@@ -3180,16 +3237,21 @@
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BA88US33G6;
 				INFOPLIST_FILE = app/UITests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_BUNDLE_IDENTIFIER).UITests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.UITests;
+				PRODUCT_MODULE_NAME = ShellBoxUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = iSH;
+				TEST_TARGET_NAME = "Shell Box Legacy";
 			};
 			name = ReleaseLinux;
 		};
@@ -3278,7 +3340,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AA0000031F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "iSH-ARM64" */ = {
+		AA0000031F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "Shell Box ARM64" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA0000041F96D90D00FFB7A4 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3289,7 +3351,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		ACF7C657334FB697AE177303 /* Build configuration list for PBXNativeTarget "iSH-ARM64-ffmpeg" */ = {
+		ACF7C657334FB697AE177303 /* Build configuration list for PBXNativeTarget "Shell Box FFmpeg" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AAB2DDFCA9F64FB629D35CE7 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3344,7 +3406,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BB415925255EF9E300E0950C /* Build configuration list for PBXNativeTarget "iSHUITests" */ = {
+		BB415925255EF9E300E0950C /* Build configuration list for PBXNativeTarget "Shell Box UITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB415923255EF9E300E0950C /* Debug-ApplePleaseFixFB19282108 */,
@@ -3355,7 +3417,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BB4A922424ED9402002F5A96 /* Build configuration list for PBXAggregateTarget "iSH pre" */ = {
+		BB4A922424ED9402002F5A96 /* Build configuration list for PBXAggregateTarget "Shell Box pre" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB4A922524ED9402002F5A96 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3366,7 +3428,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BB792B491F96D8E000FFB7A4 /* Build configuration list for PBXProject "iSH" */ = {
+		BB792B491F96D8E000FFB7A4 /* Build configuration list for PBXProject "ShellBox" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB792B4A1F96D8E000FFB7A4 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3377,7 +3439,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BB792B661F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "iSH" */ = {
+		BB792B661F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "Shell Box Legacy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB792B641F96D90D00FFB7A4 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3388,7 +3450,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BB88F4A22154760800A341FD /* Build configuration list for PBXNativeTarget "iSHFileProvider" */ = {
+		BB88F4A22154760800A341FD /* Build configuration list for PBXNativeTarget "Shell Box FileProvider" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB88F4A02154760800A341FD /* Debug-ApplePleaseFixFB19282108 */,
@@ -3399,7 +3461,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BBBDDF8A2CE00F6A0071F1F3 /* Build configuration list for PBXNativeTarget "libiSHLinuxUser" */ = {
+		BBBDDF8A2CE00F6A0071F1F3 /* Build configuration list for PBXNativeTarget "libShellBoxLinuxUser" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BBBDDF8B2CE00F6A0071F1F3 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3410,7 +3472,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BBECF3A82691314C00DEC937 /* Build configuration list for PBXNativeTarget "libiSHLinux" */ = {
+		BBECF3A82691314C00DEC937 /* Build configuration list for PBXNativeTarget "libShellBoxLinux" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BBECF3A92691314C00DEC937 /* Debug-ApplePleaseFixFB19282108 */,
@@ -3432,7 +3494,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BBEF192626806364001225BD /* Build configuration list for PBXNativeTarget "libiSHApp" */ = {
+		BBEF192626806364001225BD /* Build configuration list for PBXNativeTarget "libShellBoxApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BBEF192426806364001225BD /* Debug-ApplePleaseFixFB19282108 */,
@@ -3443,7 +3505,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BBEF1999268066D1001225BD /* Build configuration list for PBXNativeTarget "iSH+Linux" */ = {
+		BBEF1999268066D1001225BD /* Build configuration list for PBXNativeTarget "Shell Box Linux" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BBEF199A268066D1001225BD /* Debug-ApplePleaseFixFB19282108 */,

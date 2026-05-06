@@ -1,6 +1,6 @@
 //
 //  main.m
-//  iSH
+//  Shell Box
 //
 //  Created by Theodore Dubois on 10/17/17.
 //
@@ -10,7 +10,7 @@
 #import "ExceptionExfiltrator.h"
 
 int main(int argc, char * argv[]) {
-    NSSetUncaughtExceptionHandler(iSHExceptionHandler);
+    NSSetUncaughtExceptionHandler(ShellBoxExceptionHandler);
     @autoreleasepool {
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
     }
