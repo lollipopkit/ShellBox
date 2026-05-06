@@ -79,6 +79,7 @@ extern void gadget_branch(void);
 extern void gadget_branch_link(void);
 extern void gadget_branch_reg(void);
 extern void gadget_branch_link_reg(void);
+extern void gadget_branch_link_inline_addsub_ret(void);
 extern void gadget_ret(void);
 extern void gadget_cbz(void);
 extern void gadget_cbnz(void);
@@ -89,6 +90,9 @@ extern void gadget_cbnz_32(void);
 extern void gadget_tbz(void);
 extern void gadget_tbnz(void);
 extern void gadget_bcond(void);
+extern void gadget_fused_cmp32_reg_bne_cbnz(void);
+extern void gadget_fused_tst_imm_csinc(void);
+extern void gadget_fused_tst_imm_bcond(void);
 extern void gadget_svc(void);
 
 // Flag-setting gadgets
@@ -795,6 +799,21 @@ extern void gadget_fused_cmp_reg_bcond_ge(void);
 extern void gadget_fused_cmp_reg_bcond_lt(void);
 extern void gadget_fused_cmp_reg_bcond_gt(void);
 extern void gadget_fused_cmp_reg_bcond_le(void);
+// Fused CMP_reg + B.cond gadgets (32-bit, rd=31)
+extern void gadget_fused_cmp32_reg_bcond_eq(void);
+extern void gadget_fused_cmp32_reg_bcond_ne(void);
+extern void gadget_fused_cmp32_reg_bcond_cs(void);
+extern void gadget_fused_cmp32_reg_bcond_cc(void);
+extern void gadget_fused_cmp32_reg_bcond_mi(void);
+extern void gadget_fused_cmp32_reg_bcond_pl(void);
+extern void gadget_fused_cmp32_reg_bcond_vs(void);
+extern void gadget_fused_cmp32_reg_bcond_vc(void);
+extern void gadget_fused_cmp32_reg_bcond_hi(void);
+extern void gadget_fused_cmp32_reg_bcond_ls(void);
+extern void gadget_fused_cmp32_reg_bcond_ge(void);
+extern void gadget_fused_cmp32_reg_bcond_lt(void);
+extern void gadget_fused_cmp32_reg_bcond_gt(void);
+extern void gadget_fused_cmp32_reg_bcond_le(void);
 // Fused SUBS_reg + B.cond gadgets (64-bit, rd!=31)
 extern void gadget_fused_subs_reg_bcond_eq(void);
 extern void gadget_fused_subs_reg_bcond_ne(void);
@@ -810,6 +829,21 @@ extern void gadget_fused_subs_reg_bcond_ge(void);
 extern void gadget_fused_subs_reg_bcond_lt(void);
 extern void gadget_fused_subs_reg_bcond_gt(void);
 extern void gadget_fused_subs_reg_bcond_le(void);
+// Fused SUBS_reg + B.cond gadgets (32-bit, rd!=31)
+extern void gadget_fused_subs32_reg_bcond_eq(void);
+extern void gadget_fused_subs32_reg_bcond_ne(void);
+extern void gadget_fused_subs32_reg_bcond_cs(void);
+extern void gadget_fused_subs32_reg_bcond_cc(void);
+extern void gadget_fused_subs32_reg_bcond_mi(void);
+extern void gadget_fused_subs32_reg_bcond_pl(void);
+extern void gadget_fused_subs32_reg_bcond_vs(void);
+extern void gadget_fused_subs32_reg_bcond_vc(void);
+extern void gadget_fused_subs32_reg_bcond_hi(void);
+extern void gadget_fused_subs32_reg_bcond_ls(void);
+extern void gadget_fused_subs32_reg_bcond_ge(void);
+extern void gadget_fused_subs32_reg_bcond_lt(void);
+extern void gadget_fused_subs32_reg_bcond_gt(void);
+extern void gadget_fused_subs32_reg_bcond_le(void);
 
 static void gen(struct gen_state *state, unsigned long thing) {
     assert(state->size <= state->capacity);
@@ -1045,6 +1079,58 @@ static bool gen_peek_next_insn(struct gen_state *state, uint32_t *next_insn) {
 }
 
 /*
+ * Inline tiny direct-call leaves such as:
+ *   add w0, w0, w1
+ *   ret
+ *
+ * This avoids BL/RET control-flow overhead in tight call microbenchmarks while
+ * keeping the optimization conservative: same page only, exact RET X30 only,
+ * and no XZR/SP operands.
+ */
+static bool try_inline_simple_leaf_bl(struct gen_state *state, addr_t target) {
+    if (PAGE(target) != PAGE(state->block->addr) ||
+        PAGE(target + 4) != PAGE(state->block->addr)) {
+        return false;
+    }
+
+    uint32_t body, ret;
+    if (!tlb_read(state->tlb, target, &body, sizeof(body)) ||
+        !tlb_read(state->tlb, target + 4, &ret, sizeof(ret))) {
+        return false;
+    }
+    if (ret != 0xd65f03c0) {  // RET X30
+        return false;
+    }
+
+    uint32_t op1 = (body >> 28) & 1;
+    uint32_t op2 = (body >> 21) & 0xf;
+    if (!(op1 == 0 && (op2 & 0x9) == 0x8)) {
+        return false;
+    }
+
+    uint32_t sf = (body >> 31) & 1;
+    uint32_t op = (body >> 30) & 1;
+    uint32_t S = (body >> 29) & 1;
+    uint32_t shift = (body >> 22) & 0x3;
+    uint32_t rm = (body >> 16) & 0x1f;
+    uint32_t imm6 = (body >> 10) & 0x3f;
+    uint32_t rn = (body >> 5) & 0x1f;
+    uint32_t rd = body & 0x1f;
+
+    if (S || shift != 0 || imm6 != 0 || rd == 31 || rn == 31 || rm == 31) {
+        return false;
+    }
+    if (!sf && imm6 >= 32) {
+        return false;
+    }
+
+    gen(state, (unsigned long)gadget_branch_link_inline_addsub_ret);
+    gen(state, state->ip);
+    gen(state, rd | (rn << 8) | (rm << 16) | (sf << 24) | (op << 25));
+    return true;
+}
+
+/*
  * Fused CMP/SUBS + B.cond gadget tables (initialized lazily)
  */
 static void *fused_cmp_bcond_gadgets[14];
@@ -1053,6 +1139,8 @@ static void *fused_cmp32_bcond_gadgets[14];
 static void *fused_subs32_bcond_gadgets[14];
 static void *fused_cmp_reg_bcond_gadgets[14];
 static void *fused_subs_reg_bcond_gadgets[14];
+static void *fused_cmp32_reg_bcond_gadgets[14];
+static void *fused_subs32_reg_bcond_gadgets[14];
 static bool fused_bcond_tables_init = false;
 
 static void init_fused_bcond_tables(void) {
@@ -1129,6 +1217,20 @@ static void init_fused_bcond_tables(void) {
     fused_cmp_reg_bcond_gadgets[11] = gadget_fused_cmp_reg_bcond_lt;
     fused_cmp_reg_bcond_gadgets[12] = gadget_fused_cmp_reg_bcond_gt;
     fused_cmp_reg_bcond_gadgets[13] = gadget_fused_cmp_reg_bcond_le;
+    fused_cmp32_reg_bcond_gadgets[0]  = gadget_fused_cmp32_reg_bcond_eq;
+    fused_cmp32_reg_bcond_gadgets[1]  = gadget_fused_cmp32_reg_bcond_ne;
+    fused_cmp32_reg_bcond_gadgets[2]  = gadget_fused_cmp32_reg_bcond_cs;
+    fused_cmp32_reg_bcond_gadgets[3]  = gadget_fused_cmp32_reg_bcond_cc;
+    fused_cmp32_reg_bcond_gadgets[4]  = gadget_fused_cmp32_reg_bcond_mi;
+    fused_cmp32_reg_bcond_gadgets[5]  = gadget_fused_cmp32_reg_bcond_pl;
+    fused_cmp32_reg_bcond_gadgets[6]  = gadget_fused_cmp32_reg_bcond_vs;
+    fused_cmp32_reg_bcond_gadgets[7]  = gadget_fused_cmp32_reg_bcond_vc;
+    fused_cmp32_reg_bcond_gadgets[8]  = gadget_fused_cmp32_reg_bcond_hi;
+    fused_cmp32_reg_bcond_gadgets[9]  = gadget_fused_cmp32_reg_bcond_ls;
+    fused_cmp32_reg_bcond_gadgets[10] = gadget_fused_cmp32_reg_bcond_ge;
+    fused_cmp32_reg_bcond_gadgets[11] = gadget_fused_cmp32_reg_bcond_lt;
+    fused_cmp32_reg_bcond_gadgets[12] = gadget_fused_cmp32_reg_bcond_gt;
+    fused_cmp32_reg_bcond_gadgets[13] = gadget_fused_cmp32_reg_bcond_le;
     fused_subs_reg_bcond_gadgets[0]  = gadget_fused_subs_reg_bcond_eq;
     fused_subs_reg_bcond_gadgets[1]  = gadget_fused_subs_reg_bcond_ne;
     fused_subs_reg_bcond_gadgets[2]  = gadget_fused_subs_reg_bcond_cs;
@@ -1143,6 +1245,20 @@ static void init_fused_bcond_tables(void) {
     fused_subs_reg_bcond_gadgets[11] = gadget_fused_subs_reg_bcond_lt;
     fused_subs_reg_bcond_gadgets[12] = gadget_fused_subs_reg_bcond_gt;
     fused_subs_reg_bcond_gadgets[13] = gadget_fused_subs_reg_bcond_le;
+    fused_subs32_reg_bcond_gadgets[0]  = gadget_fused_subs32_reg_bcond_eq;
+    fused_subs32_reg_bcond_gadgets[1]  = gadget_fused_subs32_reg_bcond_ne;
+    fused_subs32_reg_bcond_gadgets[2]  = gadget_fused_subs32_reg_bcond_cs;
+    fused_subs32_reg_bcond_gadgets[3]  = gadget_fused_subs32_reg_bcond_cc;
+    fused_subs32_reg_bcond_gadgets[4]  = gadget_fused_subs32_reg_bcond_mi;
+    fused_subs32_reg_bcond_gadgets[5]  = gadget_fused_subs32_reg_bcond_pl;
+    fused_subs32_reg_bcond_gadgets[6]  = gadget_fused_subs32_reg_bcond_vs;
+    fused_subs32_reg_bcond_gadgets[7]  = gadget_fused_subs32_reg_bcond_vc;
+    fused_subs32_reg_bcond_gadgets[8]  = gadget_fused_subs32_reg_bcond_hi;
+    fused_subs32_reg_bcond_gadgets[9]  = gadget_fused_subs32_reg_bcond_ls;
+    fused_subs32_reg_bcond_gadgets[10] = gadget_fused_subs32_reg_bcond_ge;
+    fused_subs32_reg_bcond_gadgets[11] = gadget_fused_subs32_reg_bcond_lt;
+    fused_subs32_reg_bcond_gadgets[12] = gadget_fused_subs32_reg_bcond_gt;
+    fused_subs32_reg_bcond_gadgets[13] = gadget_fused_subs32_reg_bcond_le;
     fused_bcond_tables_init = true;
 }
 
@@ -1189,11 +1305,11 @@ static int try_fuse_subs_bcond(struct gen_state *state, uint32_t sf, uint32_t rd
 }
 
 /*
- * Try to fuse SUBS/CMP reg (64-bit, no shift) with a following B.cond.
+ * Try to fuse SUBS/CMP reg (no shift) with a following B.cond.
  * Returns 0 (block ended) if fused, -1 if not fuseable.
- * Only for sf=1, imm6=0, rn!=31, rm!=31
+ * Only for imm6=0, rn!=31, rm!=31.
  */
-static int try_fuse_subs_reg_bcond(struct gen_state *state, uint32_t rd, uint32_t rn, uint32_t rm) {
+static int try_fuse_subs_reg_bcond(struct gen_state *state, uint32_t sf, uint32_t rd, uint32_t rn, uint32_t rm) {
     uint32_t next_insn;
     if (!gen_peek_next_insn(state, &next_insn))
         return -1;
@@ -1205,6 +1321,34 @@ static int try_fuse_subs_reg_bcond(struct gen_state *state, uint32_t rd, uint32_
 
     init_fused_bcond_tables();
 
+    if (!sf && rd == 31 && cond == 1) {
+        uint32_t cbnz_insn;
+        if (tlb_read(state->tlb, state->ip + 4, &cbnz_insn, sizeof(cbnz_insn)) &&
+                (cbnz_insn & 0x7f000000) == 0x35000000) {
+            uint32_t rt = cbnz_insn & 0x1f;
+            if (rt != 31) {
+                addr_t bne_ip = state->ip;
+                addr_t cbnz_ip = state->ip + 4;
+                state->ip += 8;
+
+                addr_t bne_target = bne_ip + arm64_branch_imm19(next_insn);
+                addr_t cbnz_target = cbnz_ip + arm64_branch_imm19(cbnz_insn);
+                unsigned long fake_bne_target = (unsigned long)bne_target | (1UL << 63);
+                unsigned long fake_cbnz_target = (unsigned long)cbnz_target | (1UL << 63);
+                unsigned long fake_fallthrough = (unsigned long)state->ip | (1UL << 63);
+
+                gen(state, (unsigned long)gadget_fused_cmp32_reg_bne_cbnz);
+                gen(state, rn | (rm << 8) | (rt << 16));
+                gen(state, fake_bne_target);
+                gen(state, fake_cbnz_target);
+                gen(state, fake_fallthrough);
+                state->jump_ip[0] = state->size - 3;
+                state->jump_ip[1] = state->size - 2;
+                return 0;
+            }
+        }
+    }
+
     state->ip += 4;
 
     int64_t offset = arm64_branch_imm19(next_insn);
@@ -1214,11 +1358,13 @@ static int try_fuse_subs_reg_bcond(struct gen_state *state, uint32_t rd, uint32_
 
     if (rd == 31) {
         // CMP reg: no result, only flags
-        gen(state, (unsigned long)fused_cmp_reg_bcond_gadgets[cond]);
+        gen(state, (unsigned long)(sf ? fused_cmp_reg_bcond_gadgets[cond] :
+                                        fused_cmp32_reg_bcond_gadgets[cond]));
         gen(state, rn | (rm << 8));
     } else {
         // SUBS reg: result + flags
-        gen(state, (unsigned long)fused_subs_reg_bcond_gadgets[cond]);
+        gen(state, (unsigned long)(sf ? fused_subs_reg_bcond_gadgets[cond] :
+                                        fused_subs32_reg_bcond_gadgets[cond]));
         gen(state, rd | (rn << 8) | (rm << 16));
     }
     gen(state, fake_target);
@@ -1405,6 +1551,54 @@ static int gen_dp_imm(struct gen_state *state, uint32_t insn) {
             return 0;
         }
 
+        if (opc == 3 && rd == 31) {
+            uint32_t next_insn;
+            if (gen_peek_next_insn(state, &next_insn)) {
+                if ((next_insn & 0x1fe00000) == 0x1a800000) {
+                    uint32_t cs_sf = (next_insn >> 31) & 1;
+                    uint32_t cs_op = (next_insn >> 30) & 1;
+                    uint32_t cs_S = (next_insn >> 29) & 1;
+                    uint32_t cs_rm = (next_insn >> 16) & 0x1f;
+                    uint32_t cs_cond = (next_insn >> 12) & 0xf;
+                    uint32_t cs_op2 = (next_insn >> 10) & 0x3;
+                    uint32_t cs_rn = (next_insn >> 5) & 0x1f;
+                    uint32_t cs_rd = next_insn & 0x1f;
+
+                    if (cs_S == 0 && cs_op == 0 && cs_op2 == 1 && cs_cond < 14) {
+                        state->ip += 4;
+
+                        gen(state, (unsigned long)gadget_fused_tst_imm_csinc);
+                        gen(state, cs_rd | ((uint64_t)cs_rn << 8) |
+                                ((uint64_t)cs_rm << 16) | ((uint64_t)cs_cond << 24) |
+                                ((uint64_t)cs_sf << 28));
+                        gen(state, rn | ((uint64_t)sf << 8));
+                        gen(state, imm);
+                        return 1;
+                    }
+                }
+
+                if ((next_insn & 0xff000010) == 0x54000000) {
+                    uint32_t cond = next_insn & 0xf;
+                    if (cond < 14) {
+                        state->ip += 4;
+
+                        addr_t target = (state->ip - 4) + arm64_branch_imm19(next_insn);
+                        unsigned long fake_target = (unsigned long)target | (1UL << 63);
+                        unsigned long fake_fallthrough = (unsigned long)state->ip | (1UL << 63);
+
+                        gen(state, (unsigned long)gadget_fused_tst_imm_bcond);
+                        gen(state, rn | ((uint64_t)sf << 8) | ((uint64_t)cond << 16));
+                        gen(state, imm);
+                        gen(state, fake_target);
+                        gen(state, fake_fallthrough);
+                        state->jump_ip[0] = state->size - 2;
+                        state->jump_ip[1] = state->size - 1;
+                        return 0;
+                    }
+                }
+            }
+        }
+
         void *gadget;
         switch (opc) {
             case 0: gadget = gadget_and_imm; break;  // AND
@@ -1560,6 +1754,10 @@ static int gen_branch(struct gen_state *state, uint32_t insn) {
         unsigned long fake_target = (unsigned long)target | (1UL << 63);
 
         if (is_bl) {
+            if (try_inline_simple_leaf_bl(state, target)) {
+                return 1;
+            }
+
             // BL: save return address to X30
             // Code stream: [gadget][block_self_ptr][return_addr][fake_return_cont][fake_target]
             unsigned long fake_return = (unsigned long)state->ip | (1UL << 63);
@@ -3235,19 +3433,19 @@ static int gen_dp_reg(struct gen_state *state, uint32_t insn) {
             return 0;
         }
 
-        // Try specialized 64-bit fast paths (no shift, no XZR operands)
-        bool can_spec_reg = sf && imm6 == 0 && rn != 31 && rm != 31;
+        // Try specialized fast paths (no shift, no XZR operands)
+        bool can_spec_reg = imm6 == 0 && rn != 31 && rm != 31;
         if (can_spec_reg && S && op == 1) {
             // Try fused SUBS_reg + B.cond
-            int fused = try_fuse_subs_reg_bcond(state, rd, rn, rm);
+            int fused = try_fuse_subs_reg_bcond(state, sf, rd, rn, rm);
             if (fused == 0) return 0;
         }
-        if (can_spec_reg && S) {
+        if (sf && can_spec_reg && S) {
             gen(state, (unsigned long)(op ? gadget_subs_reg_64_nshift : gadget_adds_reg_64_nshift));
             gen(state, rd | (rn << 8) | (rm << 16));
             return 1;
         }
-        if (can_spec_reg && !S && rd != 31) {
+        if (sf && can_spec_reg && !S && rd != 31) {
             gen(state, (unsigned long)(op ? gadget_sub_reg_64_nshift : gadget_add_reg_64_nshift));
             gen(state, rd | (rn << 8) | (rm << 16));
             return 1;

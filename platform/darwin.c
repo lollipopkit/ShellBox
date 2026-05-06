@@ -34,32 +34,49 @@ struct mem_usage get_mem_usage() {
 }
 
 struct uptime_info get_uptime() {
-    uint64_t kern_boottime[2];
-    size_t size = sizeof(kern_boottime);
-    sysctlbyname("kern.boottime", &kern_boottime, &size, NULL, 0);
     struct timeval now;
     gettimeofday(&now, NULL);
 
-    struct {
-        uint32_t ldavg[3];
-        long scale;
-    } vm_loadavg;
-    size = sizeof(vm_loadavg);
-    sysctlbyname("vm.loadavg", &vm_loadavg, &size, NULL, 0);
-
-    // linux wants the scale to be 16 bits
-    for (int i = 0; i < 3; i++) {
-        if (FSHIFT < 16)
-            vm_loadavg.ldavg[i] <<= 16 - FSHIFT;
-        else
-            vm_loadavg.ldavg[i] >>= FSHIFT - 16;
+    static struct timeval kern_boottime;
+    static bool kern_boottime_initialized;
+    if (!kern_boottime_initialized) {
+        size_t size = sizeof(kern_boottime);
+        if (sysctlbyname("kern.boottime", &kern_boottime, &size, NULL, 0) < 0 ||
+                kern_boottime.tv_sec == 0) {
+            kern_boottime = now;
+        }
+        kern_boottime_initialized = true;
     }
 
+    static uint32_t cached_loadavg[3];
+    static time_t cached_loadavg_sec = -1;
+    if (cached_loadavg_sec != now.tv_sec) {
+        struct {
+            uint32_t ldavg[3];
+            long scale;
+        } vm_loadavg = {};
+        size_t size = sizeof(vm_loadavg);
+        sysctlbyname("vm.loadavg", &vm_loadavg, &size, NULL, 0);
+
+        // linux wants the scale to be 16 bits
+        for (int i = 0; i < 3; i++) {
+            if (FSHIFT < 16)
+                vm_loadavg.ldavg[i] <<= 16 - FSHIFT;
+            else
+                vm_loadavg.ldavg[i] >>= FSHIFT - 16;
+            cached_loadavg[i] = vm_loadavg.ldavg[i];
+        }
+        cached_loadavg_sec = now.tv_sec;
+    }
+
+    struct timeval elapsed;
+    timersub(&now, &kern_boottime, &elapsed);
+
     struct uptime_info uptime = {
-        .uptime_ticks = now.tv_sec - kern_boottime[0],
-        .load_1m = vm_loadavg.ldavg[0],
-        .load_5m = vm_loadavg.ldavg[1],
-        .load_15m = vm_loadavg.ldavg[2],
+        .uptime_ticks = (uint64_t) elapsed.tv_sec * 100 + elapsed.tv_usec / 10000,
+        .load_1m = cached_loadavg[0],
+        .load_5m = cached_loadavg[1],
+        .load_15m = cached_loadavg[2],
     };
     return uptime;
 }

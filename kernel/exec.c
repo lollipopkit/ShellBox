@@ -31,6 +31,14 @@ typedef struct elf_header exec_elf_header;
 typedef struct prg_header exec_prg_header;
 #endif
 
+static bool vdso_header_valid(void) {
+    exec_elf_header *header = (void *) vdso_data;
+    return memcmp(&header->magic, ELF_MAGIC, 4) == 0 &&
+        header->bitness == ELF_CLASS &&
+        header->endian == ELF_LITTLEENDIAN &&
+        header->machine == ELF_MACHINE;
+}
+
 struct exec_args {
     // number of arguments
     size_t count;
@@ -296,7 +304,8 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
     if ((err = pt_map(current->mem, vdso_page, vdso_pages, (void *) vdso_data, 0, 0)) < 0)
         goto beyond_hope;
     mem_pt(current->mem, vdso_page)->data->name = "[vdso]";
-    current->mm->vdso = vdso_page << PAGE_BITS;
+    bool has_vdso = vdso_header_valid();
+    current->mm->vdso = has_vdso ? (vdso_page << PAGE_BITS) : 0;
 #if !defined(GUEST_ARM64)
     addr_t vdso_entry = current->mm->vdso + ((exec_elf_header *) vdso_data)->entry_point;
 #endif
@@ -374,7 +383,7 @@ static int elf_exec(struct fd *fd, const char *file, struct exec_args argv, stru
 #if !defined(GUEST_ARM64)
         {AX_SYSINFO, vdso_entry},
 #endif
-        {AX_SYSINFO_EHDR, current->mm->vdso},
+        {AX_SYSINFO_EHDR, has_vdso ? current->mm->vdso : 0},
 #if defined(GUEST_ARM64)
         {AX_HWCAP, 0x11f}, // FP|ASIMD|EVTSTRM|AES|PMULL|ATOMICS — AES+PMULL enables ring's gcm_ghash_clmul (64-bit CLMUL) path
 #else

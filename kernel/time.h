@@ -40,7 +40,10 @@ struct timezone_ {
 };
 
 static inline clock_t_ clock_from_timeval(struct timeval_ timeval) {
-    return timeval.sec * 100 + timeval.usec / 10000;
+    uint64_t ticks = (uint64_t) timeval.sec * 100 + (uint64_t) (timeval.usec / 10000);
+    if (ticks > UINT32_MAX)
+        return UINT32_MAX;
+    return (clock_t_) ticks;
 }
 
 static inline struct timespec convert_timespec(struct timespec_ t) {

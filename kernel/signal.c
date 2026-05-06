@@ -342,7 +342,11 @@ static void setup_sigframe(struct siginfo_ *info, struct sigframe_ *frame) {
 }
 
 static void setup_rt_sigframe(struct siginfo_ *info, struct rt_sigframe_ *frame) {
+#if defined(GUEST_ARM64)
+    frame->restorer = 0;
+#else
     frame->restorer = sigreturn_trampoline("__kernel_rt_sigreturn");
+#endif
     frame->sig = info->sig;
     frame->info = *info;
     frame->uc.flags = 0;
@@ -351,6 +355,12 @@ static void setup_rt_sigframe(struct siginfo_ *info, struct rt_sigframe_ *frame)
     setup_sigcontext(&frame->uc.mcontext, &current->cpu);
     frame->uc.sigmask = current->blocked;
 
+#if defined(GUEST_ARM64)
+    static const uint32_t rt_retcode[] = {
+        0xd2801168, // mov x8, #139 (__NR_rt_sigreturn)
+        0xd4000001, // svc #0
+    };
+#else
     static const struct {
         uint8_t mov;
         uint32_t nr_rt_sigreturn;
@@ -361,6 +371,7 @@ static void setup_rt_sigframe(struct siginfo_ *info, struct rt_sigframe_ *frame)
         .nr_rt_sigreturn = 173,
         .int80 = 0x80cd,
     };
+#endif
     memcpy(frame->retcode, &rt_retcode, sizeof(rt_retcode));
 }
 
@@ -529,6 +540,7 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
         frame.rt_sigframe.pinfo = sp + offsetof(struct rt_sigframe_, info);
         frame.rt_sigframe.puc = sp + offsetof(struct rt_sigframe_, uc);
 #if defined(GUEST_ARM64)
+        frame.rt_sigframe.restorer = sp + offsetof(struct rt_sigframe_, retcode);
         // ARM64 ABI: x0=signum, x1=siginfo*, x2=ucontext*
         current->cpu.regs[1] = frame.rt_sigframe.pinfo;
         current->cpu.regs[2] = frame.rt_sigframe.puc;

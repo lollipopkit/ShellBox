@@ -9,8 +9,9 @@
 
 # Try to find an aarch64 compiler
 clang = find_program('/usr/local/opt/llvm/bin/clang', '/opt/homebrew/opt/llvm/bin/clang', '/opt/local/bin/clang', 'clang', required: false)
+lld = find_program('/usr/local/opt/llvm/bin/ld.lld', '/opt/homebrew/opt/llvm/bin/ld.lld', '/opt/local/bin/ld.lld', 'ld.lld', required: false)
 
-if clang.found()
+if clang.found() and lld.found()
     # Check if the compiler supports aarch64 target
     check_cc = find_program('./check-cc-arm64.sh', required: false)
     if check_cc.found()
@@ -21,7 +22,7 @@ if clang.found()
         endif
     endif
 
-    vdso_compiler = [clang, '-target', 'aarch64-linux-gnu', '-fuse-ld=lld']
+    vdso_compiler = [clang, '-target', 'aarch64-linux-gnu', '-fuse-ld=' + lld.full_path()]
 
     vdso = custom_target('vdso-arm64',
         input: ['vdso.S', 'vdso.c', 'vdso.lds'],
@@ -34,7 +35,11 @@ if clang.found()
 else
     # Create a dummy vdso target if no compiler is available
     # This allows building for ARM64 guest even without a vdso
-    message('ARM64 VDSO: No suitable cross-compiler found, VDSO will not be built')
+    if not clang.found()
+        message('ARM64 VDSO: No suitable cross-compiler found, VDSO will not be built')
+    elif not lld.found()
+        message('ARM64 VDSO: LLD linker not found, VDSO will not be built')
+    endif
     # Create an empty file as placeholder
     vdso = custom_target('vdso-arm64-stub',
         output: 'libvdso.so.elf',

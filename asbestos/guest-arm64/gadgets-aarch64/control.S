@@ -110,6 +110,43 @@
     b fiber_ret_chain
 
 /*
+ * Inline a direct BL to a tiny arithmetic leaf:
+ *   add/sub Wd/Xd, Wn/Xn, Wm/Xm
+ *   ret
+ *
+ * Code stream: [gadget addr][return_addr][rd | rn<<8 | rm<<16 | sf<<24 | op<<25]
+ */
+.gadget branch_link_inline_addsub_ret
+    ldr x8, [_pc]           // return address
+    add _pc, _pc, #8
+    ldr x9, [_pc]           // packed params
+    add _pc, _pc, #8
+
+    // BL semantics: X30 receives the address of the next instruction.
+    str x8, [_cpu, #(CPU_x0 + 30*8)]
+
+    and x10, x9, #0x1f      // rd
+    ubfx x11, x9, #8, #5    // rn
+    ubfx x12, x9, #16, #5   // rm
+    ubfx x13, x9, #24, #1   // sf
+    ubfx x14, x9, #25, #1   // op: 0=add, 1=sub
+    add x15, _cpu, #CPU_x0
+    ldr x16, [x15, x11, lsl #3]
+    ldr x17, [x15, x12, lsl #3]
+
+    cbnz x14, 1f
+    add x16, x16, x17
+    b 2f
+1:
+    sub x16, x16, x17
+2:
+    cbnz x13, 3f
+    and x16, x16, #0xffffffff
+3:
+    str x16, [x15, x10, lsl #3]
+    gret
+
+/*
  * Branch to register (BR)
  * Code stream: [gadget addr][rn (64-bit)]
  *
@@ -516,6 +553,47 @@ bcond_not_taken_unchained:
     b fiber_ret_chain
 
 /*
+ * Fused TST imm + B.cond.
+ * Code stream: [gadget addr][rn | sf<<8 | cond<<16][imm][fake_target][fake_fallthrough]
+ *
+ * TST is ANDS with rd=XZR/WZR. The result is discarded, but NZCV must be
+ * stored before branching because later code may observe flags.
+ */
+.gadget fused_tst_imm_bcond
+    ldr x8, [_pc]           // rn | sf<<8 | cond<<16
+    add _pc, _pc, #8
+    ldr x20, [_pc]          // decoded logical immediate
+    add _pc, _pc, #8
+    ldr x9, [_pc]           // target
+    add _pc, _pc, #8
+    ldr x10, [_pc]          // fallthrough
+
+    and x11, x8, #0x1f      // rn
+    ubfx x12, x8, #8, #1    // sf
+    ubfx x8, x8, #16, #4    // cond
+
+    add x13, _cpu, #CPU_x0
+    cmp x11, #31
+    b.eq fused_tst_imm_bcond_xzr
+    ldr x14, [x13, x11, lsl #3]
+    b fused_tst_imm_bcond_loaded
+fused_tst_imm_bcond_xzr:
+    mov x14, #0
+fused_tst_imm_bcond_loaded:
+    cbz x12, fused_tst_imm_bcond_32
+    ands xzr, x14, x20
+    b fused_tst_imm_bcond_flags
+fused_tst_imm_bcond_32:
+    ands wzr, w14, w20
+fused_tst_imm_bcond_flags:
+    mrs x16, nzcv
+    str w16, [_cpu, #CPU_nzcv]
+
+    adr x11, bcond_table
+    add x11, x11, x8, lsl #2
+    br x11
+
+/*
  * System call (SVC)
  * Code stream: [gadget addr][next_pc (64-bit)]
  *
@@ -647,6 +725,66 @@ csel_store:
     b.eq 7f
     str x17, [x14, x9, lsl #3]
 7:  gret
+
+/*
+ * Fused TST (logical immediate) + CSINC.
+ * Code stream: [gadget addr]
+ *              [rd | cs_rn<<8 | cs_rm<<16 | cond<<24 | cs_sf<<28]
+ *              [tst_rn | tst_sf<<8]
+ *              [imm]
+ *
+ * TST updates NZCV and CSINC consumes those flags without changing them, so this
+ * gadget stores the TST flags before reusing the existing CSINC condition table.
+ */
+.gadget fused_tst_imm_csinc
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    ldr x9, [_pc]
+    add _pc, _pc, #8
+    ldr x10, [_pc]
+    add _pc, _pc, #8
+
+    and x11, x9, #0x1f      // tst_rn
+    ubfx x12, x9, #8, #1    // tst_sf
+    add x14, _cpu, #CPU_x0
+
+    cmp x11, #31
+    b.eq 1f
+    ldr x15, [x14, x11, lsl #3]
+    b 2f
+1:  mov x15, #0
+2:
+    cbz x12, 3f
+    tst x15, x10
+    b 4f
+3:  tst w15, w10
+4:
+    mrs x17, nzcv
+    str w17, [_cpu, #CPU_nzcv]
+
+    and x9, x8, #0x1f       // rd
+    ubfx x10, x8, #8, #5    // cs_rn
+    ubfx x11, x8, #16, #5   // cs_rm
+    ubfx x12, x8, #24, #4   // cond
+    ubfx x13, x8, #28, #1   // cs_sf
+
+    cmp x10, #31
+    b.eq 5f
+    ldr x15, [x14, x10, lsl #3]
+    b 6f
+5:  mov x15, #0
+6:
+    cmp x11, #31
+    b.eq 7f
+    ldr x16, [x14, x11, lsl #3]
+    b 8f
+7:  mov x16, #0
+8:
+    add x16, x16, #1
+    adr x3, csinc_table
+    add x3, x3, x12, lsl #2
+    load_flags
+    br x3
 
 /*
  * Test bit and branch if zero (TBZ)
@@ -1368,6 +1506,98 @@ make_fused_cmp_reg_bcond gt, gt
 make_fused_cmp_reg_bcond le, le
 
 /*
+ * Fused CMP Wn, Wm + B.cond (32-bit, rd=31)
+ * Code stream: [gadget addr][rn | rm<<8][fake_target][fake_fallthrough]
+ */
+.macro make_fused_cmp32_reg_bcond name, cond
+.gadget fused_cmp32_reg_bcond_\name
+    ldr x8, [_pc]               // rn | rm<<8
+    add _pc, _pc, #8
+    ldr x9, [_pc]               // target
+    add _pc, _pc, #8
+    ldr x10, [_pc]              // fallthrough
+    and x11, x8, #0x1f          // rn
+    ubfx x12, x8, #8, #5        // rm
+    add x13, _cpu, #CPU_x0
+    ldr x14, [x13, x11, lsl #3]
+    ldr x15, [x13, x12, lsl #3]
+    subs wzr, w14, w15
+    mrs x16, nzcv
+    str w16, [_cpu, #CPU_nzcv]
+    b.\cond bcond_taken
+    b bcond_not_taken
+.endm
+
+make_fused_cmp32_reg_bcond eq, eq
+make_fused_cmp32_reg_bcond ne, ne
+make_fused_cmp32_reg_bcond cs, cs
+make_fused_cmp32_reg_bcond cc, cc
+make_fused_cmp32_reg_bcond mi, mi
+make_fused_cmp32_reg_bcond pl, pl
+make_fused_cmp32_reg_bcond vs, vs
+make_fused_cmp32_reg_bcond vc, vc
+make_fused_cmp32_reg_bcond hi, hi
+make_fused_cmp32_reg_bcond ls, ls
+make_fused_cmp32_reg_bcond ge, ge
+make_fused_cmp32_reg_bcond lt, lt
+make_fused_cmp32_reg_bcond gt, gt
+make_fused_cmp32_reg_bcond le, le
+
+/*
+ * Fused CMP Wn, Wm + B.NE + CBNZ Wt.
+ * This matches the hot tail of byte-at-a-time strcmp loops:
+ *   cmp Wn, Wm
+ *   b.ne mismatch
+ *   cbnz Wt, loop
+ *
+ * Code stream:
+ *   [gadget addr][rn | rm<<8 | rt<<16][fake_bne_target][fake_cbnz_target][fake_fallthrough]
+ *
+ * Only the two hot branch targets are exposed to block chaining; the zero
+ * fallthrough is cold and remains an unpatched fake IP.
+ */
+.gadget fused_cmp32_reg_bne_cbnz
+    ldr x8, [_pc]               // rn | rm<<8 | rt<<16
+    add _pc, _pc, #8
+    ldr x9, [_pc]               // b.ne target
+    add _pc, _pc, #8
+    ldr x10, [_pc]              // cbnz target
+    add _pc, _pc, #8
+    ldr x20, [_pc]              // zero fallthrough
+    and x11, x8, #0x1f          // rn
+    ubfx x12, x8, #8, #5        // rm
+    ubfx x13, x8, #16, #5       // rt
+    add x14, _cpu, #CPU_x0
+    ldr x15, [x14, x11, lsl #3]
+    ldr x16, [x14, x12, lsl #3]
+    subs wzr, w15, w16
+    mrs x17, nzcv
+    str w17, [_cpu, #CPU_nzcv]
+    b.ne fused_cmp32_reg_bne_cbnz_ne
+    ldr x17, [x14, x13, lsl #3]
+    cbnz w17, fused_cmp32_reg_bne_cbnz_cbnz
+    inline_chain x20, fused_cmp32_reg_bne_cbnz_fallthrough_unchained
+fused_cmp32_reg_bne_cbnz_fallthrough_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_cmp32_reg_bne_cbnz_cbnz:
+    inline_chain x10, fused_cmp32_reg_bne_cbnz_cbnz_unchained
+fused_cmp32_reg_bne_cbnz_cbnz_unchained:
+    and x11, x10, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x10
+    b fiber_ret_chain
+fused_cmp32_reg_bne_cbnz_ne:
+    inline_chain x9, fused_cmp32_reg_bne_cbnz_ne_unchained
+fused_cmp32_reg_bne_cbnz_ne_unchained:
+    and x11, x9, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x9
+    b fiber_ret_chain
+
+/*
  * Fused SUBS Xd, Xn, Xm + B.cond (64-bit, rd!=31, result stored)
  * Code stream: [gadget addr][rd | rn<<8 | rm<<16][fake_target][fake_fallthrough]
  */
@@ -1406,3 +1636,43 @@ make_fused_subs_reg_bcond ge, ge
 make_fused_subs_reg_bcond lt, lt
 make_fused_subs_reg_bcond gt, gt
 make_fused_subs_reg_bcond le, le
+
+/*
+ * Fused SUBS Wd, Wn, Wm + B.cond (32-bit, rd!=31, result stored)
+ * Code stream: [gadget addr][rd | rn<<8 | rm<<16][fake_target][fake_fallthrough]
+ */
+.macro make_fused_subs32_reg_bcond name, cond
+.gadget fused_subs32_reg_bcond_\name
+    ldr x8, [_pc]               // rd | rn<<8 | rm<<16
+    add _pc, _pc, #8
+    ldr x9, [_pc]               // target
+    add _pc, _pc, #8
+    ldr x10, [_pc]              // fallthrough
+    and x11, x8, #0x1f          // rd
+    ubfx x12, x8, #8, #5        // rn
+    ubfx x13, x8, #16, #5       // rm
+    add x14, _cpu, #CPU_x0
+    ldr x15, [x14, x12, lsl #3]
+    ldr x16, [x14, x13, lsl #3]
+    subs w15, w15, w16
+    str x15, [x14, x11, lsl #3]
+    mrs x15, nzcv
+    str w15, [_cpu, #CPU_nzcv]
+    b.\cond bcond_taken
+    b bcond_not_taken
+.endm
+
+make_fused_subs32_reg_bcond eq, eq
+make_fused_subs32_reg_bcond ne, ne
+make_fused_subs32_reg_bcond cs, cs
+make_fused_subs32_reg_bcond cc, cc
+make_fused_subs32_reg_bcond mi, mi
+make_fused_subs32_reg_bcond pl, pl
+make_fused_subs32_reg_bcond vs, vs
+make_fused_subs32_reg_bcond vc, vc
+make_fused_subs32_reg_bcond hi, hi
+make_fused_subs32_reg_bcond ls, ls
+make_fused_subs32_reg_bcond ge, ge
+make_fused_subs32_reg_bcond lt, lt
+make_fused_subs32_reg_bcond gt, gt
+make_fused_subs32_reg_bcond le, le

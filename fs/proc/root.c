@@ -18,7 +18,10 @@ static int proc_show_stat(struct proc_entry *UNUSED(entry), struct proc_data *bu
 
     // calculate btime (boot time in seconds since epoch) by subtracting uptime from current time
     struct uptime_info uptime = get_uptime();
-    struct timespec uptime_ts = {.tv_sec = uptime.uptime_ticks / 100, .tv_nsec = uptime.uptime_ticks % 100};
+    struct timespec uptime_ts = {
+        .tv_sec = uptime.uptime_ticks / 100,
+        .tv_nsec = (uptime.uptime_ticks % 100) * 10000000,
+    };
     struct timespec boot_time = timespec_subtract(timespec_now(CLOCK_REALTIME), uptime_ts);
     proc_printf(buf, "btime %ld\n", boot_time.tv_sec);
 
@@ -84,7 +87,7 @@ static int proc_show_meminfo(struct proc_entry *UNUSED(entry), struct proc_data 
 static int proc_show_uptime(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
     struct uptime_info uptime_info = get_uptime();
     unsigned long uptime = uptime_info.uptime_ticks;
-    proc_printf(buf, "%lu.%lu %lu.%lu\n", uptime / 100, uptime % 100, uptime / 100, uptime % 100);
+    proc_printf(buf, "%lu.%02lu %lu.%02lu\n", uptime / 100, uptime % 100, uptime / 100, uptime % 100);
     return 0;
 }
 

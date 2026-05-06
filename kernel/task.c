@@ -1,5 +1,8 @@
 #define _GNU_SOURCE
 #include <pthread.h>
+#if defined(__APPLE__) && __has_include(<pthread/qos.h>)
+#include <pthread/qos.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -191,6 +194,11 @@ void task_run_current() {
 }
 
 static void *task_thread(void *vtask) {
+#if defined(__APPLE__) && defined(QOS_CLASS_USER_INITIATED)
+    // Guest code backs an interactive terminal; give modern iOS schedulers
+    // enough QoS signal to keep foreground emulation responsive.
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
+#endif
     current = vtask;
     update_thread_name();
     task_run_current();
