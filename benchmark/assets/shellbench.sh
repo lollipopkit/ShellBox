@@ -3,25 +3,32 @@
 # Outputs: "category|name|milliseconds" per line
 # No eval, no bash-isms — pure POSIX sh
 
-# Millisecond timer: prefer date +%s%N (nanosecond), fall back to /proc/uptime (centisecond)
-if date +%s%N >/tmp/_null 2>&1 && [ "$(date +%N)" != "%N" ] && [ "$(date +%N)" != "N" ]; then
+# Millisecond timer: prefer date +%s%N (nanosecond), fall back to /proc/uptime.
+_date_ns=$(date +%s%N 2>/tmp/_null || echo "")
+case "$_date_ns" in
+    *[!0-9]*|"")
+        _date_ns=
+        ;;
+esac
+if [ -n "$_date_ns" ] && [ ${#_date_ns} -ge 18 ]; then
     _ms() { echo $(( $(date +%s%N) / 1000000 )); }
 else
     _ms() { awk '{printf "%.0f", $1 * 1000}' /proc/uptime; }
 fi
+unset _date_ns
 
 _t0=0
 _start() { _t0=$(_ms); }
 _end()   { local t1; t1=$(_ms); echo "$1|$2|$(( t1 - _t0 ))"; }
 
 # ── System ──────────────────────────────────────────────────
-_start; echo Hello World >/tmp/_null 2>&1;                    _end System "echo"
-_start; uname -a >/tmp/_null 2>&1;                            _end System "uname -a"
-_start; ls /bin >/tmp/_null 2>&1;                             _end System "ls /bin"
-_start; cat /etc/os-release >/tmp/_null 2>&1;                 _end System "cat file"
-_start; ls /bin | wc -l >/tmp/_null 2>&1;                     _end System "wc -l"
-_start; date >/tmp/_null 2>&1;                                _end System "date"
-_start; env >/tmp/_null 2>&1;                                 _end System "env"
+_start; i=0; while [ $i -lt 1000 ]; do echo Hello World >/tmp/_null 2>&1; i=$((i+1)); done; _end System "echo x1000"
+_start; i=0; while [ $i -lt 100 ]; do uname -a >/tmp/_null 2>&1; i=$((i+1)); done; _end System "uname -a x100"
+_start; i=0; while [ $i -lt 100 ]; do ls /bin >/tmp/_null 2>&1; i=$((i+1)); done; _end System "ls /bin x100"
+_start; i=0; while [ $i -lt 200 ]; do cat /etc/os-release >/tmp/_null 2>&1; i=$((i+1)); done; _end System "cat file x200"
+_start; i=0; while [ $i -lt 200 ]; do ls /bin | wc -l >/tmp/_null 2>&1; i=$((i+1)); done; _end System "wc -l x200"
+_start; i=0; while [ $i -lt 200 ]; do date >/tmp/_null 2>&1; i=$((i+1)); done; _end System "date x200"
+_start; i=0; while [ $i -lt 100 ]; do env >/tmp/_null 2>&1; i=$((i+1)); done; _end System "env x100"
 
 # ── Compute ─────────────────────────────────────────────────
 _start; i=0; while [ $i -lt 1000 ]; do i=$((i+1)); done;    _end Compute "loop 1000"
@@ -31,31 +38,31 @@ _start; seq 1 10000 | awk '{s+=$1} END{print s}' >/tmp/_null 2>&1;  _end Compute
 _start; seq 1 50000 | awk '{s+=$1} END{print s}' >/tmp/_null 2>&1;  _end Compute "seq+awk 50K"
 _start; seq 1 100000 | awk '{s+=$1} END{print s}' >/tmp/_null 2>&1; _end Compute "seq+awk 100K"
 _start; i=0; while [ $i -lt 500 ]; do i=$(expr $i + 1); done;     _end Compute "expr loop 500"
-_start; echo 'scale=100; sqrt(2)' | bc -l >/tmp/_null 2>&1;  _end Compute "bc sqrt"
-_start; echo 'scale=50; 4*a(1)' | bc -l >/tmp/_null 2>&1;    _end Compute "bc pi"
+_start; i=0; while [ $i -lt 50 ]; do echo 'scale=100; sqrt(2)' | bc -l >/tmp/_null 2>&1; i=$((i+1)); done; _end Compute "bc sqrt x50"
+_start; i=0; while [ $i -lt 50 ]; do echo 'scale=50; 4*a(1)' | bc -l >/tmp/_null 2>&1; i=$((i+1)); done; _end Compute "bc pi x50"
 
 # ── Text ────────────────────────────────────────────────────
-_start; echo hello | sed 's/hello/world/g' >/tmp/_null 2>&1;  _end Text "sed replace"
+_start; i=0; while [ $i -lt 200 ]; do echo hello | sed 's/hello/world/g' >/tmp/_null 2>&1; i=$((i+1)); done; _end Text "sed replace x200"
 _start; seq 1 1000 | sort -nr | tail -1 >/tmp/_null 2>&1;    _end Text "sort 1K"
 _start; seq 1 5000 | sort -nr | tail -1 >/tmp/_null 2>&1;    _end Text "sort 5K"
-_start; seq 1 500 | sort | uniq -c | wc -l >/tmp/_null 2>&1; _end Text "uniq count"
+_start; seq 1 5000 | sort | uniq -c | wc -l >/tmp/_null 2>&1; _end Text "uniq count 5K"
 _start; seq 1 10000 | grep -c 5 >/tmp/_null 2>&1;            _end Text "grep count"
-_start; seq 1 1000 | tr '0-9' 'a-j' | wc -l >/tmp/_null 2>&1; _end Text "tr lowercase"
+_start; seq 1 10000 | tr '0-9' 'a-j' | wc -l >/tmp/_null 2>&1; _end Text "tr lowercase 10K"
 
 # ── File I/O ────────────────────────────────────────────────
-_start; for i in $(seq 1 50); do echo x > /tmp/_b$i; done; rm -f /tmp/_b*;  _end File-IO "create 50"
-_start; for i in $(seq 1 200); do echo x > /tmp/_b$i; done; rm -f /tmp/_b*; _end File-IO "create 200"
-_start; find /bin -type f 2>/tmp/_null | wc -l >/tmp/_null;    _end File-IO "find /bin"
-_start; dd if=/dev/zero of=/tmp/_dd bs=1024 count=64 2>/tmp/_null; rm -f /tmp/_dd; _end File-IO "dd 64K"
+_start; for i in $(seq 1 100); do echo x > /tmp/_b$i; done; rm -f /tmp/_b*; _end File-IO "create 100"
+_start; for i in $(seq 1 500); do echo x > /tmp/_b$i; done; rm -f /tmp/_b*; _end File-IO "create 500"
+_start; i=0; while [ $i -lt 20 ]; do find /bin -type f 2>/tmp/_null | wc -l >/tmp/_null; i=$((i+1)); done; _end File-IO "find /bin x20"
+_start; i=0; while [ $i -lt 50 ]; do dd if=/dev/zero of=/tmp/_dd bs=1048576 count=4 2>/tmp/_null; rm -f /tmp/_dd; i=$((i+1)); done; _end File-IO "dd 4MB x50"
 
 # ── Crypto ──────────────────────────────────────────────────
-_start; echo test | md5sum >/tmp/_null 2>&1;                  _end Crypto "md5sum"
-_start; echo test | sha256sum >/tmp/_null 2>&1;               _end Crypto "sha256sum"
+_start; i=0; while [ $i -lt 100 ]; do echo test | md5sum >/tmp/_null 2>&1; i=$((i+1)); done; _end Crypto "md5sum x100"
+_start; i=0; while [ $i -lt 100 ]; do echo test | sha256sum >/tmp/_null 2>&1; i=$((i+1)); done; _end Crypto "sha256sum x100"
 
 # ── Process ─────────────────────────────────────────────────
-_start; for i in $(seq 1 10); do /bin/true; done;            _end Process "fork+exec 10"
-_start; for i in $(seq 1 50); do /bin/true; done;            _end Process "fork+exec 50"
-_start; seq 1 1000 | grep 5 | sort -n | wc -l >/tmp/_null 2>&1; _end Process "pipe chain"
+_start; for i in $(seq 1 100); do /bin/true; done;           _end Process "fork+exec 100"
+_start; for i in $(seq 1 300); do /bin/true; done;           _end Process "fork+exec 300"
+_start; i=0; while [ $i -lt 100 ]; do seq 1 1000 | grep 5 | sort -n | wc -l >/tmp/_null 2>&1; i=$((i+1)); done; _end Process "pipe chain x100"
 
 # ── Python (if available) ──────────────────────────────────
 if command -v python3 >/tmp/_null 2>&1; then

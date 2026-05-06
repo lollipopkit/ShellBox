@@ -44,7 +44,7 @@ fundamental limits:
 | SIMD | Partial SSE/SSE2 | Full NEON + Crypto |
 | Node.js / V8 | Not possible (needs >4 GB VA) | Supported |
 | Go / Rust | Not possible (large VA requirements) | Supported |
-| Compute overhead | 15-100x native | 3-30x native |
+| Compute overhead | 14-208x native | 0.5-157x native in the current ARM64 pass |
 
 ## Architecture Overview
 
@@ -212,9 +212,19 @@ Enables AI agents to share files between the host app and the Linux guest withou
 The ARM64 target links meson-built libraries (`libish.a`, `libish_emu.a`, `libfakefs.a`) directly
 from `build-arm64-release/`, bypassing Xcode's auto-discovery of x86 library targets.
 
+Modern iPhone / iOS 26 validation is tracked separately in
+**[benchmark/MODERN_IPHONE_VERIFICATION.md](benchmark/MODERN_IPHONE_VERIFICATION.md)**.
+That matrix records the current Xcode 26 / iPhone 17 simulator coverage and keeps
+physical iPhone 17-family install, runtime, and performance checks pending until
+they are captured on real hardware.
+
 ```bash
+# One-time local build tooling
+python3 -m venv .venv
+.venv/bin/python -m pip install meson
+
 # Build ARM64 CLI (macOS, for testing)
-meson setup build-arm64-release -Dguest_arch=arm64 --buildtype=release
+.venv/bin/meson setup build-arm64-release -Dguest_arch=arm64 --buildtype=release
 ninja -C build-arm64-release
 
 # Run
@@ -229,23 +239,27 @@ Measured with `benchmark/run.sh` on macOS 26.4.1 / Apple Silicon using guest-sid
 timing (startup overhead excluded). Full details in
 **[benchmark/BENCHMARK_PERF.md](benchmark/BENCHMARK_PERF.md)**.
 
-### Overhead vs Native (by workload)
+### Current ARM64 overhead vs Native
 
-| Category | x86/Native | ARM64/Native | **ARM64 vs x86** |
-|---|:---:|:---:|:---:|
-| C (pure compute) | 14-208x | 1-66x | **1.1-12.0x** |
-| Shell pipelines | 57-305x | 3-42x | **5.3-7.2x** |
-| Python | 12-201x | 3.8-169x | **3.8-10.2x** |
-| Go (startup) | 10-26x | 2.5-3.1x | **2.5-3.1x** |
-| Node.js | — | 1.6-20.8x | N/A (x86 broken) |
+The latest checked-in report is an ARM64-only pass because the x86 rootfs was
+not available on the test host. Treat x86 comparisons as historical unless
+`benchmark/run.sh all` is rerun with both root filesystems present.
+
+| Category | ARM64/Native | Notes |
+|---|:---:|---|
+| Shell and coreutils | 0.5-84.8x | Many file/crypto/process tests are within 0.5-3.0x; tight shell loops remain slow |
+| C arithmetic/branch/memory | 2.2-6.6x | `int_arith_8M`, `float_arith_4M`, `branch_50M`, memory and matrix rows |
+| C leaf calls | 4.6x | `func_call_50M`, after the ARM64 `BL` leaf-call fast path |
+| C string scans | 32.6-156.5x | Current largest remaining C hotspot: `strlen_2M` / `strcmp_2M` |
 
 ### Headline numbers (compute-heavy)
 
-- **C `int_arith_2M`**: ARM64 **12.0x faster** than x86 (65ms vs 782ms)
-- **Python `sum(1M)`**: ARM64 **10.2x faster** (610ms vs 6200ms)
-- **Python `fib(30)`**: ARM64 **9.2x faster** (1661ms vs 15219ms)
-- **Shell `seq+awk 100K`**: ARM64 **7.2x faster** (882ms vs 6338ms)
-- **C `matrix_64x64`** / **`mem_seq_4MB`**: near-native speed on ARM64 (~1.1-1.5x)
+- **C `int_arith_8M`**: ARM64 is **2.3x native** (81ms vs 35ms)
+- **C `func_call_50M`**: ARM64 is **4.6x native** (101ms vs 22ms)
+- **C `matrix_384x384`**: ARM64 is **3.0x native** (134ms vs 44ms)
+- **C `branch_50M`**: ARM64 is **3.4x native** (150ms vs 44ms)
+- **C string scans**: `strlen_2M` is **32.6x native** and `strcmp_2M` is
+  **156.5x native**, so string/TLB-heavy loops are still the main optimization target.
 
 > **Why ARM64 wins**: same-architecture gadget dispatch (each guest instruction costs only a
 > few ARM64 host instructions inside its gadget), full NEON + crypto extensions, 48-bit

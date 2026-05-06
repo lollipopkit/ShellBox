@@ -67,13 +67,13 @@ def create_fakefs(data_dir: str, output_dir: str) -> None:
             # struct ish_stat: mode(u32) uid(u32) gid(u32) rdev(u32) = 16 bytes
             stat_blob = struct.pack("<IIII", st.st_mode, 0, 0, 0)
 
-            db.execute(
-                "INSERT OR IGNORE INTO stats (inode, stat) VALUES (?, ?)",
-                (st.st_ino, stat_blob),
-            )
+            # Match tools/fakefsify: let SQLite allocate stable fakefs inode ids.
+            # Host inodes can collide across extracted filesystems and trigger a
+            # rebuild path that expects archive-import semantics.
+            cur = db.execute("INSERT INTO stats (stat) VALUES (?)", (stat_blob,))
             db.execute(
                 "INSERT OR REPLACE INTO paths (path, inode) VALUES (?, ?)",
-                (guest_path.encode("utf-8"), st.st_ino),
+                (guest_path.encode("utf-8"), cur.lastrowid),
             )
             count += 1
 

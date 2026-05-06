@@ -39,7 +39,7 @@
 | SIMD | 部分 SSE/SSE2 | 完整 NEON + Crypto |
 | Node.js / V8 | 无法运行（需要 >4 GB 虚拟地址） | 支持 |
 | Go / Rust | 无法运行（需要大虚拟地址） | 支持 |
-| 计算开销 | 相对原生 15-100x | 相对原生 3-30x |
+| 计算开销 | 相对原生 14-208x | 当前 ARM64 pass 中相对原生 0.5-157x |
 
 ## 架构总览
 
@@ -204,9 +204,18 @@ fakefs_bind_mount("/host/path/to/data", "/mnt/data", /*read_only=*/true);
 ARM64 target 直接链接 `build-arm64-release/` 中 meson 构建的库
 （`libish.a`、`libish_emu.a`、`libfakefs.a`），避免 Xcode 自动发现 x86 的 library target。
 
+现代 iPhone / iOS 26 验证单独记录在
+**[benchmark/MODERN_IPHONE_VERIFICATION.md](benchmark/MODERN_IPHONE_VERIFICATION.md)**。
+该矩阵记录当前 Xcode 26 / iPhone 17 模拟器覆盖情况，并在真实硬件上捕获前，
+把 iPhone 17 系列真机安装、运行和性能验证保持为 pending。
+
 ```bash
+# 一次性准备本地构建工具
+python3 -m venv .venv
+.venv/bin/python -m pip install meson
+
 # 构建 ARM64 CLI（macOS，测试用）
-meson setup build-arm64-release -Dguest_arch=arm64 --buildtype=release
+.venv/bin/meson setup build-arm64-release -Dguest_arch=arm64 --buildtype=release
 ninja -C build-arm64-release
 
 # 运行
@@ -221,23 +230,26 @@ ninja -C build-arm64-release
 （排除启动开销）。完整数据见
 **[benchmark/BENCHMARK_PERF.md](benchmark/BENCHMARK_PERF.md)**。
 
-### 相对原生的开销（按负载类型）
+### 当前 ARM64 相对原生的开销
 
-| 类别 | x86/Native | ARM64/Native | **ARM64 vs x86** |
-|---|:---:|:---:|:---:|
-| C 纯计算 | 14-208x | 1-66x | **1.1-12.0x** |
-| Shell 管道 | 57-305x | 3-42x | **5.3-7.2x** |
-| Python | 12-201x | 3.8-169x | **3.8-10.2x** |
-| Go 启动 | 10-26x | 2.5-3.1x | **2.5-3.1x** |
-| Node.js | — | 1.6-20.8x | N/A（x86 不可用） |
+最新提交的性能报告是 ARM64-only pass，因为测试主机上没有可用的 x86 rootfs。
+除非在两个 rootfs 都存在时重新运行 `benchmark/run.sh all`，否则 x86 对比应视为历史数据。
+
+| 类别 | ARM64/Native | 说明 |
+|---|:---:|---|
+| Shell 和 coreutils | 0.5-84.8x | 多数文件、加密、进程测试在 0.5-3.0x；紧密 shell loop 仍慢 |
+| C 算术/分支/内存 | 2.2-6.6x | 覆盖 `int_arith_8M`、`float_arith_4M`、`branch_50M`、内存和矩阵项 |
+| C leaf call | 4.6x | `func_call_50M`，已包含 ARM64 `BL` leaf-call fast path |
+| C 字符串扫描 | 32.6-156.5x | 当前最大的 C 热点：`strlen_2M` / `strcmp_2M` |
 
 ### 亮点数据（计算密集型）
 
-- **C `int_arith_2M`**: ARM64 比 x86 **快 12.0x**（65ms vs 782ms）
-- **Python `sum(1M)`**: ARM64 **快 10.2x**（610ms vs 6200ms）
-- **Python `fib(30)`**: ARM64 **快 9.2x**（1661ms vs 15219ms）
-- **Shell `seq+awk 100K`**: ARM64 **快 7.2x**（882ms vs 6338ms）
-- **C `matrix_64x64`** / **`mem_seq_4MB`**: ARM64 接近原生速度（仅 ~1.1-1.5x）
+- **C `int_arith_8M`**: ARM64 为原生 **2.3x**（81ms vs 35ms）
+- **C `func_call_50M`**: ARM64 为原生 **4.6x**（101ms vs 22ms）
+- **C `matrix_384x384`**: ARM64 为原生 **3.0x**（134ms vs 44ms）
+- **C `branch_50M`**: ARM64 为原生 **3.4x**（150ms vs 44ms）
+- **C 字符串扫描**: `strlen_2M` 为原生 **32.6x**，`strcmp_2M` 为原生
+  **156.5x**，因此字符串/TLB-heavy loop 仍是主要优化目标。
 
 > **ARM64 为什么快**: 同架构 gadget 分派（每条 guest 指令只需对应 gadget 中的几条 host 指令）、完整 NEON + 加密扩展、
 > 48-bit 地址空间支持 V8/Go/Rust，以及 Node.js 专项修复（V8 二进制补丁、守护页、`--jitless`

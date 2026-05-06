@@ -5,6 +5,7 @@
 # Usage:
 #   ./run.sh             # Run both performance + compatibility suites
 #   ./run.sh shell       # Performance only (Shell + Python + Node.js + Go + C)
+#   ./run.sh arm64       # ARM64 performance only (Native + ARM64, no x86 rootfs)
 #   ./run.sh compat      # Compatibility only (205 tests across 18 categories)
 #
 # Performance: assets/shellbench.sh runs guest-side inside each architecture
@@ -37,6 +38,14 @@ CSV="$RESULTS_DIR/run_${DATE}.csv"
 RUNS=3
 TIMEOUT_S=120
 
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=gtimeout
+else
+    TIMEOUT_BIN=
+fi
+
 mkdir -p "$RESULTS_DIR"
 
 # ── Colors & helpers ────────────────────────────────────────────────
@@ -47,13 +56,32 @@ ok()   { echo -e "${GREEN}OK${NC}  $*"; }
 fail() { echo -e "${RED}ERR${NC} $*"; }
 hr()   { echo "────────────────────────────────────────────────────────────────"; }
 
+run_timeout() {
+    local seconds="$1"
+    shift
+    if [ -n "$TIMEOUT_BIN" ]; then
+        "$TIMEOUT_BIN" "$seconds" "$@"
+    else
+        "$@"
+    fi
+}
+
 # ── Preflight ───────────────────────────────────────────────────────
 preflight() {
+    local suite="${1:-all}"
     local ok=1
-    [ -x "$ISH_X86" ]       || { fail "x86 binary: $ISH_X86"; ok=0; }
-    [ -x "$ISH_ARM64" ]     || { fail "ARM64 binary: $ISH_ARM64"; ok=0; }
-    [ -d "$FAKEFS_X86" ]    || { fail "x86 fakefs: $FAKEFS_X86"; ok=0; }
-    [ -d "$FAKEFS_ARM64" ]  || { fail "ARM64 fakefs: $FAKEFS_ARM64"; ok=0; }
+    case "$suite" in
+        arm64|arm64-perf)
+            [ -x "$ISH_ARM64" ]     || { fail "ARM64 binary: $ISH_ARM64"; ok=0; }
+            [ -d "$FAKEFS_ARM64" ]  || { fail "ARM64 fakefs: $FAKEFS_ARM64"; ok=0; }
+            ;;
+        *)
+            [ -x "$ISH_X86" ]       || { fail "x86 binary: $ISH_X86"; ok=0; }
+            [ -x "$ISH_ARM64" ]     || { fail "ARM64 binary: $ISH_ARM64"; ok=0; }
+            [ -d "$FAKEFS_X86" ]    || { fail "x86 fakefs: $FAKEFS_X86"; ok=0; }
+            [ -d "$FAKEFS_ARM64" ]  || { fail "ARM64 fakefs: $FAKEFS_ARM64"; ok=0; }
+            ;;
+    esac
     [ $ok -eq 0 ] && exit 1
 }
 
@@ -61,7 +89,7 @@ preflight() {
 # Returns "seconds instructions"
 _time() {
     local tmp; tmp=$(mktemp)
-    if timeout "$TIMEOUT_S" /usr/bin/time -l "$@" >/dev/null 2>"$tmp"; then :
+    if run_timeout "$TIMEOUT_S" /usr/bin/time -l "$@" >/dev/null 2>"$tmp"; then :
     elif [ $? -eq 124 ]; then rm -f "$tmp"; echo "TIMEOUT 0"; return; fi
     local t; t=$(awk '/real/{print $1}' "$tmp" | head -1); [ -z "$t" ] && t=0
     local i; i=$(awk '/instructions retired/{gsub(/,/,""); print $1}' "$tmp"); [ -z "$i" ] && i=0
@@ -71,6 +99,19 @@ _time() {
 _median() {
     echo "$@" | tr ' ' '\n' | grep -vE 'TIMEOUT|FAIL' | sort -n |
         awk '{a[NR]=$1} END{if(NR==0)print"FAIL";else if(NR%2)print a[(NR+1)/2];else print(a[NR/2]+a[NR/2+1])/2}'
+}
+
+_median_results_file() {
+    local input="$1" output="$2"
+    : > "$output"
+    awk -F'|' 'NF >= 3 && !seen[$1 FS $2]++ {print $1 "|" $2}' "$input" |
+    while IFS='|' read -r cat name; do
+        [ -z "$cat" ] && continue
+        local values median
+        values=$(awk -F'|' -v c="$cat" -v n="$name" '$1 == c && $2 == n {print $3}' "$input")
+        median=$(_median $values)
+        echo "$cat|$name|$median" >> "$output"
+    done
 }
 
 _ratio() {
@@ -110,29 +151,39 @@ suite_shell() {
     # Push benchmark scripts + prebuilt binaries into both rootfs
     for asset in shellbench.sh cbench_lite.c; do
         [ -f "$ASSETS_DIR/$asset" ] || continue
-        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
-        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+        cat "$ASSETS_DIR/$asset" | run_timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+        cat "$ASSETS_DIR/$asset" | run_timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
     done
     # Push prebuilt C binaries (avoids slow in-emulator compilation)
     if [ -f "$ASSETS_DIR/cbench_lite_x86" ]; then
-        cat "$ASSETS_DIR/cbench_lite_x86" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/cbench_prebuilt && chmod +x /tmp/cbench_prebuilt" 2>/dev/null || true
+        cat "$ASSETS_DIR/cbench_lite_x86" | run_timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/cbench_prebuilt && chmod +x /tmp/cbench_prebuilt" 2>/dev/null || true
     fi
     if [ -f "$ASSETS_DIR/cbench_lite_arm64" ]; then
-        cat "$ASSETS_DIR/cbench_lite_arm64" | timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/cbench_prebuilt && chmod +x /tmp/cbench_prebuilt" 2>/dev/null || true
+        cat "$ASSETS_DIR/cbench_lite_arm64" | run_timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/cbench_prebuilt && chmod +x /tmp/cbench_prebuilt" 2>/dev/null || true
     fi
 
-    # Run inside each platform, capture "cat|name|ms" output
-    log "Running on Native..."
+    # Run inside each platform, capture "cat|name|ms" output. Each raw output
+    # is folded to a per-test median so the report's RUNS claim is real.
     local native_out; native_out=$(mktemp)
-    bash "$ASSETS_DIR/shellbench.sh" > "$native_out" 2>/dev/null
-
-    log "Running on x86..."
     local x86_out; x86_out=$(mktemp)
-    timeout 900 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "sh /tmp/shellbench.sh" > "$x86_out" 2>/dev/null || true
-
-    log "Running on ARM64..."
     local arm_out; arm_out=$(mktemp)
-    timeout 900 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "sh /tmp/shellbench.sh" > "$arm_out" 2>/dev/null || true
+    local native_raw; native_raw=$(mktemp)
+    local x86_raw; x86_raw=$(mktemp)
+    local arm_raw; arm_raw=$(mktemp)
+
+    for ((run = 1; run <= RUNS; run++)); do
+        log "Running on Native ($run/$RUNS)..."
+        bash "$ASSETS_DIR/shellbench.sh" >> "$native_raw" 2>/dev/null
+
+        log "Running on x86 ($run/$RUNS)..."
+        run_timeout 900 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "sh /tmp/shellbench.sh" >> "$x86_raw" 2>/dev/null || true
+
+        log "Running on ARM64 ($run/$RUNS)..."
+        run_timeout 900 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "sh /tmp/shellbench.sh" >> "$arm_raw" 2>/dev/null || true
+    done
+    _median_results_file "$native_raw" "$native_out"
+    _median_results_file "$x86_raw" "$x86_out"
+    _median_results_file "$arm_raw" "$arm_out"
 
     echo ""
     printf "${BOLD}%-9s %-18s │ %8s │ %8s │ %8s │ %8s │ %8s${NC}\n" \
@@ -197,15 +248,106 @@ suite_shell() {
         printf "%-9s %-18s │ %8s │ %8s │ %8s │ %8s │ %8s\n" \
             "$cat" "$name" "$nat_f" "$x86_f" "$arm_f" "$xn_r" "$xa_r"
 
-        echo "shell,$cat,$name,$nat_ms,$x86_ms,$arm_ms" >> "$CSV"
+        echo "shell,$cat,$name,$nat_ms,0,$x86_ms,0,$arm_ms,0" >> "$CSV"
         rows+=("$cat|$name|$nat_f|$x86_f|$arm_f|$xn_r|$xa_r")
     done < "$arm_out"
 
-    rm -f "$native_out" "$x86_out" "$arm_out" "$nat_data" "$x86_data" "$arm_data"
+    rm -f "$native_out" "$x86_out" "$arm_out" "$native_raw" "$x86_raw" "$arm_raw" "$nat_data" "$x86_data" "$arm_data"
     echo ""
-    if [ ${#rows[@]} -gt 0 ]; then
-        _md_shell_section "${rows[@]}"
+    if [ ${#rows[@]} -eq 0 ]; then
+        fail "Performance benchmark produced no rows"
+        return 1
     fi
+    _md_shell_section "${rows[@]}"
+}
+
+suite_shell_arm64() {
+    log "ARM64 shell benchmark (guest-side timing, startup excluded)"
+    hr
+
+    for asset in shellbench.sh cbench_lite.c; do
+        [ -f "$ASSETS_DIR/$asset" ] || continue
+        cat "$ASSETS_DIR/$asset" | run_timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+    done
+    if [ -f "$ASSETS_DIR/cbench_lite_arm64" ]; then
+        cat "$ASSETS_DIR/cbench_lite_arm64" | run_timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/cbench_prebuilt && chmod +x /tmp/cbench_prebuilt" 2>/dev/null || true
+    fi
+
+    local native_out; native_out=$(mktemp)
+    local arm_out; arm_out=$(mktemp)
+    local native_raw; native_raw=$(mktemp)
+    local arm_raw; arm_raw=$(mktemp)
+
+    for ((run = 1; run <= RUNS; run++)); do
+        log "Running on Native ($run/$RUNS)..."
+        bash "$ASSETS_DIR/shellbench.sh" >> "$native_raw" 2>/dev/null
+
+        log "Running on ARM64 ($run/$RUNS)..."
+        run_timeout 900 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "sh /tmp/shellbench.sh" >> "$arm_raw" 2>/dev/null || true
+    done
+    _median_results_file "$native_raw" "$native_out"
+    _median_results_file "$arm_raw" "$arm_out"
+
+    echo ""
+    printf "${BOLD}%-9s %-18s │ %8s │ %8s │ %10s${NC}\n" \
+        "Cat" "Test" "Native" "ARM64" "A64/Native"
+    hr
+
+    local rows=()
+    while IFS='|' read -r cat name arm_ms; do
+        [ -z "$cat" ] && continue
+        local nat_ms nat_f arm_f ratio
+        nat_ms=$(grep "^${cat}|${name}|" "$native_out" | head -1 | cut -d'|' -f3)
+        [ -z "$nat_ms" ] && nat_ms="—"
+        [ "$nat_ms" = "—" ] && nat_f="—" || nat_f="${nat_ms}ms"
+        arm_f="${arm_ms}ms"
+        if [ "$nat_ms" != "—" ] && [ "$nat_ms" -gt 0 ] 2>/dev/null; then
+            ratio=$(awk "BEGIN{printf\"%.1fx\",$arm_ms/$nat_ms}")
+        else
+            ratio="—"
+        fi
+
+        printf "%-9s %-18s │ %8s │ %8s │ %10s\n" \
+            "$cat" "$name" "$nat_f" "$arm_f" "$ratio"
+
+        echo "shell-arm64,$cat,$name,$nat_ms,0,—,—,$arm_ms,0" >> "$CSV"
+        rows+=("$cat|$name|$nat_f|$arm_f|$ratio")
+    done < "$arm_out"
+
+    rm -f "$native_out" "$arm_out" "$native_raw" "$arm_raw"
+    echo ""
+    if [ ${#rows[@]} -eq 0 ]; then
+        fail "ARM64 performance benchmark produced no rows"
+        return 1
+    fi
+    _md_shell_arm64_section "${rows[@]}"
+}
+
+_md_shell_arm64_section() {
+    local rows=("$@") prev=""
+    {
+        echo "## 1. ARM64 Shell Benchmark (Native vs ARM64)"
+        echo ""
+        echo "> **Guest-side timing** — each test measured inside ARM64 iSH with"
+        echo "> monotonic clock. Startup overhead (fakefs init) is excluded."
+        echo "> Use \`./run.sh arm64\` for a fast modern-iPhone/ARM64 performance pass"
+        echo "> when x86 rootfs is not available."
+        echo ""
+    } >> "$PERF_MD"
+
+    for r in "${rows[@]}"; do
+        IFS='|' read -r cat name nat arm ratio <<< "$r"
+        if [ "$cat" != "$prev" ]; then
+            [ -n "$prev" ] && echo "" >> "$PERF_MD"
+            echo "### $cat" >> "$PERF_MD"
+            echo "" >> "$PERF_MD"
+            echo "| Test | Native | ARM64 | **ARM64/Native** |" >> "$PERF_MD"
+            echo "|------|:---:|:---:|:---:|" >> "$PERF_MD"
+            prev="$cat"
+        fi
+        echo "| $name | $nat | $arm | **$ratio** |" >> "$PERF_MD"
+    done
+    echo "" >> "$PERF_MD"
 }
 
 _md_shell_section() {
@@ -521,7 +663,7 @@ _ensure_packages() {
         [ -z "$pkg" ] && continue
 
         # Check if binary exists in guest
-        if ! timeout 5 "$ish_bin" "$fs_flag" "$fs_path" /bin/sh -c "which $bin >/dev/null 2>&1" >/dev/null 2>&1; then
+        if ! run_timeout 5 "$ish_bin" "$fs_flag" "$fs_path" /bin/sh -c "which $bin >/dev/null 2>&1" >/dev/null 2>&1; then
             for p in $pkg; do
                 echo "$missing_pkgs" | grep -qw "$p" || missing_pkgs="$missing_pkgs $p"
             done
@@ -530,12 +672,12 @@ _ensure_packages() {
 
     if [ -n "$missing_pkgs" ]; then
         # Ensure DNS + HTTP repos
-        timeout 5 "$ish_bin" "$fs_flag" "$fs_path" /bin/sh -c \
+        run_timeout 5 "$ish_bin" "$fs_flag" "$fs_path" /bin/sh -c \
             "test -f /etc/resolv.conf || echo 'nameserver 8.8.8.8' > /etc/resolv.conf; sed -i 's|https://|http://|g' /etc/apk/repositories 2>/dev/null" \
             >/dev/null 2>&1 || true
 
         log "Installing on $label:$missing_pkgs"
-        timeout 600 "$ish_bin" "$fs_flag" "$fs_path" /bin/sh -c \
+        run_timeout 600 "$ish_bin" "$fs_flag" "$fs_path" /bin/sh -c \
             "apk update >/dev/null 2>&1; apk add --no-cache $missing_pkgs 2>&1 | tail -3" 2>&1 | grep -v fork
         ok "$label packages ready"
     else
@@ -564,12 +706,12 @@ suite_compat() {
         IFS='|' read -r cat name cmd <<< "$line"
 
         local xr ar
-        if timeout 15 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "$cmd" >/dev/null 2>&1; then
+        if run_timeout 15 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "$cmd" >/dev/null 2>&1; then
             xr="PASS"; x86p=$((x86p+1))
         else
             xr="FAIL"; x86f=$((x86f+1))
         fi
-        if timeout 15 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "$cmd" >/dev/null 2>&1; then
+        if run_timeout 15 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "$cmd" >/dev/null 2>&1; then
             ar="PASS"; armp=$((armp+1))
         else
             ar="FAIL"; armf=$((armf+1))
@@ -673,13 +815,25 @@ EOF
 # ═══════════════════════════════════════════════════════════════════
 
 write_perf_header() {
+    local x86_desc arm_desc
+    if [ -x "$ISH_X86" ]; then
+        x86_desc="$(basename "$ISH_X86") ($(ls -lh "$ISH_X86" | awk '{print $5}'), fakefs)"
+    else
+        x86_desc="unavailable"
+    fi
+    if [ -x "$ISH_ARM64" ]; then
+        arm_desc="$(basename "$ISH_ARM64") ($(ls -lh "$ISH_ARM64" | awk '{print $5}'), fakefs)"
+    else
+        arm_desc="unavailable"
+    fi
+
     cat > "$PERF_MD" << HEADER
 # iSH Performance Benchmark
 
 > **Generated:** $(date '+%Y-%m-%d %H:%M:%S')
 > **Host:** macOS $(sw_vers -productVersion) / $(uname -m)
-> **x86:** $(basename "$ISH_X86") ($(ls -lh "$ISH_X86" | awk '{print $5}'), fakefs)
-> **ARM64:** $(basename "$ISH_ARM64") ($(ls -lh "$ISH_ARM64" | awk '{print $5}'), fakefs)
+> **x86:** $x86_desc
+> **ARM64:** $arm_desc
 > **Runs:** $RUNS (median) | **Timeout:** ${TIMEOUT_S}s
 
 | | x86 Emulation | ARM64 JIT |
@@ -701,6 +855,7 @@ HEADER
 
 main() {
     local suite="${1:-all}"
+    local perf_backup=""
 
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
@@ -709,19 +864,42 @@ main() {
     echo "═══════════════════════════════════════════════════════════════"
     echo ""
 
-    preflight
+    preflight "$suite"
 
     echo "suite,category,name,native_time,native_insns,x86_time,x86_insns,arm64_time,arm64_insns" > "$CSV"
 
+    backup_perf_report() {
+        perf_backup=$(mktemp)
+        if [ -f "$PERF_MD" ]; then
+            cp "$PERF_MD" "$perf_backup"
+        else
+            : > "$perf_backup"
+        fi
+    }
+
+    restore_perf_report() {
+        [ -n "$perf_backup" ] && cp "$perf_backup" "$PERF_MD"
+    }
+
     case "$suite" in
         all)
+            backup_perf_report
             write_perf_header
-            echo ""; suite_shell     # includes Shell + Python + Node.js + Go + C (guest-side timing)
+            echo ""; suite_shell || { restore_perf_report; exit 1; } # includes Shell + Python + Node.js + Go + C (guest-side timing)
             echo ""; suite_compat    # 205 tests across 18 categories
             ;;
-        shell|perf)  write_perf_header; suite_shell ;;
+        shell|perf)
+            backup_perf_report
+            write_perf_header
+            suite_shell || { restore_perf_report; exit 1; }
+            ;;
+        arm64|arm64-perf)
+            backup_perf_report
+            write_perf_header
+            suite_shell_arm64 || { restore_perf_report; exit 1; }
+            ;;
         compat)      suite_compat ;;
-        *)           echo "Usage: $0 [all|shell|compat]"; exit 1 ;;
+        *)           echo "Usage: $0 [all|shell|arm64|compat]"; exit 1 ;;
     esac
 
     echo ""
