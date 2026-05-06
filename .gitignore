@@ -1,11 +1,15 @@
 build/
+build-*-release/
 xcuserdata/
 .floo
 
 cross-*.txt
 root.tar.gz
+alpine-*-fakefs/
+alpine-minirootfs-*.tar.gz
 
 node_modules
+__pycache__/
 app/xtermjs/xterm-dist
 app/xtermjs/.cache
 
@@ -18,6 +22,7 @@ fastlane/screenshots
 fastlane/test_output
 
 e2e_out/
+.venv/
 
 # Legacy bench scripts (replaced by benchmark/)
 bench/

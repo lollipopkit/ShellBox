@@ -1,6 +1,9 @@
 #!/bin/sh
 
 # Try to figure out the user's PATH to pick up their installed utilities.
-export PATH="$PATH:$(sudo -u "$USER" -i printenv PATH)"
+user_path="$(sudo -n -u "$USER" -i printenv PATH 2>/dev/null || true)"
+if [ -n "$user_path" ]; then
+    export PATH="$PATH:$user_path"
+fi
 
 ninja "$@"

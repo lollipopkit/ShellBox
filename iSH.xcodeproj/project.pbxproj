@@ -114,6 +114,9 @@
 		AA000034AF96D90D00FFB7A4 /* libbz2.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BBAEE338249B58E80069EBB5 /* libbz2.tbd */; };
 		AA000035AF96D90D00FFB7A4 /* libiconv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BB6DB260216435330047A611 /* libiconv.tbd */; };
 		AA000036AF96D90D00FFB7A4 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB55652158644C00DFE6DE /* libresolv.tbd */; };
+		AA000037AF96D90D00FFB7A4 /* libfakefs.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB21A16F2689041500BD19B4 /* libfakefs.a */; };
+		AA000038AF96D90D00FFB7A4 /* libish.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB13F7DC200AD81D003D1C4D /* libish.a */; };
+		AA000039AF96D90D00FFB7A4 /* libish_emu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB2C5B2590257E00545EAB /* libish_emu.a */; };
 		AA000040AF96D90D00FFB7A4 /* Terminal.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BB792B591F96D90D00FFB7A4 /* Terminal.storyboard */; };
 		AA000041AF96D90D00FFB7A4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB792B5C1F96D90D00FFB7A4 /* Assets.xcassets */; };
 		AA000042AF96D90D00FFB7A4 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BB792B5E1F96D90D00FFB7A4 /* LaunchScreen.storyboard */; };
@@ -840,6 +843,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000037AF96D90D00FFB7A4 /* libfakefs.a in Frameworks */,
+				AA000038AF96D90D00FFB7A4 /* libish.a in Frameworks */,
+				AA000039AF96D90D00FFB7A4 /* libish_emu.a in Frameworks */,
 				AA000031AF96D90D00FFB7A4 /* libarchive.a in Frameworks */,
 				AA000032AF96D90D00FFB7A4 /* CoreLocation.framework in Frameworks */,
 				AA000033AF96D90D00FFB7A4 /* SystemConfiguration.framework in Frameworks */,
@@ -2072,7 +2078,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"$SRCROOT/app/xcode-meson.sh\"\ncd \"$MESON_BUILD_DIR\"\n\"$SRCROOT/app/xcode-ninja.sh\" $NINJA_TARGETS\n";
+			shellScript = "\"$SRCROOT/app/xcode-meson.sh\"\ncd \"$MESON_BUILD_DIR\"\n\"$SRCROOT/app/xcode-ninja.sh\" $NINJA_TARGETS\nmkdir -p \"$CONFIGURATION_BUILD_DIR\"\nfor target in $NINJA_TARGETS; do\n    case \"$target\" in\n        *.a) ln -sf \"$MESON_BUILD_DIR/$target\" \"$CONFIGURATION_BUILD_DIR/$(basename \"$target\")\" ;;\n    esac\ndone\n";
 		};
 		BB034E8C263643C10000A498 /* Generate APK Repositories File */ = {
 			isa = PBXShellScriptBuildPhase;

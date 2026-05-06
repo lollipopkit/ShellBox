@@ -1,7 +1,14 @@
 #!/bin/bash
 
 # Try to figure out the user's PATH to pick up their installed utilities.
-export PATH="$PATH:$(sudo -u "$USER" -i printenv PATH)"
+user_path="$(sudo -n -u "$USER" -i printenv PATH 2>/dev/null || true)"
+if [[ -n "$user_path" ]]; then
+    export PATH="$PATH:$user_path"
+fi
+if ! command -v meson >/dev/null 2>&1; then
+    echo "error: meson is required to build iSH. Install it with Homebrew or pip, then rebuild." >&2
+    exit 127
+fi
 
 mkdir -p "$MESON_BUILD_DIR"
 cd "$MESON_BUILD_DIR"
@@ -48,6 +55,7 @@ buildtype=debug
 b_ndebug=false
 if [[ $CONFIGURATION == Release ]]; then
     buildtype=debugoptimized
+    b_ndebug=true
 fi
 b_sanitize=none
 if [[ -n "$ENABLE_ADDRESS_SANITIZER" ]]; then

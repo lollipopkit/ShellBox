@@ -11,6 +11,12 @@ ISH_GUEST_DEFINES = GUEST_ARM64=1
 // We re-add DEBUG=1 for debug builds since we can't inherit it.
 GCC_PREPROCESSOR_DEFINITIONS = GUEST_ARM64=1 DEBUG=1
 
+// The ARM64 guest JIT emits AArch64 host gadgets, so x86_64 Simulator builds
+// are not valid for this target. Excluding x86_64 also prevents Xcode 26's
+// multi-arch simulator build from running the mach_exc MIG rule twice with
+// the same DerivedSources output paths.
+EXCLUDED_ARCHS[sdk=iphonesimulator*] = x86_64
+
 // Meson options for ARM64 guest
 MESON_GUEST_OPTION = -Dguest_arch=arm64
 

@@ -102,6 +102,22 @@ NSArray<NSString *> *CurrentAppGroups(void) {
 }
 
 NSURL *ContainerURL(void) {
-    NSString *appGroup = CurrentAppGroups()[0];
-    return [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:appGroup];
+    NSString *appGroup = CurrentAppGroups().firstObject;
+    NSURL *container = nil;
+    if (appGroup != nil) {
+        container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:appGroup];
+    }
+    if (container != nil) {
+        return container;
+    }
+
+    NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
+                                                          inDomains:NSUserDomainMask].firstObject;
+    NSURL *fallback = [support URLByAppendingPathComponent:NSBundle.mainBundle.bundleIdentifier ?: @"iSH"];
+    [NSFileManager.defaultManager createDirectoryAtURL:fallback
+                           withIntermediateDirectories:YES
+                                            attributes:@{}
+                                                 error:nil];
+    NSLog(@"app group container unavailable for %@, using %@", appGroup, fallback);
+    return fallback;
 }
