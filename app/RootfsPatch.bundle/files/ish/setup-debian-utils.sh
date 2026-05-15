@@ -34,6 +34,8 @@ rm -rf /var/lib/apt/lists/*
 
 if command -v fish >/dev/null 2>&1; then
     fish -lc 'curl -sL https://raw.githubusercontent.com/jorgebucaran/fisher/main/functions/fisher.fish | source; fisher install jorgebucaran/fisher; fisher install (curl -fsSL https://raw.githubusercontent.com/lollipopkit/fish-cfg/main/fish/fish_plugins | string split \n)'
+    mkdir -p /ish
+    touch /ish/fish-ready
 fi
 
 echo "Debian common utilities are installed."

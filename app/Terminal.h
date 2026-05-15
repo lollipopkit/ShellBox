@@ -6,9 +6,13 @@
 //
 
 #import <UIKit/UIKit.h>
-#import <WebKit/WebKit.h>
 
 struct tty;
+
+@protocol TerminalRenderer <NSObject>
+- (void)terminalDidReceiveOutput:(NSData * _Nonnull)data;
+- (void)terminalScrollToBottom;
+@end
 
 @interface Terminal : NSObject
 
@@ -25,13 +29,14 @@ struct tty;
 
 - (int)sendOutput:(const void *)buf length:(int)len;
 - (void)sendInput:(NSData *)input;
+- (void)setWindowSizeWithColumns:(int)columns rows:(int)rows;
 
 - (NSString *)arrow:(char)direction;
 
 // Make this terminal no longer be the singleton terminal with its type and number. Will happen eventually if all references go away, but sometimes you want it to happen now.
 - (void)destroy;
 
-@property (readonly) WKWebView *webView;
+@property (nullable, nonatomic, weak) id<TerminalRenderer> renderer;
 @property (nonatomic) BOOL enableVoiceOverAnnounce;
 // Use KVO on this
 @property (readonly) BOOL loaded;

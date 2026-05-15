@@ -1,5 +1,8 @@
 #import "TerminalViewController.h"
+#import "Terminal.h"
 #import "AppDelegate.h"
+#import "ExceptionExfiltrator.h"
+#import "SceneDelegate.h"
 #import "AppGroup.h"
 #import "CurrentRoot.h"
 #import "Roots.h"

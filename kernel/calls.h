@@ -155,6 +155,7 @@ dword_t sys_mknod(addr_t path_addr, mode_t_ mode, dev_t_ dev);
 dword_t sys_mknodat(fd_t at_f, addr_t path_addr, mode_t_ mode, dev_t_ dev);
 dword_t sys_access(addr_t path_addr, dword_t mode);
 dword_t sys_faccessat(fd_t at_f, addr_t path, mode_t_ mode, dword_t flags);
+dword_t sys_faccessat2(fd_t at_f, addr_t path, mode_t_ mode, dword_t flags);
 dword_t sys_readlink(addr_t path, addr_t buf, dword_t bufsize);
 dword_t sys_readlinkat(fd_t at_f, addr_t path, addr_t buf, dword_t bufsize);
 int_t sys_getdents(fd_t f, addr_t dirents, dword_t count);

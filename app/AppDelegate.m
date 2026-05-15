@@ -213,6 +213,8 @@ static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *
 
     NSArray<NSString *> *command;
     command = UserPreferences.shared.bootCommand;
+    if (command.count == 0)
+        return 0;
     char argv[4096];
     [Terminal convertCommand:command toArgs:argv limitSize:sizeof(argv)];
     const char *envp =

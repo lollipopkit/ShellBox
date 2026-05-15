@@ -287,6 +287,8 @@ syscall_t syscall_table[] = {
     [289] = (syscall_t) syscall_stub, // pkey_alloc
     [290] = (syscall_t) syscall_stub, // pkey_free
     [291] = (syscall_t) sys_statx,
+    [293] = (syscall_t) syscall_silent_stub, // rseq
+    [439] = (syscall_t) sys_faccessat2,
 };
 
 #define NUM_SYSCALLS (sizeof(syscall_table) / sizeof(syscall_table[0]))

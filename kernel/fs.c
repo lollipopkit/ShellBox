@@ -40,29 +40,55 @@ int access_check(struct statbuf *stat, int check) {
 // TODO ENAMETOOLONG
 
 #define AT_EACCESS_ 0x200
+#define FACCESSAT2_VALID_FLAGS_ (AT_EACCESS_ | AT_SYMLINK_NOFOLLOW_ | AT_EMPTY_PATH_)
 dword_t sys_access(addr_t path_addr, dword_t mode) {
     return sys_faccessat(AT_FDCWD_, path_addr, mode, 0);
 }
+
+static int do_faccessat(fd_t at_f, const char *path, mode_t_ mode, dword_t flags) {
+    struct fd *at = at_fd(at_f);
+    if (at == NULL)
+        return _EBADF;
+
+    struct statbuf stat = {};
+    int err;
+    if ((flags & AT_EMPTY_PATH_) && strcmp(path, "") == 0) {
+        err = at->mount->fs->fstat(at, &stat);
+    } else {
+        err = generic_statat(at, path, &stat, !(flags & AT_SYMLINK_NOFOLLOW_));
+    }
+    if (err < 0)
+        return err;
+
+    if (flags & AT_EACCESS_)
+        return access_check(&stat, mode);
+
+    uid_t_ saved_euid = current->euid;
+    uid_t_ saved_egid = current->egid;
+    current->euid = current->uid;
+    current->egid = current->gid;
+    err = access_check(&stat, mode);
+    current->euid = saved_euid;
+    current->egid = saved_egid;
+    return err;
+}
+
 dword_t sys_faccessat(fd_t at_f, addr_t path_addr, mode_t_ mode, dword_t flags) {
     char path[MAX_PATH];
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
-    struct fd *at = at_fd(at_f);
-    if (at == NULL)
-        return _EBADF;
     STRACE("faccessat(%d, \"%s\", 0x%x, %d)", at_f, path, mode, flags);
+    return do_faccessat(at_f, path, mode, flags);
+}
 
-    if (flags & AT_EACCESS_)
-        return generic_accessat(at, path, mode);
-
-    uid_t_ uid_tmp = current->euid;
-    uid_t_ gid_tmp = current->egid;
-    current->euid = current->uid;
-    current->egid = current->gid;
-    int err = generic_accessat(at, path, mode);
-    current->euid = uid_tmp;
-    current->egid = gid_tmp;
-    return err;
+dword_t sys_faccessat2(fd_t at_f, addr_t path_addr, mode_t_ mode, dword_t flags) {
+    if (flags & ~FACCESSAT2_VALID_FLAGS_)
+        return _EINVAL;
+    char path[MAX_PATH];
+    if (user_read_string(path_addr, path, sizeof(path)))
+        return _EFAULT;
+    STRACE("faccessat2(%d, \"%s\", 0x%x, %d)", at_f, path, mode, flags);
+    return do_faccessat(at_f, path, mode, flags);
 }
 
 fd_t sys_openat(fd_t at_f, addr_t path_addr, dword_t flags, mode_t_ mode) {

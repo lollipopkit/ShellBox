@@ -152,6 +152,8 @@ bool (*remove_user_default)(const char *name);
     self->_hostnameIsOverridden = !![NSUserDefaults.standardUserDefaults stringForKey:kHostnameOverrideKey];
     if (self) {
         _defaults = [NSUserDefaults standardUserDefaults];
+        NSArray<NSString *> *storedLaunchCommand = [_defaults stringArrayForKey:kPreferenceLaunchCommandKey];
+        NSArray<NSString *> *storedBootCommand = [_defaults stringArrayForKey:kPreferenceBootCommandKey];
         [_defaults registerDefaults:@{
             kPreferenceFontSizeKey: @(12),
             kPreferenceCapsLockMappingKey: @(CapsLockMapControl),
@@ -161,7 +163,7 @@ bool (*remove_user_default)(const char *name);
             kPreferenceOverrideControlSpaceKey: @(NO),
             kPreferenceDisableDimmingKey: @(NO),
             kPreferenceLaunchCommandKey: @[@"/ish/default-shell"],
-            kPreferenceBootCommandKey: @[@"/ish/init"],
+            kPreferenceBootCommandKey: @[],
             kPreferenceBlinkCursorKey: @(NO),
             kPreferenceCursorStyleKey: @(CursorStyleBlock),
             kPreferenceHideStatusBarKey: @(NO),
@@ -169,6 +171,25 @@ bool (*remove_user_default)(const char *name);
             kPreferenceThemeKey: @"Default",
             kHostnameOverrideKey: UIDevice.currentDevice.name,
         }];
+        if ([storedLaunchCommand isEqualToArray:@[@"/bin/login", @"-f", @"root"]]) {
+            [_defaults setObject:@[@"/ish/default-shell"] forKey:kPreferenceLaunchCommandKey];
+        }
+        if ([storedLaunchCommand.firstObject isEqualToString:@"/usr/bin/fish"] ||
+            [storedLaunchCommand.firstObject isEqualToString:@"fish"]) {
+            [_defaults setObject:@[@"/ish/default-shell"] forKey:kPreferenceLaunchCommandKey];
+        }
+        if ([storedLaunchCommand.firstObject isEqualToString:@"/bin/sh"]) {
+            [_defaults setObject:@[@"/ish/default-shell"] forKey:kPreferenceLaunchCommandKey];
+        }
+        if ([storedBootCommand isEqualToArray:@[@"/sbin/init"]]) {
+            [_defaults setObject:@[] forKey:kPreferenceBootCommandKey];
+        }
+        if ([storedBootCommand isEqualToArray:@[@"/ish/init"]]) {
+            [_defaults setObject:@[] forKey:kPreferenceBootCommandKey];
+        }
+        if ([storedBootCommand isEqualToArray:@[@"/bin/sh", @"/ish/init"]]) {
+            [_defaults setObject:@[] forKey:kPreferenceBootCommandKey];
+        }
         // https://webkit.org/blog/10247/new-webkit-features-in-safari-13-1/
         if (@available(iOS 13.4, *)) {
             [_defaults registerDefaults:@{
@@ -482,20 +503,6 @@ bool (*remove_user_default)(const char *name);
     }
     int _value = [(NSNumber *)(*value) intValue];
     return _value >= __CursorStyleFirst && _value < __CursorStyleLast;
-}
-
-- (NSString *)htermCursorShape {
-    switch (self.cursorStyle) {
-        case CursorStyleBlock:
-            return @"BLOCK";
-        case CursorStyleBeam:
-            return @"BEAM";
-        case CursorStyleUnderline:
-            return @"UNDERLINE";
-        default:
-            NSAssert(NO, @"Invalid cursor style");
-            return nil;
-    }
 }
 
 // MARK: blinkCursor

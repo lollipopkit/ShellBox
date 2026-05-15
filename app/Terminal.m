@@ -7,7 +7,6 @@
 
 #import "Terminal.h"
 #import "DelayedUITask.h"
-#import "UserPreferences.h"
 #include "LinuxInterop.h"
 #include "fs/devices.h"
 #include "fs/tty.h"
@@ -21,7 +20,7 @@ typedef struct tty *tty_t;
 typedef struct linux_tty *tty_t;
 #endif
 
-@interface Terminal () <WKScriptMessageHandler> {
+@interface Terminal () {
 #if !ISH_LINUX
     lock_t _dataLock;
     cond_t _dataConsumed;
@@ -32,7 +31,7 @@ typedef struct linux_tty *tty_t;
 @property (nonatomic) tty_t tty;
 // lock with dataLock for !linux and @synchronized(self) for linux
 @property (nonatomic) NSMutableData *pendingData;
-// sending output is an asynchronous thing due to javascript, this is used to ensure it doesn't happen twice at once
+// Sending output is batched so terminal rendering cannot re-enter itself.
 @property (nonatomic) BOOL outputInProgress;
 
 @property DelayedUITask *refreshTask;
@@ -45,26 +44,7 @@ typedef struct linux_tty *tty_t;
 
 @end
 
-@interface CustomWebView : WKWebView
-@end
-@implementation CustomWebView
-- (BOOL)becomeFirstResponder {
-    if (@available(iOS 13.4, *)) {
-        return [super becomeFirstResponder];
-    }
-    return NO;
-}
-
-- (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
-    if (action == @selector(copy:) || action == @selector(paste:)) {
-        return NO;
-    }
-    return [super canPerformAction:action withSender:sender];
-}
-@end
-
 @implementation Terminal
-@synthesize webView = _webView;
 
 static const int BUF_SIZE = 1<<14;
 
@@ -82,6 +62,7 @@ static NSMapTable<NSUUID *, Terminal *> *terminalsByUUID;
             self.pendingData = [[NSMutableData alloc] initWithCapacity:BUF_SIZE];
             self.refreshTask = [[DelayedUITask alloc] initWithTarget:self action:@selector(refresh)];
             self.scrollToBottomTask = [[DelayedUITask alloc] initWithTarget:self action:@selector(scrollToBottom)];
+            self.loaded = YES;
 #if !ISH_LINUX
             lock_init(&_dataLock);
             cond_init(&_dataConsumed);
@@ -93,26 +74,6 @@ static NSMapTable<NSUUID *, Terminal *> *terminalsByUUID;
         }
         return self;
     }
-}
-
-- (WKWebView *)webView {
-    if (_webView == nil) {
-        WKWebViewConfiguration *config = [WKWebViewConfiguration new];
-        [config.userContentController addScriptMessageHandler:self name:@"load"];
-        [config.userContentController addScriptMessageHandler:self name:@"log"];
-        [config.userContentController addScriptMessageHandler:self name:@"sendInput"];
-        [config.userContentController addScriptMessageHandler:self name:@"resize"];
-        [config.userContentController addScriptMessageHandler:self name:@"propUpdate"];
-        // Make the web view really big so that if a program tries to write to the terminal before it's displayed, the text probably won't wrap too badly.
-        CGRect webviewSize = CGRectMake(0, 0, 10000, 10000);
-        _webView = [[CustomWebView alloc] initWithFrame:webviewSize configuration:config];
-        if (@available(macOS 13.3, iOS 16.4, tvOS 16.4, *))
-            _webView.inspectable = YES;
-        _webView.scrollView.scrollEnabled = NO;
-        NSURL *xtermHtmlFile = [NSBundle.mainBundle URLForResource:@"term" withExtension:@"html"];
-        [_webView loadFileURL:xtermHtmlFile allowingReadAccessToURL:xtermHtmlFile];
-    }
-    return _webView;
 }
 
 #if !ISH_LINUX
@@ -128,52 +89,31 @@ static NSMapTable<NSUUID *, Terminal *> *terminalsByUUID;
     @synchronized (self) {
         _tty = tty;
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self syncWindowSize];
-    });
 }
 
-- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
-    if ([message.name isEqualToString:@"load"]) {
-        self.loaded = YES;
+- (void)setRenderer:(id<TerminalRenderer>)renderer {
+    _renderer = renderer;
+    if (renderer) {
         [self.refreshTask schedule];
-        // make sure this setting works if it's set before loading
-        self.enableVoiceOverAnnounce = self.enableVoiceOverAnnounce;
-    } else if ([message.name isEqualToString:@"log"]) {
-        NSLog(@"%@", message.body);
-    } else if ([message.name isEqualToString:@"sendInput"]) {
-        NSData *data = [message.body dataUsingEncoding:NSUTF8StringEncoding];
-        [self sendInput:data];
-    } else if ([message.name isEqualToString:@"resize"]) {
-        [self syncWindowSize];
-    } else if ([message.name isEqualToString:@"propUpdate"]) {
-        [self setValue:message.body[1] forKey:message.body[0]];
     }
 }
 
-- (void)syncWindowSize {
-    [self.webView evaluateJavaScript:@"exports.getSize()" completionHandler:^(NSArray<NSNumber *> *dimensions, NSError *error) {
-        int cols = dimensions[0].intValue;
-        int rows = dimensions[1].intValue;
-        if (self.tty == NULL)
-            return;
+- (void)setWindowSizeWithColumns:(int)columns rows:(int)rows {
+    if (columns <= 0 || rows <= 0 || self.tty == NULL)
+        return;
 #if !ISH_LINUX
-        lock(&self.tty->lock);
-        tty_set_winsize(self.tty, (struct winsize_) {.col = cols, .row = rows});
-        unlock(&self.tty->lock);
+    lock(&self.tty->lock);
+    tty_set_winsize(self.tty, (struct winsize_) {.col = columns, .row = rows});
+    unlock(&self.tty->lock);
 #else
-        async_do_in_workqueue(^{
-            self->_tty->ops->resize(self->_tty, cols, rows);
-        });
+    async_do_in_workqueue(^{
+        self->_tty->ops->resize(self->_tty, columns, rows);
+    });
 #endif
-    }];
 }
 
 - (void)setEnableVoiceOverAnnounce:(BOOL)enableVoiceOverAnnounce {
     _enableVoiceOverAnnounce = enableVoiceOverAnnounce;
-    [self.webView evaluateJavaScript:[NSString stringWithFormat:@"term.setAccessibilityEnabled(%@)",
-                                      enableVoiceOverAnnounce ? @"true" : @"false"]
-                   completionHandler:nil];
 }
 
 - (int)sendOutput:(const void *)buf length:(int)len {
@@ -223,12 +163,11 @@ static NSMapTable<NSUUID *, Terminal *> *terminalsByUUID;
         self.tty->ops->send_input(self.tty, inputRef.bytes, inputRef.length);
     });
 #endif
-    [self.webView evaluateJavaScript:@"exports.setUserGesture()" completionHandler:nil];
     [self.scrollToBottomTask schedule];
 }
 
 - (void)scrollToBottom {
-    [self.webView evaluateJavaScript:@"exports.scrollToBottom()" completionHandler:nil];
+    [self.renderer terminalScrollToBottom];
 }
 
 - (NSString *)arrow:(char)direction {
@@ -236,7 +175,8 @@ static NSMapTable<NSUUID *, Terminal *> *terminalsByUUID;
 }
 
 - (void)refresh {
-    if (!self.loaded)
+    id<TerminalRenderer> renderer = self.renderer;
+    if (!self.loaded || renderer == nil)
         return;
 
 #if !ISH_LINUX
@@ -268,28 +208,16 @@ static NSMapTable<NSUUID *, Terminal *> *terminalsByUUID;
     }
 #endif
 
-    NSString *dataString = [[NSString alloc] initWithBytes:data.bytes length:data.length encoding:NSISOLatin1StringEncoding];
-    // escape for javascript. only have to worry about the first 256 codepoints, because of the latin-1 encoding.
-    dataString = [dataString stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-    dataString = [dataString stringByReplacingOccurrencesOfString:@"\r" withString:@"\\r"];
-    dataString = [dataString stringByReplacingOccurrencesOfString:@"\n" withString:@"\\n"];
-    dataString = [dataString stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    NSString *jsToEvaluate = [NSString stringWithFormat:@"exports.write(\"%@\")", dataString];
-    [self.webView evaluateJavaScript:jsToEvaluate completionHandler:^(id result, NSError *error) {
+    [renderer terminalDidReceiveOutput:data];
 #if !ISH_LINUX
-        lock(&self->_dataLock);
-        self->_outputInProgress = NO;
-        unlock(&self->_dataLock);
+    lock(&self->_dataLock);
+    self->_outputInProgress = NO;
+    unlock(&self->_dataLock);
 #else
-        @synchronized (self) {
-            self->_outputInProgress = NO;
-        }
+    @synchronized (self) {
+        self->_outputInProgress = NO;
+    }
 #endif
-        if (error != nil) {
-            NSLog(@"error sending bytes to the terminal: %@", error);
-            return;
-        }
-    }];
 }
 
 + (void)convertCommand:(NSArray<NSString *> *)command toArgs:(char *)argv limitSize:(size_t)maxSize {

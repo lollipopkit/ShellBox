@@ -64,7 +64,6 @@ extern NSString *const kThemeBackgroundColor;
 @property (readonly) UIUserInterfaceStyle userInterfaceStyle API_AVAILABLE(ios(12.0));
 @property (readonly) UIKeyboardAppearance keyboardAppearance;
 @property CursorStyle cursorStyle;
-@property (readonly) NSString *htermCursorShape;
 @property BOOL blinkCursor;
 @property (readonly) UIStatusBarStyle statusBarStyle;
 @property NSArray<NSString *> *launchCommand;

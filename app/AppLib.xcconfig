@@ -1,2 +1,5 @@
+#include "iOS.xcconfig"
 #include "StaticLib.xcconfig"
 HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT) $(SRCROOT)/deps/libarchive/libarchive
+SWIFT_OBJC_BRIDGING_HEADER = app/ShellBox-Bridging-Header.h
+SWIFT_VERSION = 5.0

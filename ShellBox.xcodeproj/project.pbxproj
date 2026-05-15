@@ -26,7 +26,6 @@
 		496C7AB227CC697E005D7613 /* Theme.m in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1E27C8FB65008B1DFA /* Theme.m */; };
 		497A08BF29633FF400B323CF /* mach_exc.defs in Sources */ = {isa = PBXBuildFile; fileRef = 49087C26295DF1350058075B /* mach_exc.defs */; settings = {ATTRIBUTES = (Server, ); }; };
 		497A08C029633FFA00B323CF /* hook.c in Sources */ = {isa = PBXBuildFile; fileRef = 49087C14295DF0490058075B /* hook.c */; };
-		497A08C12963401100B323CF /* AccessibilityFixes.m in Sources */ = {isa = PBXBuildFile; fileRef = 497A08BC2961168400B323CF /* AccessibilityFixes.m */; };
 		497F6CF5254E5EA500C82F46 /* float80-test.c in Sources */ = {isa = PBXBuildFile; fileRef = 497F6C5A254E5C7E00C82F46 /* float80-test.c */; };
 		497F6CF6254E5EA500C82F46 /* float80.c in Sources */ = {isa = PBXBuildFile; fileRef = 497F6C66254E5C7F00C82F46 /* float80.c */; };
 		497F6CF7254E5EA500C82F46 /* fpu.c in Sources */ = {isa = PBXBuildFile; fileRef = 497F6C5D254E5C7E00C82F46 /* fpu.c */; };
@@ -102,7 +101,7 @@
 		497F6D5C254E609700C82F46 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = BB7D93822087C2890008DA78 /* main.c */; };
 		497F6D87254E62E100C82F46 /* libish.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB13F7DC200AD81D003D1C4D /* libish.a */; };
 		49FF844B2A06249F00850B7A /* ExceptionExfiltrator.m in Sources */ = {isa = PBXBuildFile; fileRef = 49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */; };
-		AA000020AF96D90D00FFB7A4 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B621F96D90D00FFB7A4 /* main.m */; };
+		AA000020AF96D90D00FFB7A4 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB792B621F96D90D00FFB7A4 /* main.swift */; };
 		AA000021AF96D90D00FFB7A4 /* LocationDevice.m in Sources */ = {isa = PBXBuildFile; fileRef = BB235533235D488400139E00 /* LocationDevice.m */; };
 		AA000022AF96D90D00FFB7A4 /* iOSFS.m in Sources */ = {isa = PBXBuildFile; fileRef = 408A2639236440F8008A4E81 /* iOSFS.m */; };
 		AA000023AF96D90D00FFB7A4 /* PasteboardDevice.m in Sources */ = {isa = PBXBuildFile; fileRef = 650B337322EA235C00B4C03E /* PasteboardDevice.m */; };
@@ -119,10 +118,7 @@
 		AA000042AF96D90D00FFB7A4 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BB792B5E1F96D90D00FFB7A4 /* LaunchScreen.storyboard */; };
 		AA000043AF96D90D00FFB7A4 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = BBBF7B5B2415CDBB00EC4C14 /* Settings.bundle */; };
 		AA000044AF96D90D00FFB7A4 /* Icons.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0F552D239F8A790032A2A1 /* Icons.plist */; };
-		AA000047AF96D90D00FFB7A4 /* hterm_all.js in Resources */ = {isa = PBXBuildFile; fileRef = BB2B4DAB231D94C300CB578B /* hterm_all.js */; };
-		AA000048AF96D90D00FFB7A4 /* term.js in Resources */ = {isa = PBXBuildFile; fileRef = BB4A539C1FAA490C00A72ACE /* term.js */; };
-		AA000049AF96D90D00FFB7A4 /* term.css in Resources */ = {isa = PBXBuildFile; fileRef = BB4A53AF1FAA787900A72ACE /* term.css */; };
-		AA00004AAF96D90D00FFB7A4 /* term.html in Resources */ = {isa = PBXBuildFile; fileRef = BB4A53A91FAA496700A72ACE /* term.html */; };
+		AA000047AF96D90D00FFB7A4 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AA000154AF96D90D00FFB7A4 /* SwiftTerm */; };
 		AA000103AF96D90D00FFB7A4 /* Theme.m in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1E27C8FB65008B1DFA /* Theme.m */; };
 		AA000105AF96D90D00FFB7A4 /* TerminalViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B571F96D90D00FFB7A4 /* TerminalViewController.m */; };
 		AA000106AF96D90D00FFB7A4 /* IOSCalls.m in Sources */ = {isa = PBXBuildFile; fileRef = BB123ACD26C9F13500419CDA /* IOSCalls.m */; };
@@ -140,11 +136,11 @@
 		AA000119AF96D90D00FFB7A4 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B541F96D90D00FFB7A4 /* AppDelegate.m */; };
 		AA00011AAF96D90D00FFB7A4 /* UIApplication+OpenURL.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */; };
 		AA00011BAF96D90D00FFB7A4 /* ExceptionExfiltrator.m in Sources */ = {isa = PBXBuildFile; fileRef = 49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */; };
-		AA00011CAF96D90D00FFB7A4 /* AccessibilityFixes.m in Sources */ = {isa = PBXBuildFile; fileRef = 497A08BC2961168400B323CF /* AccessibilityFixes.m */; };
 		AA00011FAF96D90D00FFB7A4 /* NSObject+SaneKVO.m in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */; };
 		AA000121AF96D90D00FFB7A4 /* fakefs.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E5C2248DBA7B009C7A74 /* fakefs.c */; };
 		AA000130AF96D90D00FFB7A4 /* DebugServer.c in Sources */ = {isa = PBXBuildFile; fileRef = AA000131AF96D90D00FFB7A4 /* DebugServer.c */; };
 		AA000133AF96D90D00FFB7A4 /* ShellBoxRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */; };
+		AA000151AF96D90D00FFB7A4 /* SwiftTermHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000150AF96D90D00FFB7A4 /* SwiftTermHostView.swift */; };
 		AA000140AF96D90D00FFB7A4 /* RootfsPatch.bundle in Resources */ = {isa = PBXBuildFile; fileRef = AA000143AF96D90D00FFB7A4 /* RootfsPatch.bundle */; };
 		AA000141AF96D90D00FFB7A4 /* RootfsPatch.bundle in Resources */ = {isa = PBXBuildFile; fileRef = AA000143AF96D90D00FFB7A4 /* RootfsPatch.bundle */; };
 		AA000142AF96D90D00FFB7A4 /* RootfsPatch.bundle in Resources */ = {isa = PBXBuildFile; fileRef = AA000143AF96D90D00FFB7A4 /* RootfsPatch.bundle */; };
@@ -168,15 +164,12 @@
 		BB28C7A526896B1F00BDC834 /* UIApplication+OpenURL.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */; };
 		BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.m in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */; };
 		BB28C7AE26896C1D00BDC834 /* libShellBoxApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBEF191E26806364001225BD /* libShellBoxApp.a */; };
-		BB28C7B226896C4600BDC834 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B621F96D90D00FFB7A4 /* main.m */; };
+		BB28C7B226896C4600BDC834 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB792B621F96D90D00FFB7A4 /* main.swift */; };
 		BB28C7BA268975AA00BDC834 /* iOSFS.m in Sources */ = {isa = PBXBuildFile; fileRef = 408A2639236440F8008A4E81 /* iOSFS.m */; };
 		BB28C7BB268975AE00BDC834 /* LocationDevice.m in Sources */ = {isa = PBXBuildFile; fileRef = BB235533235D488400139E00 /* LocationDevice.m */; };
 		BB28C7BC268975B000BDC834 /* PasteboardDevice.m in Sources */ = {isa = PBXBuildFile; fileRef = 650B337322EA235C00B4C03E /* PasteboardDevice.m */; };
 		BB28C7BF2689799800BDC834 /* Roots.m in Sources */ = {isa = PBXBuildFile; fileRef = BB10E5CD248DBE66009C7A74 /* Roots.m */; };
-		BB2B4DAC231D94C300CB578B /* hterm_all.js in Resources */ = {isa = PBXBuildFile; fileRef = BB2B4DAB231D94C300CB578B /* hterm_all.js */; };
-		BB2B4DAD231D998300CB578B /* term.js in Resources */ = {isa = PBXBuildFile; fileRef = BB4A539C1FAA490C00A72ACE /* term.js */; };
-		BB2B4DAE231D998300CB578B /* term.css in Resources */ = {isa = PBXBuildFile; fileRef = BB4A53AF1FAA787900A72ACE /* term.css */; };
-		BB2B4DAF231D998300CB578B /* term.html in Resources */ = {isa = PBXBuildFile; fileRef = BB4A53A91FAA496700A72ACE /* term.html */; };
+		BB2B4DAC231D94C300CB578B /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AA000154AF96D90D00FFB7A4 /* SwiftTerm */; };
 		BB38597827BCEC70000A1082 /* circular.png in Resources */ = {isa = PBXBuildFile; fileRef = BB38597627BCEC70000A1082 /* circular.png */; };
 		BB38597D27BCEC78000A1082 /* dollarblock1.png in Resources */ = {isa = PBXBuildFile; fileRef = BB38597927BCEC78000A1082 /* dollarblock1.png */; };
 		BB38597F27BCEC78000A1082 /* dollarblock2.png in Resources */ = {isa = PBXBuildFile; fileRef = BB38597A27BCEC78000A1082 /* dollarblock2.png */; };
@@ -225,7 +218,6 @@
 		BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrno.m in Sources */ = {isa = PBXBuildFile; fileRef = BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */; };
 		BBC3863F276817AD00CC8C2E /* CurrentRoot.m in Sources */ = {isa = PBXBuildFile; fileRef = BB565EA32734F1FB00C93EAE /* CurrentRoot.m */; };
 		BBD23D5F258DA450003DCB40 /* Screenshots.m in Sources */ = {isa = PBXBuildFile; fileRef = BBD23D5E258DA450003DCB40 /* Screenshots.m */; };
-		BBD23D77258DA4BC003DCB40 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD23D76258DA4BC003DCB40 /* SnapshotHelper.swift */; };
 		BBE64AC22A198FCC00589372 /* ExceptionExfiltrator.m in Sources */ = {isa = PBXBuildFile; fileRef = 49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */; };
 		BBECF3AD269132F400DEC937 /* LinuxInterop.c in Sources */ = {isa = PBXBuildFile; fileRef = BBECF39D2691313B00DEC937 /* LinuxInterop.c */; };
 		BBECF3AE2691330F00DEC937 /* libShellBoxLinux.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBECF3A22691314C00DEC937 /* libShellBoxLinux.a */; };
@@ -253,15 +245,13 @@
 		BBEF1988268066D1001225BD /* iinhash.png in Resources */ = {isa = PBXBuildFile; fileRef = BBC8298024EDACBB009D042C /* iinhash.png */; };
 		BBEF1989268066D1001225BD /* pydann2.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0F553523A0ACFC0032A2A1 /* pydann2.png */; };
 		BBEF198A268066D1001225BD /* ihash1.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0F553323A0AC760032A2A1 /* ihash1.png */; };
-		BBEF198B268066D1001225BD /* term.html in Resources */ = {isa = PBXBuildFile; fileRef = BB4A53A91FAA496700A72ACE /* term.html */; };
+		BB28C7C126896C4600BDC834 /* SwiftTermHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000150AF96D90D00FFB7A4 /* SwiftTermHostView.swift */; };
 		BBEF198C268066D1001225BD /* notsurewhatthisis.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0B88202589734A00208600 /* notsurewhatthisis.png */; };
 		BBEF198D268066D1001225BD /* reworked.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0B88172589662A00208600 /* reworked.png */; };
 		BBEF198F268066D1001225BD /* idollarhash.png in Resources */ = {isa = PBXBuildFile; fileRef = BBC8297D24EDAC11009D042C /* idollarhash.png */; };
-		BBEF1990268066D1001225BD /* hterm_all.js in Resources */ = {isa = PBXBuildFile; fileRef = BB2B4DAB231D94C300CB578B /* hterm_all.js */; };
+		BBEF1990268066D1001225BD /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AA000154AF96D90D00FFB7A4 /* SwiftTerm */; };
 		BBEF1991268066D1001225BD /* icon1337.png in Resources */ = {isa = PBXBuildFile; fileRef = BB4A922D24EDA461002F5A96 /* icon1337.png */; };
 		BBEF1992268066D1001225BD /* rgb.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0B88052589661A00208600 /* rgb.png */; };
-		BBEF1993268066D1001225BD /* term.css in Resources */ = {isa = PBXBuildFile; fileRef = BB4A53AF1FAA787900A72ACE /* term.css */; };
-		BBEF1994268066D1001225BD /* term.js in Resources */ = {isa = PBXBuildFile; fileRef = BB4A539C1FAA490C00A72ACE /* term.js */; };
 		BBEF1995268066D1001225BD /* sprite64.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0B880E2589662200208600 /* sprite64.png */; };
 		BBEF1996268066D1001225BD /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = BB1B9A4223A5E96900414052 /* icon.png */; };
 		BBF06F6C2CC4C134009F5DB5 /* fchdir.c in Sources */ = {isa = PBXBuildFile; fileRef = BB0DF6F22CC4B01000EFECAE /* fchdir.c */; };
@@ -282,6 +272,7 @@
 				"$(DERIVED_FILE_DIR)/mach_excServer.h",
 				"$(DERIVED_FILE_DIR)/mach_excServer.c",
 			);
+			runOncePerArchitecture = 0;
 			script = "set -x\n\nunset IPHONEOS_DEPLOYMENT_TARGET\n\nsdk=\"$(dirname \"$SCRIPT_INPUT_FILE\")/../../../\"\ncd \"$DERIVED_FILE_DIR\"\nmig -sheader \"$DERIVED_FILE_DIR/mach_excServer.h\" -server \"$DERIVED_FILE_DIR/mach_excServer.c\" -Wno-incompatible-sysroot -isysroot \"$sdk\" \"$SCRIPT_INPUT_FILE\"\n";
 		};
 		AA000200AF96D90D00FFB7A4 /* PBXBuildRule */ = {
@@ -295,6 +286,7 @@
 				"$(DERIVED_FILE_DIR)/mach_excServer.h",
 				"$(DERIVED_FILE_DIR)/mach_excServer.c",
 			);
+			runOncePerArchitecture = 0;
 			script = "set -x\n\nunset IPHONEOS_DEPLOYMENT_TARGET\n\nsdk=\"$(dirname \"$SCRIPT_INPUT_FILE\")/../../../\"\ncd \"$DERIVED_FILE_DIR\"\nmig -sheader \"$DERIVED_FILE_DIR/mach_excServer.h\" -server \"$DERIVED_FILE_DIR/mach_excServer.c\" -Wno-incompatible-sysroot -isysroot \"$sdk\" \"$SCRIPT_INPUT_FILE\"\n";
 		};
 /* End PBXBuildRule section */
@@ -475,7 +467,6 @@
 		49302D972777FAB400C9885A /* ish.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ish.h; sourceTree = "<group>"; };
 		493B378F290F5320000C41ED /* CLI.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CLI.xcconfig; sourceTree = "<group>"; };
 		494D03F72727DAC6004F0CCE /* xcode-ninja.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "xcode-ninja.sh"; path = "app/xcode-ninja.sh"; sourceTree = "<group>"; };
-		497A08BC2961168400B323CF /* AccessibilityFixes.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AccessibilityFixes.m; sourceTree = "<group>"; };
 		497F6BDA254E5C0D00C82F46 /* mem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mem.h; sourceTree = "<group>"; };
 		497F6BDB254E5C0D00C82F46 /* path.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = path.c; sourceTree = "<group>"; };
 		497F6BDC254E5C0D00C82F46 /* dev.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dev.c; sourceTree = "<group>"; };
@@ -632,6 +623,7 @@
 		AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellBoxRootView.swift; sourceTree = "<group>"; };
 		AA000135AF96D90D00FFB7A4 /* ShellBox-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ShellBox-Bridging-Header.h"; sourceTree = "<group>"; };
 		AA000143AF96D90D00FFB7A4 /* RootfsPatch.bundle */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.plug-in"; path = RootfsPatch.bundle; sourceTree = "<group>"; };
+		AA000150AF96D90D00FFB7A4 /* SwiftTermHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftTermHostView.swift; sourceTree = "<group>"; };
 		AA9C2BB72F44A3DD00F41633 /* Shell Box FFmpeg.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shell Box FFmpeg.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0B848E2586A4CF00208600 /* XcodeDefault.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeDefault.xcconfig; sourceTree = "<group>"; };
 		BB0B859B2586F13200208600 /* XcodeDebug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeDebug.xcconfig; sourceTree = "<group>"; };
@@ -676,7 +668,6 @@
 		BB28C7522689522700BDC834 /* ProjectReleaseLinux.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectReleaseLinux.xcconfig; sourceTree = "<group>"; };
 		BB28C7532689522C00BDC834 /* ProjectDebugLinux.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectDebugLinux.xcconfig; sourceTree = "<group>"; };
 		BB28C755268956C900BDC834 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS15.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		BB2B4DAB231D94C300CB578B /* hterm_all.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; name = hterm_all.js; path = ../../deps/libapps/hterm/dist/js/hterm_all.js; sourceTree = "<group>"; };
 		BB38597627BCEC70000A1082 /* circular.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = circular.png; sourceTree = "<group>"; };
 		BB38597927BCEC78000A1082 /* dollarblock1.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = dollarblock1.png; sourceTree = "<group>"; };
 		BB38597A27BCEC78000A1082 /* dollarblock2.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = dollarblock2.png; sourceTree = "<group>"; };
@@ -688,9 +679,6 @@
 		BB415920255EF9E300E0950C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB455E0F1FB37F6600AFB48B /* DelayedUITask.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DelayedUITask.h; sourceTree = "<group>"; };
 		BB455E101FB37F6600AFB48B /* DelayedUITask.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DelayedUITask.m; sourceTree = "<group>"; };
-		BB4A539C1FAA490C00A72ACE /* term.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = term.js; sourceTree = "<group>"; };
-		BB4A53A91FAA496700A72ACE /* term.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = term.html; sourceTree = "<group>"; };
-		BB4A53AF1FAA787900A72ACE /* term.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; path = term.css; sourceTree = "<group>"; };
 		BB4A922D24EDA461002F5A96 /* icon1337.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon1337.png; sourceTree = "<group>"; };
 		BB4A922F24EDA55C002F5A96 /* colontildehash.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = colontildehash.png; sourceTree = "<group>"; };
 		BB4A923124EDA560002F5A96 /* 3d.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = 3d.png; sourceTree = "<group>"; };
@@ -707,7 +695,7 @@
 		BB792B5C1F96D90D00FFB7A4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB792B5F1F96D90D00FFB7A4 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		BB792B611F96D90D00FFB7A4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		BB792B621F96D90D00FFB7A4 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		BB792B621F96D90D00FFB7A4 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		BB7D93352087C2880008DA78 /* xX_main_Xx.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = xX_main_Xx.h; sourceTree = "<group>"; };
 		BB7D933B2087C2880008DA78 /* misc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = misc.h; sourceTree = "<group>"; };
 		BB7D93812087C2890008DA78 /* debug.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = debug.h; sourceTree = "<group>"; };
@@ -744,7 +732,6 @@
 		BBCED895255BB65A00CA0701 /* NSObject+SaneKVO.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSObject+SaneKVO.h"; sourceTree = "<group>"; };
 		BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSObject+SaneKVO.m"; sourceTree = "<group>"; };
 		BBD23D5E258DA450003DCB40 /* Screenshots.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Screenshots.m; sourceTree = "<group>"; };
-		BBD23D76258DA4BC003DCB40 /* SnapshotHelper.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SnapshotHelper.swift; path = fastlane/SnapshotHelper.swift; sourceTree = SOURCE_ROOT; };
 		BBD23D95258DEF6B003DCB40 /* Screenshots.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Screenshots.xctestplan; sourceTree = "<group>"; };
 		BBECF39B2691311D00DEC937 /* LinuxInterop.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LinuxInterop.h; sourceTree = "<group>"; };
 		BBECF39D2691313B00DEC937 /* LinuxInterop.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxInterop.c; sourceTree = "<group>"; };
@@ -778,6 +765,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000047AF96D90D00FFB7A4 /* SwiftTerm in Frameworks */,
 				AA000037AF96D90D00FFB7A4 /* libfakefs.a in Frameworks */,
 				AA000038AF96D90D00FFB7A4 /* libish.a in Frameworks */,
 				AA000039AF96D90D00FFB7A4 /* libish_emu.a in Frameworks */,
@@ -801,6 +789,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB2B4DAC231D94C300CB578B /* SwiftTerm in Frameworks */,
 				BB28C7AE26896C1D00BDC834 /* libShellBoxApp.a in Frameworks */,
 				BB21A18426890C7E00BD19B4 /* libfakefs.a in Frameworks */,
 				BB13F7EA200ADCED003D1C4D /* libish.a in Frameworks */,
@@ -827,6 +816,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BBEF1990268066D1001225BD /* SwiftTerm in Frameworks */,
 				BBECF3B9269136FB00DEC937 /* liblinux.a in Frameworks */,
 				BBECF3AE2691330F00DEC937 /* libShellBoxLinux.a in Frameworks */,
 				BBBDDF932CE0132F0071F1F3 /* libShellBoxLinuxUser.a in Frameworks */,
@@ -1001,7 +991,6 @@
 			children = (
 				BB41591E255EF9E300E0950C /* UITests.m */,
 				BBD23D5E258DA450003DCB40 /* Screenshots.m */,
-				BBD23D76258DA4BC003DCB40 /* SnapshotHelper.swift */,
 				BBD23D95258DEF6B003DCB40 /* Screenshots.xctestplan */,
 				BB415920255EF9E300E0950C /* Info.plist */,
 			);
@@ -1023,17 +1012,6 @@
 				BB7D93362087C2880008DA78 /* util */,
 			);
 			name = "most of the code";
-			sourceTree = "<group>";
-		};
-		BB4A53991FAA40FD00A72ACE /* terminal */ = {
-			isa = PBXGroup;
-			children = (
-				BB4A53A91FAA496700A72ACE /* term.html */,
-				BB4A539C1FAA490C00A72ACE /* term.js */,
-				BB4A53AF1FAA787900A72ACE /* term.css */,
-				BB2B4DAB231D94C300CB578B /* hterm_all.js */,
-			);
-			path = terminal;
 			sourceTree = "<group>";
 		};
 		BB792B451F96D8E000FFB7A4 = {
@@ -1084,6 +1062,7 @@
 				BBCC9D952365430800424C83 /* SceneDelegate.m */,
 				AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */,
 				AA000135AF96D90D00FFB7A4 /* ShellBox-Bridging-Header.h */,
+				AA000150AF96D90D00FFB7A4 /* SwiftTermHostView.swift */,
 				BB792B561F96D90D00FFB7A4 /* TerminalViewController.h */,
 				BB792B571F96D90D00FFB7A4 /* TerminalViewController.m */,
 				BBFB557D21587B2B00DFE6DE /* Bar */,
@@ -1094,7 +1073,6 @@
 				BB23F58B231E1D1400585522 /* ScrollbarView.h */,
 				BB23F58C231E1D1400585522 /* ScrollbarView.m */,
 				BBECF39C2691312500DEC937 /* LinuxInterop */,
-				BB4A53991FAA40FD00A72ACE /* terminal */,
 				BB235532235D472F00139E00 /* Devices */,
 				BBFB557321586C7600DFE6DE /* About */,
 				BB10E5C1248DB961009C7A74 /* Roots */,
@@ -1105,7 +1083,7 @@
 				BB1B9A4123A5E92A00414052 /* Icons */,
 				BB792B5E1F96D90D00FFB7A4 /* LaunchScreen.storyboard */,
 				BB792B611F96D90D00FFB7A4 /* Info.plist */,
-				BB792B621F96D90D00FFB7A4 /* main.m */,
+				BB792B621F96D90D00FFB7A4 /* main.swift */,
 				BB0B848D2586A4B100208600 /* Configs */,
 				BB88F4A4215476BA00A341FD /* ShellBox.entitlements */,
 				BB88F4912154760800A341FD /* FileProvider */,
@@ -1324,7 +1302,6 @@
 		BBFB557221586C6600DFE6DE /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
-				497A08BC2961168400B323CF /* AccessibilityFixes.m */,
 				BB9C7B86240A29DE00F5D4F0 /* AppGroup.h */,
 				BB9C7B84240A240E00F5D4F0 /* AppGroup.m */,
 				BB455E0F1FB37F6600AFB48B /* DelayedUITask.h */,
@@ -1437,7 +1414,6 @@
 				AA0000091F96D90D00FFB7A4 /* Frameworks */,
 				AA000011AF96D90D00FFB7A4 /* Download Root */,
 				AA000012AF96D90D00FFB7A4 /* Generate APT Sources File */,
-				AA000013AF96D90D00FFB7A4 /* Compile JavaScript */,
 				AA000010AF96D90D00FFB7A4 /* Resources */,
 				AA000014AF96D90D00FFB7A4 /* Embed Foundation Extensions */,
 			);
@@ -1451,6 +1427,9 @@
 			name = "Shell Box FFmpeg";
 			productName = "Shell Box FFmpeg";
 			productReference = AA9C2BB72F44A3DD00F41633 /* Shell Box FFmpeg.app */;
+			packageProductDependencies = (
+				AA000154AF96D90D00FFB7A4 /* SwiftTerm */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 		AA0000011F96D90D00FFB7A4 /* Shell Box ARM64 */ = {
@@ -1462,7 +1441,6 @@
 				AA0000091F96D90D00FFB7A4 /* Frameworks */,
 				AA000011AF96D90D00FFB7A4 /* Download Root */,
 				AA000012AF96D90D00FFB7A4 /* Generate APT Sources File */,
-				AA000013AF96D90D00FFB7A4 /* Compile JavaScript */,
 				AA000010AF96D90D00FFB7A4 /* Resources */,
 				AA000014AF96D90D00FFB7A4 /* Embed Foundation Extensions */,
 			);
@@ -1476,6 +1454,9 @@
 			name = "Shell Box ARM64";
 			productName = "Shell Box";
 			productReference = AA0000021F96D90D00FFB7A4 /* Shell Box.app */;
+			packageProductDependencies = (
+				AA000154AF96D90D00FFB7A4 /* SwiftTerm */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 		BB13F7DB200AD81D003D1C4D /* libish */ = {
@@ -1536,7 +1517,6 @@
 				BB792B4D1F96D90D00FFB7A4 /* Frameworks */,
 				BBF1248B1FA7BF530088FB50 /* Download Root */,
 				BB034E8C263643C10000A498 /* Generate APT Sources File */,
-				BB4A53AC1FAA49CA00A72ACE /* Compile JavaScript */,
 				BB792B4E1F96D90D00FFB7A4 /* Resources */,
 			);
 			buildRules = (
@@ -1550,6 +1530,9 @@
 			name = "Shell Box Legacy";
 			productName = "Shell Box Legacy";
 			productReference = BB792B501F96D90D00FFB7A4 /* Shell Box.app */;
+			packageProductDependencies = (
+				AA000154AF96D90D00FFB7A4 /* SwiftTerm */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 		BB88F48F2154760800A341FD /* Shell Box FileProvider */ = {
@@ -1631,6 +1614,9 @@
 			name = libShellBoxApp;
 			productName = libShellBox;
 			productReference = BBEF191E26806364001225BD /* libShellBoxApp.a */;
+			packageProductDependencies = (
+				AA000154AF96D90D00FFB7A4 /* SwiftTerm */,
+			);
 			productType = "com.apple.product-type.library.static";
 		};
 		BBEF1964268066D1001225BD /* Shell Box Linux */ = {
@@ -1641,7 +1627,6 @@
 				BBEF196F268066D1001225BD /* Frameworks */,
 				BBEF1979268066D1001225BD /* Download Root */,
 				BBEF197A268066D1001225BD /* Generate APT Sources File */,
-				BBEF197B268066D1001225BD /* Compile JavaScript */,
 				BBEF197C268066D1001225BD /* Resources */,
 				BBEF1997268066D1001225BD /* Embed Foundation Extensions */,
 			);
@@ -1655,6 +1640,9 @@
 			name = "Shell Box Linux";
 			productName = "Shell Box Legacy";
 			productReference = BBEF199C268066D1001225BD /* Shell Box.app */;
+			packageProductDependencies = (
+				AA000154AF96D90D00FFB7A4 /* SwiftTerm */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 		BBFB2C542590257E00545EAB /* libish_emu */ = {
@@ -1756,6 +1744,9 @@
 			);
 			mainGroup = BB792B451F96D8E000FFB7A4;
 			productRefGroup = BB792B511F96D90D00FFB7A4 /* Products */;
+			packageReferences = (
+				AA000153AF96D90D00FFB7A4 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
 			projectDirPath = "";
 			projectReferences = (
 				{
@@ -1807,10 +1798,6 @@
 				AA000043AF96D90D00FFB7A4 /* Settings.bundle in Resources */,
 				AA000140AF96D90D00FFB7A4 /* RootfsPatch.bundle in Resources */,
 				AA000044AF96D90D00FFB7A4 /* Icons.plist in Resources */,
-				AA000047AF96D90D00FFB7A4 /* hterm_all.js in Resources */,
-				AA000048AF96D90D00FFB7A4 /* term.js in Resources */,
-				AA000049AF96D90D00FFB7A4 /* term.css in Resources */,
-				AA00004AAF96D90D00FFB7A4 /* term.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1843,13 +1830,9 @@
 				BB38599427BCEE6B000A1082 /* pydann1.png in Resources */,
 				BB0F552E239F8A790032A2A1 /* Icons.plist in Resources */,
 				BB38599527BCEE6B000A1082 /* pydann2.png in Resources */,
-				BB2B4DAF231D998300CB578B /* term.html in Resources */,
 				BB3859A027BCEE6B000A1082 /* 3d.png in Resources */,
-				BB2B4DAC231D94C300CB578B /* hterm_all.js in Resources */,
 				BB3859A327BCEE6B000A1082 /* ihash1.png in Resources */,
-				BB2B4DAE231D998300CB578B /* term.css in Resources */,
 				BB38599827BCEE6B000A1082 /* metal.png in Resources */,
-				BB2B4DAD231D998300CB578B /* term.js in Resources */,
 				BB38599A27BCEE6B000A1082 /* is.png in Resources */,
 				BB38599E27BCEE6B000A1082 /* circular.png in Resources */,
 				BB38599F27BCEE6B000A1082 /* icon1337.png in Resources */,
@@ -1884,18 +1867,14 @@
 				BBEF1988268066D1001225BD /* iinhash.png in Resources */,
 				BBEF1989268066D1001225BD /* pydann2.png in Resources */,
 				BBEF198A268066D1001225BD /* ihash1.png in Resources */,
-				BBEF198B268066D1001225BD /* term.html in Resources */,
 				BBEF198C268066D1001225BD /* notsurewhatthisis.png in Resources */,
 				BBEF198D268066D1001225BD /* reworked.png in Resources */,
 				BBEF198F268066D1001225BD /* idollarhash.png in Resources */,
 				BB3859A827BCEE6C000A1082 /* is.png in Resources */,
 				BB38597F27BCEC78000A1082 /* dollarblock2.png in Resources */,
-				BBEF1990268066D1001225BD /* hterm_all.js in Resources */,
 				BB38597827BCEC70000A1082 /* circular.png in Resources */,
 				BBEF1991268066D1001225BD /* icon1337.png in Resources */,
 				BBEF1992268066D1001225BD /* rgb.png in Resources */,
-				BBEF1993268066D1001225BD /* term.css in Resources */,
-				BBEF1994268066D1001225BD /* term.js in Resources */,
 				BBEF1995268066D1001225BD /* sprite64.png in Resources */,
 				BBEF1996268066D1001225BD /* icon.png in Resources */,
 				BB38598127BCEC78000A1082 /* freeiosterminal.png in Resources */,
@@ -1944,25 +1923,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "python3 $SRCROOT/app/gen_apt_sources.py\n";
-		};
-		AA000013AF96D90D00FFB7A4 /* Compile JavaScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Compile JavaScript";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(SRCROOT)/deps/hterm/dist/js/hterm_all.js",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "cd $SRCROOT/deps/libapps && ./hterm/bin/mkdist\n";
 		};
 		AA000300AF96D90D00FFB7A4 /* Build Meson (ARM64) */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2030,23 +1990,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "mkdir -p \"$CONFIGURATION_BUILD_DIR\"\nln -sf \"$MESON_BUILD_DIR/$PRODUCT_NAME.a\" \"$CONFIGURATION_BUILD_DIR\"\n";
-		};
-		BB4A53AC1FAA49CA00A72ACE /* Compile JavaScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Compile JavaScript";
-			outputPaths = (
-				"$(SRCROOT)/deps/hterm/dist/js/hterm_all.js",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = "/bin/sh -e";
-			shellScript = "cd $SRCROOT/deps/libapps\n./hterm/bin/mkdist\n";
-			showEnvVarsInLog = 0;
 		};
 		BB4A922A24ED9421002F5A96 /* Add icons to Info.plist */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2118,23 +2061,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/sh -e";
 			shellScript = "python3 $SRCROOT/app/gen_apt_sources.py\n";
-		};
-		BBEF197B268066D1001225BD /* Compile JavaScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Compile JavaScript";
-			outputPaths = (
-				"$(SRCROOT)/deps/hterm/dist/js/hterm_all.js",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = "/bin/sh -e";
-			shellScript = "cd $SRCROOT/deps/libapps\n./hterm/bin/mkdist\n";
-			showEnvVarsInLog = 0;
 		};
 		BBF1248B1FA7BF530088FB50 /* Download Root */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2264,7 +2190,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA000020AF96D90D00FFB7A4 /* main.m in Sources */,
+				AA000020AF96D90D00FFB7A4 /* main.swift in Sources */,
 				AA000021AF96D90D00FFB7A4 /* LocationDevice.m in Sources */,
 				AA000022AF96D90D00FFB7A4 /* iOSFS.m in Sources */,
 				AA000023AF96D90D00FFB7A4 /* PasteboardDevice.m in Sources */,
@@ -2285,11 +2211,11 @@
 				AA000119AF96D90D00FFB7A4 /* AppDelegate.m in Sources */,
 				AA00011AAF96D90D00FFB7A4 /* UIApplication+OpenURL.m in Sources */,
 				AA00011BAF96D90D00FFB7A4 /* ExceptionExfiltrator.m in Sources */,
-				AA00011CAF96D90D00FFB7A4 /* AccessibilityFixes.m in Sources */,
 				AA00011FAF96D90D00FFB7A4 /* NSObject+SaneKVO.m in Sources */,
 				AA000121AF96D90D00FFB7A4 /* fakefs.c in Sources */,
 				AA000130AF96D90D00FFB7A4 /* DebugServer.c in Sources */,
 				AA000133AF96D90D00FFB7A4 /* ShellBoxRootView.swift in Sources */,
+				AA000151AF96D90D00FFB7A4 /* SwiftTermHostView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2317,7 +2243,6 @@
 			files = (
 				BB41591F255EF9E300E0950C /* UITests.m in Sources */,
 				BBD23D5F258DA450003DCB40 /* Screenshots.m in Sources */,
-				BBD23D77258DA4BC003DCB40 /* SnapshotHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2359,7 +2284,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB28C7B226896C4600BDC834 /* main.m in Sources */,
+				BB28C7B226896C4600BDC834 /* main.swift in Sources */,
 				496C7AB227CC697E005D7613 /* Theme.m in Sources */,
 				BB28C79526896B1F00BDC834 /* TerminalViewController.m in Sources */,
 				BB123ACE26C9F13500419CDA /* IOSCalls.m in Sources */,
@@ -2377,13 +2302,32 @@
 				BBECF3BC26913F1600DEC937 /* AppDelegate.m in Sources */,
 				BB28C7A526896B1F00BDC834 /* UIApplication+OpenURL.m in Sources */,
 				49FF844B2A06249F00850B7A /* ExceptionExfiltrator.m in Sources */,
-				497A08C12963401100B323CF /* AccessibilityFixes.m in Sources */,
 				BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.m in Sources */,
 				BB77636726E486A7008DB44A /* fakefs.c in Sources */,
+				BB28C7C126896C4600BDC834 /* SwiftTermHostView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA000153AF96D90D00FFB7A4 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.13.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA000154AF96D90D00FFB7A4 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA000153AF96D90D00FFB7A4 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXTargetDependency section */
 		497F6D5B254E609000C82F46 /* PBXTargetDependency */ = {

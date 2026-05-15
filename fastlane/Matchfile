@@ -1,2 +1,0 @@
-git_url("https://github.com/ish-app/certificates")
-app_identifier(["com.lollipopkit.shellbox", "com.lollipopkit.shellbox.FileProvider"])

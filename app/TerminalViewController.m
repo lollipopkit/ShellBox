@@ -205,10 +205,15 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
 
     char argv[4096];
     [Terminal convertCommand:command toArgs:argv limitSize:sizeof(argv)];
-    const char *envp = "TERM=xterm-256color\0";
+    const char *envp =
+        "TERM=xterm-256color\0"
+        "HOME=/root\0"
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\0";
     err = do_execve(command[0].UTF8String, command.count, argv, envp);
-    if (err < 0)
+    if (err < 0) {
+        NSLog(@"terminal session exec failed command %@ err %d", command, err);
         return err;
+    }
     self.sessionPid = current->pid;
     task_start(current);
 #else
@@ -249,19 +254,9 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
     if (pid != self.sessionPid)
         return;
 
+    int code = [notif.userInfo[@"code"] intValue];
+    NSLog(@"terminal session pid %d exited with raw code %d exit status %d", pid, code, code >> 8);
     [self.sessionTerminal destroy];
-    // On iOS 13, there are multiple windows, so just close this one.
-    if (@available(iOS 13, *)) {
-        // On iPhone, destroying scenes will fail, but the error doesn't actually go to the error handler, which is really stupid. Apple doesn't fix bugs, so I'm forced to just add a check here.
-        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad && self.sceneSession != nil) {
-            [UIApplication.sharedApplication requestSceneSessionDestruction:self.sceneSession options:nil errorHandler:^(NSError *error) {
-                NSLog(@"scene destruction error %@", error);
-                self.sceneSession = nil;
-                [self processExited:notif];
-            }];
-            return;
-        }
-    }
     current = NULL; // it's been freed
     [self startNewSession];
 }
@@ -412,15 +407,7 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
 }
 
 - (void)accessoryPressArrow:(NSInteger)direction {
-    char arrow = 0;
-    switch (direction) {
-        case 1: arrow = 'A'; break;
-        case 2: arrow = 'B'; break;
-        case 3: arrow = 'D'; break;
-        case 4: arrow = 'C'; break;
-        default: return;
-    }
-    [self pressKey:[self.terminal arrow:arrow]];
+    [self.termView pressArrow:direction];
 }
 
 - (void)accessoryPaste {

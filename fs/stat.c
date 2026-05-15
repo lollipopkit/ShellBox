@@ -75,6 +75,19 @@ static struct fd *at_fd(fd_t f) {
     return f_get(f);
 }
 
+static dword_t put_stat(addr_t statbuf_addr, struct statbuf stat) {
+#ifdef GUEST_ARM64
+    struct stat_arm64 arm64stat = stat_convert_arm64(stat);
+    if (user_put(statbuf_addr, arm64stat))
+        return _EFAULT;
+#else
+    struct newstat64 newstat = stat_convert_newstat64(stat);
+    if (user_put(statbuf_addr, newstat))
+        return _EFAULT;
+#endif
+    return 0;
+}
+
 static dword_t sys_stat_path(fd_t at_f, addr_t path_addr, addr_t statbuf_addr, bool follow_links) {
     int err;
     char path[MAX_PATH];
@@ -87,16 +100,7 @@ static dword_t sys_stat_path(fd_t at_f, addr_t path_addr, addr_t statbuf_addr, b
     struct statbuf stat = {};
     if ((err = generic_statat(at, path, &stat, follow_links)) < 0)
         return err;
-#ifdef GUEST_ARM64
-    struct stat_arm64 arm64stat = stat_convert_arm64(stat);
-    if (user_put(statbuf_addr, arm64stat))
-        return _EFAULT;
-#else
-    struct newstat64 newstat = stat_convert_newstat64(stat);
-    if (user_put(statbuf_addr, newstat))
-        return _EFAULT;
-#endif
-    return 0;
+    return put_stat(statbuf_addr, stat);
 }
 
 dword_t sys_stat64(addr_t path_addr, addr_t statbuf_addr) {
@@ -108,7 +112,25 @@ dword_t sys_lstat64(addr_t path_addr, addr_t statbuf_addr) {
 }
 
 dword_t sys_fstatat64(fd_t at, addr_t path_addr, addr_t statbuf_addr, dword_t flags) {
-    return sys_stat_path(at, path_addr, statbuf_addr, !(flags & AT_SYMLINK_NOFOLLOW_));
+    char path[MAX_PATH];
+    if (user_read_string(path_addr, path, sizeof(path)))
+        return _EFAULT;
+    STRACE("stat(at=%d, path=\"%s\", statbuf=0x%x, flags=%#x)", at, path, statbuf_addr, flags);
+    struct fd *at_fd_ = at_fd(at);
+    if (at_fd_ == NULL)
+        return _EBADF;
+    struct statbuf stat = {};
+    if ((flags & AT_EMPTY_PATH_) && strcmp(path, "") == 0) {
+        int err = at_fd_->mount->fs->fstat(at_fd_, &stat);
+        if (err < 0)
+            return err;
+        return put_stat(statbuf_addr, stat);
+    }
+    bool follow_links = !(flags & AT_SYMLINK_NOFOLLOW_);
+    int err = generic_statat(at_fd_, path, &stat, follow_links);
+    if (err < 0)
+        return err;
+    return put_stat(statbuf_addr, stat);
 }
 
 dword_t sys_fstat64(fd_t fd_no, addr_t statbuf_addr) {
@@ -120,16 +142,7 @@ dword_t sys_fstat64(fd_t fd_no, addr_t statbuf_addr) {
     int err = fd->mount->fs->fstat(fd, &stat);
     if (err < 0)
         return err;
-#ifdef GUEST_ARM64
-    struct stat_arm64 arm64stat = stat_convert_arm64(stat);
-    if (user_put(statbuf_addr, arm64stat))
-        return _EFAULT;
-#else
-    struct newstat64 newstat = stat_convert_newstat64(stat);
-    if (user_put(statbuf_addr, newstat))
-        return _EFAULT;
-#endif
-    return 0;
+    return put_stat(statbuf_addr, stat);
 }
 
 dword_t sys_statx(fd_t at_f, addr_t path_addr, int_t flags, uint_t mask, addr_t statx_addr) {

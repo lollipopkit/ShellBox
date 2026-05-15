@@ -14,7 +14,7 @@ enum OverrideAppearance {
     OverrideAppearanceDark,
 };
 
-@interface TerminalView : UIView <UITextInput, WKScriptMessageHandler, UIScrollViewDelegate>
+@interface TerminalView : UIView <UIKeyInput>
 
 @property IBInspectable (nonatomic) BOOL canBecomeFirstResponder;
 
@@ -24,11 +24,12 @@ enum OverrideAppearance {
 
 @property (nonatomic) UIKeyboardAppearance keyboardAppearance;
 
-@property (weak) UIInputView *inputAccessoryView;
+@property (nonatomic, weak) UIInputView *inputAccessoryView;
 @property (nonatomic) BOOL controlKeySelected;
 
 @property (nonatomic) Terminal *terminal;
 
 - (void)loseFocus:(id)sender;
+- (void)pressArrow:(NSInteger)direction;
 
 @end

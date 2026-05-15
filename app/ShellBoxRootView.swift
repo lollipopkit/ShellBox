@@ -2,8 +2,12 @@ import SwiftUI
 import UIKit
 import FileProvider
 import Combine
+import UniformTypeIdentifiers
 
 private let shellBoxAlertNotification = Notification.Name("ShellBoxAlertNotification")
+private let terminalUUIDActivityKey = "TerminalUUID"
+private let shellBoxENODEV: Int32 = -19
+private let shellBoxECANCELED: Int32 = -125
 
 @objc(ShellBoxRootHostingController)
 final class ShellBoxRootHostingController: UIHostingController<ShellBoxRootView> {
@@ -108,6 +112,124 @@ struct ShellBoxRootView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(.regularMaterial)
+    }
+}
+
+@objc(SceneDelegate)
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+    private var terminalUUID: String?
+    private var terminalViewController: TerminalViewController?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        if window == nil, let windowScene = scene as? UIWindowScene {
+            window = UIWindow(windowScene: windowScene)
+        }
+
+        if UserDefaults.standard.bool(forKey: "recovery") {
+            window?.rootViewController = ShellBoxSettingsHostingController.controller(recoveryMode: true)
+            window?.makeKeyAndVisible()
+            return
+        }
+
+        let terminalController = terminalViewController(from: window?.rootViewController) ?? TerminalViewController()
+        terminalViewController = terminalController
+        window?.rootViewController = ShellBoxRootHostingController.controller(with: terminalController)
+        window?.makeKeyAndVisible()
+
+        terminalController.sceneSession = session
+        if let restoredUUID = session.stateRestorationActivity?.userInfo?[terminalUUIDActivityKey] as? String {
+            terminalUUID = restoredUUID
+            terminalController.reconnectSession(fromTerminalUUID: UUID(uuidString: restoredUUID))
+        } else {
+            terminalController.startNewSession()
+        }
+    }
+
+    func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+        let activity = NSUserActivity(activityType: "app.ish.scene")
+        guard let terminalController = terminalViewController ?? terminalViewController(from: window?.rootViewController),
+              let uuidString = terminalController.sessionTerminalUUID?.uuidString else {
+            return activity
+        }
+        terminalUUID = uuidString
+        activity.addUserInfoEntries(from: [terminalUUIDActivityKey: uuidString])
+        return activity
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        currentTerminalViewController = terminalViewController ?? terminalViewController(from: window?.rootViewController)
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        let terminalController = terminalViewController ?? terminalViewController(from: window?.rootViewController)
+        if currentTerminalViewController === terminalController {
+            currentTerminalViewController = nil
+        }
+    }
+
+    private func terminalViewController(from rootViewController: UIViewController?) -> TerminalViewController? {
+        if let terminalController = rootViewController as? TerminalViewController {
+            return terminalController
+        }
+        if let rootController = rootViewController as? ShellBoxRootHostingController {
+            return rootController.terminalViewController
+        }
+        return rootViewController?.value(forKey: "terminalViewController") as? TerminalViewController
+    }
+}
+
+@objc(ShellBoxDirectoryPicker)
+final class ShellBoxDirectoryPicker: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+    private let condition = NSCondition()
+    private var urls: [URL]?
+
+    @objc(askForURL:)
+    func askForURL(_ url: AutoreleasingUnsafeMutablePointer<NSURL?>) -> Int32 {
+        guard let terminalViewController = currentTerminalViewController else {
+            return shellBoxENODEV
+        }
+
+        DispatchQueue.main.async {
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
+            picker.delegate = self
+            picker.allowsMultipleSelection = false
+            picker.presentationController?.delegate = self
+            terminalViewController.present(picker, animated: true)
+        }
+
+        condition.lock()
+        while urls == nil {
+            condition.wait()
+        }
+        let selectedURLs = urls ?? []
+        urls = nil
+        condition.unlock()
+
+        guard let selectedURL = selectedURLs.first else {
+            return shellBoxECANCELED
+        }
+        url.pointee = selectedURL as NSURL
+        return 0
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        finish(with: [])
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        finish(with: [])
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        finish(with: urls)
+    }
+
+    private func finish(with urls: [URL]) {
+        condition.lock()
+        self.urls = urls
+        condition.signal()
+        condition.unlock()
     }
 }
 

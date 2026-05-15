@@ -6,9 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
 #include <sys/stat.h>
-#include "SceneDelegate.h"
 #include "iOSFS.h"
 #include "kernel/fs.h"
 #include "kernel/errno.h"
@@ -17,80 +15,8 @@
 
 const NSFileCoordinatorWritingOptions NSFileCoordinatorWritingForCreating = NSFileCoordinatorWritingForMerging;
 
-@interface DirectoryPicker : NSObject <UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate>
-
-@property NSArray<NSURL *> *urls;
-@property lock_t lock;
-@property cond_t cond;
-
-@end
-
-@implementation DirectoryPicker
-
-- (instancetype)init {
-    if (self = [super init]) {
-        lock_init(&_lock);
-        cond_init(&_cond);
-    }
-    return self;
-}
-
-- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
-    [self documentPicker:controller didPickDocumentsAtURLs:@[]];
-}
-
-- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
-    [self documentPickerWasCancelled:(UIDocumentPickerViewController *)presentationController];
-}
-
-- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    lock(&_lock);
-    self.urls = urls;
-    notify(&_cond);
-    unlock(&_lock);
-}
-
-- (int)askForURL:(NSURL **)url {
-    TerminalViewController *terminalViewController = currentTerminalViewController;
-    if (!terminalViewController)
-        return _ENODEV;
-
-    dispatch_async(dispatch_get_main_queue(), ^(void) {
-        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.folder" ] inMode:UIDocumentPickerModeOpen];
-        picker.delegate = self;
-        if (@available(iOS 13, *)) {
-        } else {
-            picker.allowsMultipleSelection = YES;
-        }
-        picker.presentationController.delegate = self;
-        [terminalViewController presentViewController:picker animated:true completion:nil];
-    });
-
-    lock(&_lock);
-    while (_urls == nil) {
-        int err = wait_for(&_cond, &_lock, NULL);
-        if (err < 0) {
-            unlock(&_lock);
-            return err;
-        }
-    }
-    NSArray<NSURL *> *urls = _urls;
-    _urls = nil;
-    unlock(&_lock);
-    
-    if (@available(iOS 13, *)) {
-        assert(urls.count <= 1);
-    }
-    if (urls.count == 0)
-        return _ECANCELED;
-    *url = urls[0];
-    return 0;
-}
-
-- (void)dealloc {
-    cond_destroy(&_cond);
-}
-
+@interface ShellBoxDirectoryPicker : NSObject
+- (int)askForURL:(NSURL **)url;
 @end
 
 static NSURL *url_for_mount(struct mount *mount) {
@@ -143,7 +69,7 @@ static int iosfs_mount(struct mount *mount) {
     }
 
     if (url == nil) {
-        DirectoryPicker *picker = [DirectoryPicker new];
+        ShellBoxDirectoryPicker *picker = [ShellBoxDirectoryPicker new];
         int err = [picker askForURL:&url];
         if (err)
             return err;
