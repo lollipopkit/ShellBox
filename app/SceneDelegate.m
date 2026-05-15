@@ -6,7 +6,6 @@
 //
 
 #import "SceneDelegate.h"
-#import "AboutViewController.h"
 #include <objc/message.h>
 
 TerminalViewController *currentTerminalViewController = NULL;
@@ -40,10 +39,30 @@ static UIViewController *SwiftUIRootControllerForTerminal(TerminalViewController
     return controller ?: terminalViewController;
 }
 
+static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
+    NSArray<NSString *> *classNames = @[
+        @"Shell_Box.ShellBoxSettingsHostingController",
+        @"ShellBox.ShellBoxSettingsHostingController",
+        @"ShellBoxSettingsHostingController",
+    ];
+    Class hostingClass = Nil;
+    for (NSString *className in classNames) {
+        hostingClass = NSClassFromString(className);
+        if (hostingClass != Nil)
+            break;
+    }
+    SEL selector = NSSelectorFromString(@"controllerWithRecoveryMode:");
+    if (hostingClass == Nil || ![hostingClass respondsToSelector:selector])
+        return nil;
+
+    return ((UIViewController *(*)(id, SEL, BOOL))objc_msgSend)(hostingClass, selector, recoveryMode);
+}
+
 static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *rootViewController) {
     if ([rootViewController isKindOfClass:TerminalViewController.class])
         return (TerminalViewController *) rootViewController;
-    if ([rootViewController respondsToSelector:@selector(terminalViewController)])
+    SEL selector = NSSelectorFromString(@"terminalViewController");
+    if ([rootViewController respondsToSelector:selector])
         return [rootViewController valueForKey:@"terminalViewController"];
     return nil;
 }
@@ -51,19 +70,23 @@ static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *
 @implementation SceneDelegate
 
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
+    if (self.window == nil && [scene isKindOfClass:UIWindowScene.class]) {
+        self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *) scene];
+    }
+
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"recovery"]) {
-        UINavigationController *vc = [[UIStoryboard storyboardWithName:@"About" bundle:nil] instantiateInitialViewController];
-        AboutViewController *avc = (AboutViewController *) vc.topViewController;
-        avc.recoveryMode = YES;
+        UIViewController *vc = SwiftUISettingsController(YES);
         self.window.rootViewController = vc;
+        [self.window makeKeyAndVisible];
         return;
     }
 
     TerminalViewController *vc = TerminalViewControllerFromRoot(self.window.rootViewController);
     if (vc == nil)
-        return;
+        vc = [TerminalViewController new];
     self.terminalViewController = vc;
     self.window.rootViewController = SwiftUIRootControllerForTerminal(vc);
+    [self.window makeKeyAndVisible];
     vc.sceneSession = session;
     if (session.stateRestorationActivity == nil) {
         [vc startNewSession];

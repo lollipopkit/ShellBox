@@ -53,8 +53,21 @@ struct rowcol {
 @synthesize tokenizer;
 @synthesize canBecomeFirstResponder;
 
-- (void)awakeFromNib {
-    [super awakeFromNib];
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (self = [super initWithFrame:frame]) {
+        [self setup];
+    }
+    return self;
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    if (self = [super initWithCoder:coder]) {
+        [self setup];
+    }
+    return self;
+}
+
+- (void)setup {
     self.inputAssistantItem.leadingBarButtonGroups = @[];
     self.inputAssistantItem.trailingBarButtonGroups = @[];
 
@@ -222,7 +235,7 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
     self.terminalFocused = NO;
 }
 
-- (IBAction)loseFocus:(id)sender {
+- (void)loseFocus:(id)sender {
     [self resignFirstResponder];
 }
 
@@ -294,11 +307,8 @@ static NSString *const HANDLERS[] = {@"syncFocus", @"focus", @"newScrollHeight",
 - (void)insertText:(NSString *)text {
     self.markedText = nil;
 
-    if (self.controlKey.highlighted)
-        self.controlKey.selected = YES;
-    if (self.controlKey.selected) {
-        if (!self.controlKey.highlighted)
-            self.controlKey.selected = NO;
+    if (self.controlKeySelected) {
+        self.controlKeySelected = NO;
         if (text.length == 1)
             return [self insertControlChar:[text characterAtIndex:0]];
     }

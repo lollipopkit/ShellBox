@@ -10,7 +10,6 @@
 #include <netdb.h>
 #include <objc/message.h>
 #import <SystemConfiguration/SystemConfiguration.h>
-#import "AboutViewController.h"
 #import "AppDelegate.h"
 #import "AppGroup.h"
 #import "CurrentRoot.h"
@@ -97,10 +96,30 @@ static UIViewController *SwiftUIRootControllerForTerminal(TerminalViewController
     return controller ?: terminalViewController;
 }
 
+static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
+    NSArray<NSString *> *classNames = @[
+        @"Shell_Box.ShellBoxSettingsHostingController",
+        @"ShellBox.ShellBoxSettingsHostingController",
+        @"ShellBoxSettingsHostingController",
+    ];
+    Class hostingClass = Nil;
+    for (NSString *className in classNames) {
+        hostingClass = NSClassFromString(className);
+        if (hostingClass != Nil)
+            break;
+    }
+    SEL selector = NSSelectorFromString(@"controllerWithRecoveryMode:");
+    if (hostingClass == Nil || ![hostingClass respondsToSelector:selector])
+        return nil;
+
+    return ((UIViewController *(*)(id, SEL, BOOL))objc_msgSend)(hostingClass, selector, recoveryMode);
+}
+
 static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *rootViewController) {
     if ([rootViewController isKindOfClass:TerminalViewController.class])
         return (TerminalViewController *) rootViewController;
-    if ([rootViewController respondsToSelector:@selector(terminalViewController)])
+    SEL selector = NSSelectorFromString(@"terminalViewController");
+    if ([rootViewController respondsToSelector:selector])
         return [rootViewController valueForKey:@"terminalViewController"];
     return nil;
 }
@@ -278,13 +297,12 @@ void SyncHostname(void) {
     if ([NSUserDefaults.standardUserDefaults integerForKey:kSkipStartupMessage] >= 1)
         return;
     if (!FsIsManaged()) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Install Shell Box's built-in Debian rootfs?"
-                                                                       message:@"Shell Box now includes a Debian rootfs with APT. Reinstall the built-in root from Settings if this root predates the Debian migration."
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                                  style:UIAlertActionStyleDefault
-                                                handler:nil]];
-        [vc presentViewController:alert animated:YES completion:nil];
+        [NSNotificationCenter.defaultCenter postNotificationName:@"ShellBoxAlertNotification"
+                                                          object:nil
+                                                        userInfo:@{
+                                                            @"title": @"Install Shell Box's built-in Debian rootfs?",
+                                                            @"message": @"Shell Box now includes a Debian rootfs with APT. Reinstall the built-in root from Settings if this root predates the Debian migration.",
+                                                        }];
     }
     [NSUserDefaults.standardUserDefaults setInteger:1 forKey:kSkipStartupMessage];
 }
@@ -362,15 +380,13 @@ void NetworkReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
     if (self.window != nil) {
         // For iOS <13, where the app delegate owns the window instead of the scene
         if ([NSUserDefaults.standardUserDefaults boolForKey:@"recovery"]) {
-            UINavigationController *vc = [[UIStoryboard storyboardWithName:@"About" bundle:nil] instantiateInitialViewController];
-            AboutViewController *avc = (AboutViewController *) vc.topViewController;
-            avc.recoveryMode = YES;
+            UIViewController *vc = SwiftUISettingsController(YES);
             self.window.rootViewController = vc;
             return YES;
         }
         TerminalViewController *vc = TerminalViewControllerFromRoot(self.window.rootViewController);
         if (vc == nil)
-            return YES;
+            vc = [TerminalViewController new];
         self.window.rootViewController = SwiftUIRootControllerForTerminal(vc);
         currentTerminalViewController = vc;
         [vc startNewSession];

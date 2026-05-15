@@ -1,1 +1,7 @@
 #import "TerminalViewController.h"
+#import "AppDelegate.h"
+#import "AppGroup.h"
+#import "CurrentRoot.h"
+#import "Roots.h"
+#import "UserPreferences.h"
+#import "iOSFS.h"

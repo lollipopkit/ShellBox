@@ -160,7 +160,7 @@ bool (*remove_user_default)(const char *name);
             kPreferenceHideExtraKeysWithExternalKeyboardKey: @(NO),
             kPreferenceOverrideControlSpaceKey: @(NO),
             kPreferenceDisableDimmingKey: @(NO),
-            kPreferenceLaunchCommandKey: @[@"/bin/sh"],
+            kPreferenceLaunchCommandKey: @[@"/ish/default-shell"],
             kPreferenceBootCommandKey: @[@"/ish/init"],
             kPreferenceBlinkCursorKey: @(NO),
             kPreferenceCursorStyleKey: @(CursorStyleBlock),

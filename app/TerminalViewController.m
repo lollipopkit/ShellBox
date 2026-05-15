@@ -8,13 +8,11 @@
 #import "TerminalViewController.h"
 #import "AppDelegate.h"
 #import "TerminalView.h"
-#import "BarButton.h"
-#import "ArrowBarButton.h"
 #import "UserPreferences.h"
-#import "AboutViewController.h"
 #import "CurrentRoot.h"
 #import "NSObject+SaneKVO.h"
 #import "LinuxInterop.h"
+#include <objc/message.h>
 #include "kernel/init.h"
 #include "kernel/task.h"
 #include "kernel/calls.h"
@@ -23,41 +21,87 @@
 @interface TerminalViewController () <UIGestureRecognizerDelegate>
 
 @property UITapGestureRecognizer *tapRecognizer;
-@property (weak, nonatomic) IBOutlet TerminalView *termView;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *bottomConstraint;
+@property (weak, nonatomic) TerminalView *termView;
+@property (weak, nonatomic) NSLayoutConstraint *bottomConstraint;
 
-@property (weak, nonatomic) IBOutlet UIButton *tabKey;
-@property (weak, nonatomic) IBOutlet UIButton *controlKey;
-@property (weak, nonatomic) IBOutlet UIButton *escapeKey;
-@property (strong, nonatomic) IBOutletCollection(id) NSArray *barButtons;
-@property (strong, nonatomic) IBOutletCollection(id) NSArray *barControls;
-
-@property (weak, nonatomic) IBOutlet UIInputView *barView;
-@property (weak, nonatomic) IBOutlet UIStackView *bar;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *barTop;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *barBottom;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *barLeading;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *barTrailing;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *barButtonWidth;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint *barHeight;
-@property (weak, nonatomic) IBOutlet UIView *settingsBadge;
-
-@property (weak, nonatomic) IBOutlet UIButton *infoButton;
-@property (weak, nonatomic) IBOutlet UIButton *pasteButton;
-@property (weak, nonatomic) IBOutlet UIButton *hideKeyboardButton;
+@property (strong, nonatomic) UIInputView *barView;
 
 @property int sessionPid;
 @property (nonatomic) Terminal *sessionTerminal;
 
 @property BOOL ignoreKeyboardMotion;
 @property (nonatomic) BOOL hasExternalKeyboard;
+@property (nonatomic) BOOL processNotificationsRegistered;
 
 @end
 
 @implementation TerminalViewController
 
+static UIInputView *SwiftUIAccessoryBarView(TerminalViewController *terminalViewController) {
+    NSArray<NSString *> *classNames = @[
+        @"Shell_Box.ShellBoxAccessoryBarFactory",
+        @"ShellBox.ShellBoxAccessoryBarFactory",
+        @"ShellBoxAccessoryBarFactory",
+    ];
+    Class factoryClass = Nil;
+    for (NSString *className in classNames) {
+        factoryClass = NSClassFromString(className);
+        if (factoryClass != Nil)
+            break;
+    }
+    SEL selector = NSSelectorFromString(@"inputViewWithController:");
+    if (factoryClass == Nil || ![factoryClass respondsToSelector:selector])
+        return nil;
+
+    return ((UIInputView *(*)(id, SEL, TerminalViewController *))objc_msgSend)(factoryClass, selector, terminalViewController);
+}
+
+static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
+    NSArray<NSString *> *classNames = @[
+        @"Shell_Box.ShellBoxSettingsHostingController",
+        @"ShellBox.ShellBoxSettingsHostingController",
+        @"ShellBoxSettingsHostingController",
+    ];
+    Class hostingClass = Nil;
+    for (NSString *className in classNames) {
+        hostingClass = NSClassFromString(className);
+        if (hostingClass != Nil)
+            break;
+    }
+    SEL selector = NSSelectorFromString(@"controllerWithRecoveryMode:");
+    if (hostingClass == Nil || ![hostingClass respondsToSelector:selector])
+        return nil;
+
+    return ((UIViewController *(*)(id, SEL, BOOL))objc_msgSend)(hostingClass, selector, recoveryMode);
+}
+
+- (void)loadView {
+    UIView *view = [UIView new];
+    view.backgroundColor = UIColor.systemBackgroundColor;
+    self.view = view;
+
+    TerminalView *termView = [TerminalView new];
+    termView.translatesAutoresizingMaskIntoConstraints = NO;
+    termView.canBecomeFirstResponder = YES;
+    [view addSubview:termView];
+    self.termView = termView;
+
+    UILayoutGuide *safeArea = view.safeAreaLayoutGuide;
+    self.bottomConstraint = [view.bottomAnchor constraintEqualToAnchor:termView.bottomAnchor];
+    [NSLayoutConstraint activateConstraints:@[
+        [termView.topAnchor constraintEqualToAnchor:safeArea.topAnchor],
+        [termView.leadingAnchor constraintEqualToAnchor:safeArea.leadingAnchor],
+        [termView.trailingAnchor constraintEqualToAnchor:safeArea.trailingAnchor],
+        self.bottomConstraint,
+    ]];
+
+    self.barView = SwiftUIAccessoryBarView(self);
+    termView.inputAccessoryView = self.barView;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [self registerProcessNotifications];
 
 #if !ISH_LINUX
     int bootError = [AppDelegate bootError];
@@ -83,37 +127,7 @@
                selector:@selector(keyboardDidSomething:)
                    name:UIKeyboardDidChangeFrameNotification
                  object:nil];
-    [center addObserver:self
-               selector:@selector(_updateBadge)
-                   name:FsUpdatedNotification
-                 object:nil];
-
-
     [self _updateStyleFromPreferences:NO];
-    
-    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
-        [self.bar removeArrangedSubview:self.hideKeyboardButton];
-        [self.hideKeyboardButton removeFromSuperview];
-    }
-    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
-        self.barHeight.constant = 36;
-    } else {
-        self.barHeight.constant = 43;
-    }
-    
-    // SF Symbols is cool
-    if (@available(iOS 13, *)) {
-        [self.infoButton setImage:[UIImage systemImageNamed:@"gear"] forState:UIControlStateNormal];
-        [self.pasteButton setImage:[UIImage systemImageNamed:@"doc.on.clipboard"] forState:UIControlStateNormal];
-        [self.hideKeyboardButton setImage:[UIImage systemImageNamed:@"keyboard.chevron.compact.down"] forState:UIControlStateNormal];
-        
-        [self.tabKey setTitle:nil forState:UIControlStateNormal];
-        [self.tabKey setImage:[UIImage systemImageNamed:@"arrow.right.to.line.alt"] forState:UIControlStateNormal];
-        [self.controlKey setTitle:nil forState:UIControlStateNormal];
-        [self.controlKey setImage:[UIImage systemImageNamed:@"control"] forState:UIControlStateNormal];
-        [self.escapeKey setTitle:nil forState:UIControlStateNormal];
-        [self.escapeKey setImage:[UIImage systemImageNamed:@"escape"] forState:UIControlStateNormal];
-    }
     
     [UserPreferences.shared observe:@[@"hideStatusBar"] options:0 owner:self usingBlock:^(typeof(self) self) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -126,11 +140,12 @@
             [self _updateStyleFromPreferences:YES];
         });
     }];
-    [self _updateBadge];
 }
 
-- (void)awakeFromNib {
-    [super awakeFromNib];
+- (void)registerProcessNotifications {
+    if (self.processNotificationsRegistered)
+        return;
+    self.processNotificationsRegistered = YES;
 #if !ISH_LINUX
     [NSNotificationCenter.defaultCenter addObserver:self
                                            selector:@selector(processExited:)
@@ -254,19 +269,23 @@
 
 #if ISH_LINUX
 - (void)kernelPanicked:(NSNotification *)notif {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"panik" message:notif.userInfo[@"message"] preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"k" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [NSNotificationCenter.defaultCenter postNotificationName:@"ShellBoxAlertNotification"
+                                                      object:nil
+                                                    userInfo:@{
+                                                        @"title": @"panik",
+                                                        @"message": notif.userInfo[@"message"] ?: @"",
+                                                    }];
 }
 #endif
 
 - (void)showMessage:(NSString *)message subtitle:(NSString *)subtitle {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:message message:subtitle preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"k"
-                                                  style:UIAlertActionStyleDefault
-                                                handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
+        [NSNotificationCenter.defaultCenter postNotificationName:@"ShellBoxAlertNotification"
+                                                          object:nil
+                                                        userInfo:@{
+                                                            @"title": message ?: @"Shell Box",
+                                                            @"message": subtitle ?: @"",
+                                                        }];
     });
 }
 
@@ -283,15 +302,7 @@
     NSTimeInterval duration = animated ? 0.1 : 0;
     [UIView animateWithDuration:duration animations:^{
         self.view.backgroundColor = [[UIColor alloc] shellBox_initWithHexString:UserPreferences.shared.palette.backgroundColor];
-        UIKeyboardAppearance keyAppearance = UserPreferences.shared.keyboardAppearance;
-        self.termView.keyboardAppearance = keyAppearance;
-        for (BarButton *button in self.barButtons) {
-            button.keyAppearance = keyAppearance;
-        }
-        UIColor *tintColor = keyAppearance == UIKeyboardAppearanceLight ? UIColor.blackColor : UIColor.whiteColor;
-        for (UIControl *control in self.barControls) {
-            control.tintColor = tintColor;
-        }
+        self.termView.keyboardAppearance = UserPreferences.shared.keyboardAppearance;
     }];
     UIView *oldBarView = self.termView.inputAccessoryView;
     if (UserPreferences.shared.hideExtraKeysWithExternalKeyboard && self.hasExternalKeyboard) {
@@ -309,10 +320,6 @@
 }
 - (void)_updateStyleAnimated {
     [self _updateStyleFromPreferences:YES];
-}
-
-- (void)_updateBadge {
-    self.settingsBadge.hidden = !FsNeedsRepositoryUpdate();
 }
 
 - (UIStatusBarStyle)preferredStatusBarStyle {
@@ -371,14 +378,6 @@
     [self _updateStyleFromPreferences:YES];
 }
 
-- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
-    if ([segue.identifier isEqualToString:@"embed"]) {
-        // You might want to check if this is your embed segue here
-        // in case there are other segues triggered from this view controller.
-        segue.destinationViewController.view.translatesAutoresizingMaskIntoConstraints = NO;
-    }
-}
-
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     // Hack to resolve a layering mismatch between the UI and preferences.
     if (@available(iOS 12.0, *)) {
@@ -389,70 +388,63 @@
     }
 }
 
-#pragma mark Bar
+#pragma mark Accessory Bar
 
-- (IBAction)showAbout:(id)sender {
-    UINavigationController *navigationController = [[UIStoryboard storyboardWithName:@"About" bundle:nil] instantiateInitialViewController];
+- (void)showAbout:(id)sender {
     if ([sender isKindOfClass:[UIGestureRecognizer class]]) {
         UIGestureRecognizer *recognizer = sender;
-        if (recognizer.state == UIGestureRecognizerStateBegan) {
-            AboutViewController *aboutViewController = (AboutViewController *) navigationController.topViewController;
-            aboutViewController.includeDebugPanel = YES;
-        } else {
+        if (recognizer.state != UIGestureRecognizerStateBegan)
             return;
-        }
     }
-    [self presentViewController:navigationController animated:YES completion:nil];
+    [self accessoryShowSettings];
+}
+
+- (void)accessoryInsertText:(NSString *)text {
+    [self.termView insertText:text];
+}
+
+- (void)accessoryToggleControl {
+    self.termView.controlKeySelected = !self.termView.controlKeySelected;
+}
+
+- (BOOL)accessoryControlActive {
+    return self.termView.controlKeySelected;
+}
+
+- (void)accessoryPressArrow:(NSInteger)direction {
+    char arrow = 0;
+    switch (direction) {
+        case 1: arrow = 'A'; break;
+        case 2: arrow = 'B'; break;
+        case 3: arrow = 'D'; break;
+        case 4: arrow = 'C'; break;
+        default: return;
+    }
+    [self pressKey:[self.terminal arrow:arrow]];
+}
+
+- (void)accessoryPaste {
+    [self.termView paste:nil];
+}
+
+- (void)accessoryHideKeyboard {
+    [self.termView loseFocus:nil];
+}
+
+- (void)accessoryShowSettings {
+    UIViewController *settingsController = SwiftUISettingsController(NO);
+    if (settingsController == nil)
+        return;
+    [self presentViewController:settingsController animated:YES completion:nil];
     [self.termView resignFirstResponder];
 }
 
-- (void)resizeBar {
-    CGSize bar = self.barView.bounds.size;
-    // set sizing parameters on bar
-    // numbers stolen from iVim and modified somewhat
-    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
-        // phone
-        [self setBarHorizontalPadding:6 verticalPadding:6 buttonWidth:32];
-    } else if (bar.width >= 450) {
-        // wide ipad
-        [self setBarHorizontalPadding:15 verticalPadding:8 buttonWidth:43];
-    } else {
-        // narrow ipad (slide over)
-        [self setBarHorizontalPadding:10 verticalPadding:8 buttonWidth:36];
-    }
-    [UIView performWithoutAnimation:^{
-        [self.barView layoutIfNeeded];
-    }];
+- (BOOL)accessoryShouldShowUpdateBadge {
+    return FsNeedsRepositoryUpdate();
 }
 
-- (void)setBarHorizontalPadding:(CGFloat)horizontal verticalPadding:(CGFloat)vertical buttonWidth:(CGFloat)buttonWidth {
-    self.barLeading.constant = self.barTrailing.constant = horizontal;
-    self.barTop.constant = self.barBottom.constant = vertical;
-    self.barButtonWidth.constant = buttonWidth;
-}
-
-- (IBAction)pressEscape:(id)sender {
-    [self pressKey:@"\x1b"];
-}
-- (IBAction)pressTab:(id)sender {
-    [self pressKey:@"\t"];
-}
 - (void)pressKey:(NSString *)key {
     [self.termView insertText:key];
-}
-
-- (IBAction)pressControl:(id)sender {
-    self.controlKey.selected = !self.controlKey.selected;
-}
-    
-- (IBAction)pressArrow:(ArrowBarButton *)sender {
-    switch (sender.direction) {
-        case ArrowUp: [self pressKey:[self.terminal arrow:'A']]; break;
-        case ArrowDown: [self pressKey:[self.terminal arrow:'B']]; break;
-        case ArrowLeft: [self pressKey:[self.terminal arrow:'D']]; break;
-        case ArrowRight: [self pressKey:[self.terminal arrow:'C']]; break;
-        case ArrowNone: break;
-    }
 }
 
 - (void)switchTerminal:(UIKeyCommand *)sender {
@@ -520,19 +512,6 @@
     if (_terminal == _sessionTerminal)
         self.terminal = sessionTerminal;
     _sessionTerminal = sessionTerminal;
-}
-
-@end
-
-@interface BarView : UIInputView
-@property (weak) IBOutlet TerminalViewController *terminalViewController;
-@property (nonatomic) IBInspectable BOOL allowsSelfSizing;
-@end
-@implementation BarView
-@dynamic allowsSelfSizing;
-
-- (void)layoutSubviews {
-    [self.terminalViewController resizeBar];
 }
 
 @end

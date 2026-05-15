@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>version</key>
-    <integer>4</integer>
+    <integer>5</integer>
     <key>files</key>
     <array>
         <dict>
@@ -23,6 +23,14 @@
             <string>files/ish/init</string>
             <key>dst</key>
             <string>/ish/init</string>
+            <key>mode</key>
+            <integer>493</integer>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/ish/default-shell</string>
+            <key>dst</key>
+            <string>/ish/default-shell</string>
             <key>mode</key>
             <integer>493</integer>
         </dict>

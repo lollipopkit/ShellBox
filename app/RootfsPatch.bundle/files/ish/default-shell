@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if [ -x /usr/bin/fish ]; then
+    exec /usr/bin/fish -l "$@"
+fi
+
+cat <<'EOF'
+fish is not installed yet.
+Run /ish/setup-debian-utils.sh to install fish, fisher, and the default plugin set.
+Starting /bin/sh for this session.
+EOF
+
+exec /bin/sh "$@"

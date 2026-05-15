@@ -317,7 +317,7 @@ char *(*get_documents_directory)(void);
                             appearance:nil
             ],
             // Because this is a hidden theme, it needs to be last. There's
-            // logic in UserPreferences and ThemesViewController which will not
+            // logic in UserPreferences and the SwiftUI settings surface which will not
             // work correctly otherwise.
             [[self alloc] initWithName:@"Hot Dog Stand"
                                palette:[[Palette alloc] initWithForegroundColor:@"#ff0"
