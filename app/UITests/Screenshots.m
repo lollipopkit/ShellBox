@@ -86,7 +86,7 @@
 }
 
 - (void)testLanguages {
-    [self runCommand:@"apk add build-base python3" timeout:120];
+    [self runCommand:@"apt-get update && apt-get install -y build-essential python3" timeout:120];
     [self runCommand:@"printf '#include <stdio.h>\\nint main() { printf(\"Hello, Shell Box!\\\\n\"); }' > hello.c" timeout:5];
     [self runCommand:@"gcc hello.c && ./a.out" timeout:5];
     [self runCommand:@"python3 -c 'print(\"Hello, Shell Box!\")'" timeout:5];
@@ -94,7 +94,7 @@
 }
 
 - (void)testEditorsInTmux {
-    [self runCommand:@"apk add vim nano tmux" timeout:120];
+    [self runCommand:@"apt-get update && apt-get install -y vim nano tmux" timeout:120];
     [self runCommand:@"tmux new-session -d -s foo nano" timeout:5];
     [self runCommand:@"tmux split-window -v vim" timeout:5];
     [self runCommand:@"tmux select-layout even-vertical" timeout:5];
@@ -104,7 +104,7 @@
 }
 
 - (void)testEmacs {
-    [self runCommand:@"apk add emacs" timeout:120];
+    [self runCommand:@"apt-get update && apt-get install -y emacs" timeout:120];
     [self.app typeText:@"emacs\n"];
     [self waitForTerminalText:@"Welcome to GNU Emacs" timeout:30];
     [self snapshot:@"emacs" order:4];

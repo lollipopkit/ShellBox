@@ -7,16 +7,46 @@
 
 #import "SceneDelegate.h"
 #import "AboutViewController.h"
+#include <objc/message.h>
 
 TerminalViewController *currentTerminalViewController = NULL;
 
 @interface SceneDelegate ()
 
 @property NSString *terminalUUID;
+@property TerminalViewController *terminalViewController;
 
 @end
 
 static NSString *const TerminalUUID = @"TerminalUUID";
+
+static UIViewController *SwiftUIRootControllerForTerminal(TerminalViewController *terminalViewController) {
+    NSArray<NSString *> *classNames = @[
+        @"Shell_Box.ShellBoxRootHostingController",
+        @"ShellBox.ShellBoxRootHostingController",
+        @"ShellBoxRootHostingController",
+    ];
+    Class hostingClass = Nil;
+    for (NSString *className in classNames) {
+        hostingClass = NSClassFromString(className);
+        if (hostingClass != Nil)
+            break;
+    }
+    SEL selector = NSSelectorFromString(@"controllerWithTerminalViewController:");
+    if (hostingClass == Nil || ![hostingClass respondsToSelector:selector])
+        return terminalViewController;
+
+    UIViewController *controller = ((UIViewController *(*)(id, SEL, TerminalViewController *))objc_msgSend)(hostingClass, selector, terminalViewController);
+    return controller ?: terminalViewController;
+}
+
+static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *rootViewController) {
+    if ([rootViewController isKindOfClass:TerminalViewController.class])
+        return (TerminalViewController *) rootViewController;
+    if ([rootViewController respondsToSelector:@selector(terminalViewController)])
+        return [rootViewController valueForKey:@"terminalViewController"];
+    return nil;
+}
 
 @implementation SceneDelegate
 
@@ -29,7 +59,11 @@ static NSString *const TerminalUUID = @"TerminalUUID";
         return;
     }
 
-    TerminalViewController *vc = (TerminalViewController *) self.window.rootViewController;
+    TerminalViewController *vc = TerminalViewControllerFromRoot(self.window.rootViewController);
+    if (vc == nil)
+        return;
+    self.terminalViewController = vc;
+    self.window.rootViewController = SwiftUIRootControllerForTerminal(vc);
     vc.sceneSession = session;
     if (session.stateRestorationActivity == nil) {
         [vc startNewSession];
@@ -42,7 +76,7 @@ static NSString *const TerminalUUID = @"TerminalUUID";
 
 - (NSUserActivity *)stateRestorationActivityForScene:(UIScene *)scene {
     NSUserActivity *activity = [[NSUserActivity alloc] initWithActivityType:@"app.ish.scene"];
-    TerminalViewController *vc = (TerminalViewController *) self.window.rootViewController;
+    TerminalViewController *vc = self.terminalViewController ?: TerminalViewControllerFromRoot(self.window.rootViewController);
     if ([vc isKindOfClass:TerminalViewController.class]) {
         self.terminalUUID = vc.sessionTerminalUUID.UUIDString;
         if (self.terminalUUID != nil) {
@@ -53,12 +87,12 @@ static NSString *const TerminalUUID = @"TerminalUUID";
 }
 
 - (void)sceneDidBecomeActive:(UIScene *)scene {
-    TerminalViewController *terminalViewController = (TerminalViewController *) self.window.rootViewController;;
+    TerminalViewController *terminalViewController = self.terminalViewController ?: TerminalViewControllerFromRoot(self.window.rootViewController);
     currentTerminalViewController = terminalViewController;
 }
 
 - (void)sceneWillResignActive:(UIScene *)scene {
-    TerminalViewController *terminalViewController = (TerminalViewController *) self.window.rootViewController;
+    TerminalViewController *terminalViewController = self.terminalViewController ?: TerminalViewControllerFromRoot(self.window.rootViewController);
 
     if (currentTerminalViewController == terminalViewController) {
         currentTerminalViewController = NULL;

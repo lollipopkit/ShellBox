@@ -20,5 +20,5 @@ EXCLUDED_ARCHS[sdk=iphonesimulator*] = x86_64
 // Meson options for ARM64 guest
 MESON_GUEST_OPTION = -Dguest_arch=arm64
 
-// ARM64 rootfs URL (Alpine 3.21 aarch64 minirootfs)
-ROOTFS_URL = dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-minirootfs-3.21.0-aarch64.tar.gz
+// ARM64 rootfs URL (Debian bookworm aarch64 rootfs from the debuerreotype Docker artifacts)
+ROOTFS_URL = raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/1d4f7f0c0d08ca42087e7d1ede9fb3081155d3b3/bookworm/oci/blobs/rootfs.tar.gz

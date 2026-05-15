@@ -23,7 +23,7 @@
 > - **Full NEON + Crypto** — AES/SHA/CRC32 instructions for TLS and hashing at native-ish speed
 > - **Agent integration** — `ISHShellExecutor` (Obj-C shell API), `DebugServer` (JSON-RPC over HTTP),
 >   `Native Offload` (bypass emulation for selected binaries), bind mounts for host↔guest file sharing
-> - **iOS-first rootfs** — Alpine 3.21 aarch64 with full `apk` ecosystem and versioned overlay patching
+> - **iOS-first rootfs** — Debian bookworm aarch64 with full `apt` ecosystem and versioned overlay patching
 >
 > **Performance (ARM64 vs x86, compute-heavy):** C `int_arith_2M` **12x faster**,
 > Python `fib(30)` **9.2x faster**, `sum(1M)` **10.2x faster**, shell `seq+awk 100K` **7.2x faster**.
@@ -75,7 +75,7 @@ Open the project in Xcode, open ShellBox.xcconfig, and change `ROOT_BUNDLE_IDENT
 
 To set up your environment, cd to the project and run `meson build` to create a build directory in `build`. Then cd to the build directory and run `ninja`.
 
-To set up a self-contained Alpine linux filesystem, download the Alpine minirootfs tarball for i386 from the [Alpine website](https://alpinelinux.org/downloads/) and run `./tools/fakefsify`, with the minirootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Alpine filesystem with `./ish -f alpine /bin/sh`, assuming the output directory is called `alpine`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
+To set up a self-contained Debian filesystem, download a Debian rootfs tarball and run `./tools/fakefsify`, with the rootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Debian filesystem with `./ish -f debian /bin/sh`, assuming the output directory is called `debian`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
 
 You can replace `ish` with `tools/ptraceomatic` to run the program in a real process and single step and compare the registers at each step. I use it for debugging. Requires 64-bit Linux 4.11 or later.
 

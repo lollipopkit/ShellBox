@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>version</key>
-    <integer>3</integer>
+    <integer>4</integer>
     <key>files</key>
     <array>
         <dict>
@@ -17,6 +17,48 @@
             <string>files/lib/fetch-polyfill.js</string>
             <key>dst</key>
             <string>/lib/fetch-polyfill.js</string>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/ish/init</string>
+            <key>dst</key>
+            <string>/ish/init</string>
+            <key>mode</key>
+            <integer>493</integer>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/ish/setup-debian-utils.sh</string>
+            <key>dst</key>
+            <string>/ish/setup-debian-utils.sh</string>
+            <key>mode</key>
+            <integer>493</integer>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/etc/apt/apt.conf.d/99shellbox</string>
+            <key>dst</key>
+            <string>/etc/apt/apt.conf.d/99shellbox</string>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/usr/sbin/policy-rc.d</string>
+            <key>dst</key>
+            <string>/usr/sbin/policy-rc.d</string>
+            <key>mode</key>
+            <integer>493</integer>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/etc/systemd/journald.conf.d/shellbox.conf</string>
+            <key>dst</key>
+            <string>/etc/systemd/journald.conf.d/shellbox.conf</string>
+        </dict>
+        <dict>
+            <key>src</key>
+            <string>files/etc/profile.d/shellbox.sh</string>
+            <key>dst</key>
+            <string>/etc/profile.d/shellbox.sh</string>
         </dict>
     </array>
 </dict>

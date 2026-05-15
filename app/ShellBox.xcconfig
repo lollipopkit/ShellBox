@@ -10,4 +10,4 @@ ISH_LOGGER_iphoneos = nslog
 ISH_LOGGER_iphonesimulator = nslog
 ISH_LOGGER_macosx = dprintf
 
-ROOTFS_URL = github.com/ish-app/roots/releases/download/g00712ff0a54b2839c5aa1a8ed758003ca65357dc/appstore-apk.tar.gz
+ROOTFS_URL = raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/1d4f7f0c0d08ca42087e7d1ede9fb3081155d3b3/bookworm/oci/blobs/rootfs.tar.gz

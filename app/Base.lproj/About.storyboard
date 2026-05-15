@@ -419,9 +419,9 @@
                         <outlet property="saddamHussein" destination="bcR-YQ-PkC" id="mUA-6I-CB9"/>
                         <outlet property="sendFeedback" destination="gMm-4C-5X3" id="nhX-ZH-zyP"/>
                         <outlet property="themeCell" destination="dqn-Cd-cNm" id="dfh-et-0o7"/>
-                        <outlet property="upgradeApkBadge" destination="l5o-Y7-j4W" id="AI2-IM-NVw"/>
-                        <outlet property="upgradeApkCell" destination="Huf-xT-ejJ" id="CBX-wc-11e"/>
-                        <outlet property="upgradeApkLabel" destination="L09-wA-jCg" id="wMj-ht-DsI"/>
+                        <outlet property="upgradeAptBadge" destination="l5o-Y7-j4W" id="AI2-IM-NVw"/>
+                        <outlet property="upgradeAptCell" destination="Huf-xT-ejJ" id="CBX-wc-11e"/>
+                        <outlet property="upgradeAptLabel" destination="L09-wA-jCg" id="wMj-ht-DsI"/>
                         <outlet property="versionLabel" destination="Xil-tm-WGD" id="ZzC-E6-VER"/>
                     </connections>
                 </tableViewController>

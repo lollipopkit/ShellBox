@@ -1,0 +1,7 @@
+APT::Install-Recommends "false";
+APT::Install-Suggests "false";
+Acquire::Retries "3";
+Dpkg::Options {
+   "--force-confdef";
+   "--force-confold";
+};

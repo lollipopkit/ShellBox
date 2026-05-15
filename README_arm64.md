@@ -194,7 +194,7 @@ Enables AI agents to share files between the host app and the Linux guest withou
 
 ### 5. Rootfs Management
 
-- **Alpine 3.21 aarch64** with full apk package manager
+- **Debian bookworm aarch64** with full apt package manager
 - **RootfsPatch.bundle**: Versioned overlay system for incremental rootfs updates
 - **Polyfills**: WebAssembly polyfill for undici/llhttp, fetch polyfill for HTTP downloads
 - **OPENSSL_armcap=0** and **GODEBUG/GOMAXPROCS** injection in `sys_execve`
@@ -228,7 +228,7 @@ python3 -m venv .venv
 ninja -C build-arm64-release
 
 # Run
-./build-arm64-release/ish -f ./alpine-arm64-fakefs /bin/sh
+./build-arm64-release/ish -f ./debian-arm64-fakefs /bin/sh
 ```
 
 ---
@@ -290,7 +290,7 @@ architectures tested under fakefs with the same installed package set. Full repo
 
 | Category | Examples |
 |----------|---------|
-| **Package managers** | apk, pip, npm, npx, uv |
+| **Package managers** | apt, pip, npm, npx, uv |
 | **Languages** | Python 3, Node.js 22, Go, Perl, Ruby, Lua |
 | **Dev tools** | git, curl, wget, ssh, vim, nano |
 | **Build tools** | gcc, g++, cmake, make, meson |

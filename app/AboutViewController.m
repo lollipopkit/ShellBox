@@ -27,9 +27,9 @@
 @property (weak, nonatomic) IBOutlet UITableViewCell *openFediverse;
 @property (weak, nonatomic) IBOutlet UITableViewCell *openDiscord;
 
-@property (weak, nonatomic) IBOutlet UITableViewCell *upgradeApkCell;
-@property (weak, nonatomic) IBOutlet UILabel *upgradeApkLabel;
-@property (weak, nonatomic) IBOutlet UIView *upgradeApkBadge;
+@property (weak, nonatomic) IBOutlet UITableViewCell *upgradeAptCell;
+@property (weak, nonatomic) IBOutlet UILabel *upgradeAptLabel;
+@property (weak, nonatomic) IBOutlet UIView *upgradeAptBadge;
 @property (weak, nonatomic) IBOutlet UITableViewCell *exportContainerCell;
 @property (weak, nonatomic) IBOutlet UITableViewCell *resetMountsCell;
 @property (weak, nonatomic) IBOutlet UITableViewCell *resetRootfsCell;
@@ -96,9 +96,9 @@
     self.launchCommandField.text = [UserPreferences.shared.launchCommand componentsJoinedByString:@" "];
     self.bootCommandField.text = [UserPreferences.shared.bootCommand componentsJoinedByString:@" "];
 
-    self.upgradeApkCell.userInteractionEnabled = FsNeedsRepositoryUpdate();
-    self.upgradeApkLabel.enabled = FsNeedsRepositoryUpdate();
-    self.upgradeApkBadge.hidden = !FsNeedsRepositoryUpdate();
+    self.upgradeAptCell.userInteractionEnabled = FsNeedsRepositoryUpdate();
+    self.upgradeAptLabel.enabled = FsNeedsRepositoryUpdate();
+    self.upgradeAptBadge.hidden = !FsNeedsRepositoryUpdate();
     [self.tableView reloadData];
 }
 
@@ -135,9 +135,9 @@
         if (!FsIsManaged()) {
             return @"The current filesystem is not managed by Shell Box.";
         } else if (!FsNeedsRepositoryUpdate()) {
-            return [NSString stringWithFormat:@"The current filesystem is using %s, which is the latest version.", CURRENT_APK_VERSION_STRING];
+            return [NSString stringWithFormat:@"The current filesystem is using %s, which is the latest version.", CURRENT_APT_VERSION_STRING];
         } else {
-            return [NSString stringWithFormat:@"An upgrade to %s is available.", CURRENT_APK_VERSION_STRING];
+            return [NSString stringWithFormat:@"An upgrade to %s is available.", CURRENT_APT_VERSION_STRING];
         }
     }
     return [super tableView:tableView titleForFooterInSection:section];

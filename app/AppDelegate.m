@@ -8,6 +8,7 @@
 #include <resolv.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <objc/message.h>
 #import <SystemConfiguration/SystemConfiguration.h>
 #import "AboutViewController.h"
 #import "AppDelegate.h"
@@ -75,6 +76,34 @@ void ReportPanic(const char *message) {
 
 static int bootError;
 static NSString *const kSkipStartupMessage = @"Skip Startup Message";
+
+static UIViewController *SwiftUIRootControllerForTerminal(TerminalViewController *terminalViewController) {
+    NSArray<NSString *> *classNames = @[
+        @"Shell_Box.ShellBoxRootHostingController",
+        @"ShellBox.ShellBoxRootHostingController",
+        @"ShellBoxRootHostingController",
+    ];
+    Class hostingClass = Nil;
+    for (NSString *className in classNames) {
+        hostingClass = NSClassFromString(className);
+        if (hostingClass != Nil)
+            break;
+    }
+    SEL selector = NSSelectorFromString(@"controllerWithTerminalViewController:");
+    if (hostingClass == Nil || ![hostingClass respondsToSelector:selector])
+        return terminalViewController;
+
+    UIViewController *controller = ((UIViewController *(*)(id, SEL, TerminalViewController *))objc_msgSend)(hostingClass, selector, terminalViewController);
+    return controller ?: terminalViewController;
+}
+
+static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *rootViewController) {
+    if ([rootViewController isKindOfClass:TerminalViewController.class])
+        return (TerminalViewController *) rootViewController;
+    if ([rootViewController respondsToSelector:@selector(terminalViewController)])
+        return [rootViewController valueForKey:@"terminalViewController"];
+    return nil;
+}
 
 @implementation AppDelegate
 
@@ -249,15 +278,10 @@ void SyncHostname(void) {
     if ([NSUserDefaults.standardUserDefaults integerForKey:kSkipStartupMessage] >= 1)
         return;
     if (!FsIsManaged()) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Install Shell Box’s built-in APK?"
-                                                                       message:@"Shell Box now includes the APK package manager, but it must be manually activated."
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Install Shell Box's built-in Debian rootfs?"
+                                                                       message:@"Shell Box now includes a Debian rootfs with APT. Reinstall the built-in root from Settings if this root predates the Debian migration."
                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Show me how"
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction * _Nonnull action) {
-            [UIApplication openURL:@"https://go.ish.app/get-apk"];
-        }]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Don't show again"
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK"
                                                   style:UIAlertActionStyleDefault
                                                 handler:nil]];
         [vc presentViewController:alert animated:YES completion:nil];
@@ -344,7 +368,10 @@ void NetworkReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
             self.window.rootViewController = vc;
             return YES;
         }
-        TerminalViewController *vc = (TerminalViewController *) self.window.rootViewController;
+        TerminalViewController *vc = TerminalViewControllerFromRoot(self.window.rootViewController);
+        if (vc == nil)
+            return YES;
+        self.window.rootViewController = SwiftUIRootControllerForTerminal(vc);
         currentTerminalViewController = vc;
         [vc startNewSession];
     }

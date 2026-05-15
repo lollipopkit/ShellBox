@@ -164,6 +164,7 @@
 		AA000121AF96D90D00FFB7A4 /* fakefs.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E5C2248DBA7B009C7A74 /* fakefs.c */; };
 		AA000122AF96D90D00FFB7A4 /* ArrowBarButton.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557F21587B6800DFE6DE /* ArrowBarButton.m */; };
 		AA000130AF96D90D00FFB7A4 /* DebugServer.c in Sources */ = {isa = PBXBuildFile; fileRef = AA000131AF96D90D00FFB7A4 /* DebugServer.c */; };
+		AA000133AF96D90D00FFB7A4 /* ShellBoxRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */; };
 		BB0F552E239F8A790032A2A1 /* Icons.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0F552D239F8A790032A2A1 /* Icons.plist */; };
 		BB10E5C9248DBAAC009C7A74 /* libarchive.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BB10E5C8248DBAA1009C7A74 /* libarchive.a */; };
 		BB10E5D0248DC21D009C7A74 /* Roots.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BB10E5CF248DC21D009C7A74 /* Roots.storyboard */; };
@@ -670,6 +671,8 @@
 		AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppARM64.xcconfig; sourceTree = "<group>"; };
 		AA000131AF96D90D00FFB7A4 /* DebugServer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = DebugServer.c; sourceTree = "<group>"; };
 		AA000132AF96D90D00FFB7A4 /* DebugServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DebugServer.h; sourceTree = "<group>"; };
+		AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellBoxRootView.swift; sourceTree = "<group>"; };
+		AA000135AF96D90D00FFB7A4 /* ShellBox-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ShellBox-Bridging-Header.h"; sourceTree = "<group>"; };
 		AA9C2BB72F44A3DD00F41633 /* Shell Box FFmpeg.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shell Box FFmpeg.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0B848E2586A4CF00208600 /* XcodeDefault.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeDefault.xcconfig; sourceTree = "<group>"; };
 		BB0B859B2586F13200208600 /* XcodeDebug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = XcodeDebug.xcconfig; sourceTree = "<group>"; };
@@ -683,7 +686,7 @@
 		BB0B880E2589662200208600 /* sprite64.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = sprite64.png; sourceTree = "<group>"; };
 		BB0B88172589662A00208600 /* reworked.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = reworked.png; sourceTree = "<group>"; };
 		BB0B88202589734A00208600 /* notsurewhatthisis.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = notsurewhatthisis.png; sourceTree = "<group>"; };
-		BB0C03002AEEC85500E5ECBB /* gen_apk_repositories.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = gen_apk_repositories.py; path = app/gen_apk_repositories.py; sourceTree = "<group>"; };
+		BB0C03002AEEC85500E5ECBB /* gen_apt_sources.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = gen_apt_sources.py; path = app/gen_apt_sources.py; sourceTree = "<group>"; };
 		BB0DF6F22CC4B01000EFECAE /* fchdir.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = fchdir.c; sourceTree = "<group>"; };
 		BB0DF6F32CC4B01000EFECAE /* fchdir.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = fchdir.h; sourceTree = "<group>"; };
 		BB0F552D239F8A790032A2A1 /* Icons.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Icons.plist; sourceTree = "<group>"; };
@@ -1008,7 +1011,7 @@
 			children = (
 				BB13F7C8200ACC24003D1C4D /* xcode-meson.sh */,
 				494D03F72727DAC6004F0CCE /* xcode-ninja.sh */,
-				BB0C03002AEEC85500E5ECBB /* gen_apk_repositories.py */,
+				BB0C03002AEEC85500E5ECBB /* gen_apt_sources.py */,
 			);
 			name = Scripts;
 			sourceTree = "<group>";
@@ -1152,6 +1155,8 @@
 				BB565EA32734F1FB00C93EAE /* CurrentRoot.m */,
 				BBCC9D942365430800424C83 /* SceneDelegate.h */,
 				BBCC9D952365430800424C83 /* SceneDelegate.m */,
+				AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */,
+				AA000135AF96D90D00FFB7A4 /* ShellBox-Bridging-Header.h */,
 				BB792B561F96D90D00FFB7A4 /* TerminalViewController.h */,
 				BB792B571F96D90D00FFB7A4 /* TerminalViewController.m */,
 				BB792B591F96D90D00FFB7A4 /* Terminal.storyboard */,
@@ -1531,7 +1536,7 @@
 				AA0000081F96D90D00FFB7A4 /* Sources */,
 				AA0000091F96D90D00FFB7A4 /* Frameworks */,
 				AA000011AF96D90D00FFB7A4 /* Download Root */,
-				AA000012AF96D90D00FFB7A4 /* Generate APK Repositories File */,
+				AA000012AF96D90D00FFB7A4 /* Generate APT Sources File */,
 				AA000013AF96D90D00FFB7A4 /* Compile JavaScript */,
 				AA000010AF96D90D00FFB7A4 /* Resources */,
 				AA000014AF96D90D00FFB7A4 /* Embed Foundation Extensions */,
@@ -1556,7 +1561,7 @@
 				AA0000081F96D90D00FFB7A4 /* Sources */,
 				AA0000091F96D90D00FFB7A4 /* Frameworks */,
 				AA000011AF96D90D00FFB7A4 /* Download Root */,
-				AA000012AF96D90D00FFB7A4 /* Generate APK Repositories File */,
+				AA000012AF96D90D00FFB7A4 /* Generate APT Sources File */,
 				AA000013AF96D90D00FFB7A4 /* Compile JavaScript */,
 				AA000010AF96D90D00FFB7A4 /* Resources */,
 				AA000014AF96D90D00FFB7A4 /* Embed Foundation Extensions */,
@@ -1630,7 +1635,7 @@
 				BB21A17826890A5B00BD19B4 /* Sources */,
 				BB792B4D1F96D90D00FFB7A4 /* Frameworks */,
 				BBF1248B1FA7BF530088FB50 /* Download Root */,
-				BB034E8C263643C10000A498 /* Generate APK Repositories File */,
+				BB034E8C263643C10000A498 /* Generate APT Sources File */,
 				BB4A53AC1FAA49CA00A72ACE /* Compile JavaScript */,
 				BB792B4E1F96D90D00FFB7A4 /* Resources */,
 			);
@@ -1735,7 +1740,7 @@
 				BB21A1722689084800BD19B4 /* Sources */,
 				BBEF196F268066D1001225BD /* Frameworks */,
 				BBEF1979268066D1001225BD /* Download Root */,
-				BBEF197A268066D1001225BD /* Generate APK Repositories File */,
+				BBEF197A268066D1001225BD /* Generate APT Sources File */,
 				BBEF197B268066D1001225BD /* Compile JavaScript */,
 				BBEF197C268066D1001225BD /* Resources */,
 				BBEF1997268066D1001225BD /* Embed Foundation Extensions */,
@@ -2023,10 +2028,10 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "curl -L \"https://$ROOTFS_URL\" -o \"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/root.tar.gz\"\n";
+			shellScript = "curl -fL \"https://$ROOTFS_URL\" -o \"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/root.tar.gz\"\n";
 			showEnvVarsInLog = 0;
 		};
-		AA000012AF96D90D00FFB7A4 /* Generate APK Repositories File */ = {
+		AA000012AF96D90D00FFB7A4 /* Generate APT Sources File */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2034,9 +2039,9 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/app/gen_apk_repositories.py",
+				"$(SRCROOT)/app/gen_apt_sources.py",
 			);
-			name = "Generate APK Repositories File";
+			name = "Generate APT Sources File";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -2044,7 +2049,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "python3 $SRCROOT/app/gen_apk_repositories.py\n";
+			shellScript = "python3 $SRCROOT/app/gen_apt_sources.py\n";
 		};
 		AA000013AF96D90D00FFB7A4 /* Compile JavaScript */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2080,7 +2085,7 @@
 			shellPath = /bin/sh;
 			shellScript = "\"$SRCROOT/app/xcode-meson.sh\"\ncd \"$MESON_BUILD_DIR\"\n\"$SRCROOT/app/xcode-ninja.sh\" $NINJA_TARGETS\nmkdir -p \"$CONFIGURATION_BUILD_DIR\"\nfor target in $NINJA_TARGETS; do\n    case \"$target\" in\n        *.a) ln -sf \"$MESON_BUILD_DIR/$target\" \"$CONFIGURATION_BUILD_DIR/$(basename \"$target\")\" ;;\n    esac\ndone\n";
 		};
-		BB034E8C263643C10000A498 /* Generate APK Repositories File */ = {
+		BB034E8C263643C10000A498 /* Generate APT Sources File */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2088,11 +2093,9 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/deps/aports/main/x86/index.txt",
-				"$(SRCROOT)/deps/aports/community/x86/index.txt",
-				"$(SRCROOT)/app/gen_apk_repositories.py",
+				"$(SRCROOT)/app/gen_apt_sources.py",
 			);
-			name = "Generate APK Repositories File";
+			name = "Generate APT Sources File";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -2100,7 +2103,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/sh -e";
-			shellScript = "python3 $SRCROOT/app/gen_apk_repositories.py\n";
+			shellScript = "python3 $SRCROOT/app/gen_apt_sources.py\n";
 		};
 		BB13F813200AEFAC003D1C4D /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2199,10 +2202,10 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "curl -L \"https://$ROOTFS_URL\" -o \"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/root.tar.gz\"\n";
+			shellScript = "curl -fL \"https://$ROOTFS_URL\" -o \"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/root.tar.gz\"\n";
 			showEnvVarsInLog = 0;
 		};
-		BBEF197A268066D1001225BD /* Generate APK Repositories File */ = {
+		BBEF197A268066D1001225BD /* Generate APT Sources File */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2210,11 +2213,9 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/deps/aports/main/x86/index.txt",
-				"$(SRCROOT)/deps/aports/community/x86/index.txt",
-				"$(SRCROOT)/app/gen_apk_repositories.py",
+				"$(SRCROOT)/app/gen_apt_sources.py",
 			);
-			name = "Generate APK Repositories File";
+			name = "Generate APT Sources File";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -2222,7 +2223,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/sh -e";
-			shellScript = "python3 $SRCROOT/app/gen_apk_repositories.py\n";
+			shellScript = "python3 $SRCROOT/app/gen_apt_sources.py\n";
 		};
 		BBEF197B268066D1001225BD /* Compile JavaScript */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2254,7 +2255,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "curl -L \"https://$ROOTFS_URL\" -o \"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/root.tar.gz\"\n";
+			shellScript = "curl -fL \"https://$ROOTFS_URL\" -o \"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/root.tar.gz\"\n";
 			showEnvVarsInLog = 0;
 		};
 		BBFB2C572590257E00545EAB /* ShellScript */ = {
@@ -2409,6 +2410,7 @@
 				AA000121AF96D90D00FFB7A4 /* fakefs.c in Sources */,
 				AA000122AF96D90D00FFB7A4 /* ArrowBarButton.m in Sources */,
 				AA000130AF96D90D00FFB7A4 /* DebugServer.c in Sources */,
+				AA000133AF96D90D00FFB7A4 /* ShellBoxRootView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

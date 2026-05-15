@@ -14,7 +14,7 @@
 #endif
 
 int fs_ish_version;
-int fs_ish_apk_version;
+int fs_ish_apt_version;
 
 #if !ISH_LINUX
 static ssize_t read_file(const char *path, char *buf, size_t size) {
@@ -45,6 +45,24 @@ static int remove_directory(const char *path) {
 #define remove_directory linux_remove_directory
 #endif
 
+static void create_directory_chain(NSString *path) {
+    NSArray<NSString *> *components = [path pathComponents];
+    if (components.count == 0)
+        return;
+    NSMutableString *currentPath = [NSMutableString string];
+    for (NSString *component in components) {
+        if ([component isEqualToString:@"/"]) {
+            [currentPath setString:@"/"];
+            continue;
+        }
+        if (currentPath.length > 1)
+            [currentPath appendString:@"/"];
+        [currentPath appendString:component];
+        if (currentPath.length > 1)
+            generic_mkdirat(AT_PWD, currentPath.UTF8String, 0755);
+    }
+}
+
 void FsInitialize(void) {
     // /ish/version is the last ish version that opened this root. Used to migrate the filesystem.
     char buf[1000];
@@ -59,15 +77,15 @@ void FsInitialize(void) {
 
         version = nil;
 
-        n = read_file("/ish/apk-version", buf, sizeof(buf));
+        n = read_file("/ish/apt-version", buf, sizeof(buf));
         if (n >= 0) {
             NSString *version = [[NSString alloc] initWithBytesNoCopy:buf length:n encoding:NSUTF8StringEncoding freeWhenDone:NO];
             version = [version stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-            fs_ish_apk_version = version.intValue;
+            fs_ish_apt_version = version.intValue;
         }
 
-        // If no newer value for CURRENT_APK_VERSION, do silent update.
-        if (fs_ish_apk_version >= CURRENT_APK_VERSION)
+        // If no newer value for CURRENT_APT_VERSION, do silent update.
+        if (fs_ish_apt_version >= CURRENT_APT_VERSION)
             FsUpdateRepositories();
 
         if (currentVersion.intValue > fs_ish_version) {
@@ -85,26 +103,26 @@ bool FsIsManaged(void) {
 }
 
 bool FsNeedsRepositoryUpdate(void) {
-    return FsIsManaged() && fs_ish_apk_version < CURRENT_APK_VERSION;
+    return FsIsManaged() && fs_ish_apt_version < CURRENT_APT_VERSION;
 }
 
 void FsUpdateOnlyRepositoriesFile(void) {
     NSURL *repositories = [NSBundle.mainBundle URLForResource:@"repositories" withExtension:@"txt"];
     if (repositories != nil) {
-        NSMutableData *repositoriesData = [@"# This file contains pinned repositories managed by Shell Box. If the /ish directory\n"
+        NSMutableData *repositoriesData = [@"# This file contains pinned APT sources managed by Shell Box. If the /ish directory\n"
                                            @"# exists, Shell Box uses the metadata stored in it to keep this file up to date (by\n"
                                            @"# overwriting the contents on boot.)\n" dataUsingEncoding:NSUTF8StringEncoding].mutableCopy;
         [repositoriesData appendData:[NSData dataWithContentsOfURL:repositories]];
-        write_file("/etc/apk/repositories", repositoriesData.bytes, repositoriesData.length);
+        write_file("/etc/apt/sources.list", repositoriesData.bytes, repositoriesData.length);
     }
 }
 
 void FsUpdateRepositories(void) {
     FsUpdateOnlyRepositoriesFile();
-    fs_ish_apk_version = CURRENT_APK_VERSION;
-    NSString *currentVersionFile = [NSString stringWithFormat:@"%d\n", fs_ish_apk_version];
-    write_file("/ish/apk-version", currentVersionFile.UTF8String, [currentVersionFile lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
-    remove_directory("/ish/apk");
+    fs_ish_apt_version = CURRENT_APT_VERSION;
+    NSString *currentVersionFile = [NSString stringWithFormat:@"%d\n", fs_ish_apt_version];
+    write_file("/ish/apt-version", currentVersionFile.UTF8String, [currentVersionFile lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+    remove_directory("/ish/apt");
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSNotificationCenter.defaultCenter postNotificationName:FsUpdatedNotification object:nil];
     });
@@ -169,7 +187,7 @@ void FsApplyOverlay(void) {
         // Ensure parent directories exist in guest fs
         NSString *parentDir = [dst stringByDeletingLastPathComponent];
         if (parentDir.length > 1)
-            generic_mkdirat(AT_PWD, parentDir.UTF8String, 0755);
+            create_directory_chain(parentDir);
 
         // Read file from patch bundle
         NSURL *srcURL = [patchBundle.bundleURL URLByAppendingPathComponent:src];
@@ -186,6 +204,10 @@ void FsApplyOverlay(void) {
             failed++;
         } else {
             NSLog(@"[RootfsPatch] OK %@ -> %@ (%lu bytes)", src, dst, (unsigned long)data.length);
+            NSNumber *mode = entry[@"mode"];
+            if (mode != nil) {
+                generic_setattrat(AT_PWD, dst.UTF8String, (struct attr) {.type = attr_mode, .mode = mode.intValue}, false);
+            }
             applied++;
         }
     }

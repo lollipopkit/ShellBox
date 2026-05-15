@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+mkdir -p /dev/pts /proc /sys /run /tmp
+chmod 1777 /tmp
+
+if [ -x /bin/hostname ] && [ -f /etc/hostname ]; then
+    /bin/hostname "$(cat /etc/hostname)" 2>/dev/null || true
+fi
+
+if [ -x /usr/lib/systemd/systemd-tmpfiles ]; then
+    /usr/lib/systemd/systemd-tmpfiles --create --remove --boot 2>/dev/null || true
+fi
+
+echo "Shell Box Debian init is running. Interactive sessions start separately." >/run/shellbox-init.log
+while :; do
+    sleep 3600
+done
