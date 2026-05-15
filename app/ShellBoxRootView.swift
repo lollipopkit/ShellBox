@@ -85,7 +85,7 @@ struct ShellBoxRootView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Shell Box")
+                Text("ShellBox")
                     .font(.headline)
                 Text("Debian ARM64")
                     .font(.caption)
@@ -445,7 +445,7 @@ struct ShellBoxSettingsView: View {
     private var versionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        return "Shell Box \(version) (Build \(build))"
+        return "ShellBox \(version) (Build \(build))"
     }
 
     var body: some View {
@@ -484,13 +484,13 @@ struct ShellBoxSettingsView: View {
                     Label(filesystemStatusText, systemImage: FsNeedsRepositoryUpdate() ? "arrow.triangle.2.circlepath" : "checkmark.circle")
                         .foregroundStyle(FsNeedsRepositoryUpdate() ? .primary : .secondary)
                 } else {
-                    Text("The current filesystem is not managed by Shell Box.")
+                    Text("The current filesystem is not managed by ShellBox.")
                         .foregroundStyle(.secondary)
                 }
             }
 
             Section("Links") {
-                Link("Send Feedback", destination: URL(string: "mailto:tblodt@icloud.com?subject=Feedback%20for%20Shell%20Box")!)
+                Link("Send Feedback", destination: URL(string: "mailto:tblodt@icloud.com?subject=Feedback%20for%20ShellBox")!)
                 Link("GitHub", destination: URL(string: "https://github.com/ish-app/ish")!)
                 Link("Fediverse", destination: URL(string: "https://publ.ish.app/ish")!)
                 Link("Discord", destination: URL(string: "https://discord.gg/HFAXj44")!)
@@ -775,7 +775,7 @@ private struct ShellBoxAlert: Identifiable {
 
     init(notification: Notification) {
         let userInfo = notification.userInfo ?? [:]
-        title = userInfo["title"] as? String ?? "Shell Box"
+        title = userInfo["title"] as? String ?? "ShellBox"
         message = userInfo["message"] as? String ?? ""
         kind = Kind(rawValue: userInfo["kind"] as? String ?? "") ?? .message
     }

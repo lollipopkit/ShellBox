@@ -13,7 +13,7 @@ if [ -x /usr/lib/systemd/systemd-tmpfiles ]; then
     /usr/lib/systemd/systemd-tmpfiles --create --remove --boot 2>/dev/null || true
 fi
 
-echo "Shell Box Debian init is running. Interactive sessions start separately." >/run/shellbox-init.log
+echo "ShellBox Debian init is running. Interactive sessions start separately." >/run/shellbox-init.log
 if command -v tail >/dev/null 2>&1; then
     exec tail -f /dev/null
 fi

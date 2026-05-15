@@ -135,13 +135,10 @@ final class SwiftTermHostView: UIView, TerminalViewDelegate, TerminalRenderer {
             }
         }
 
-        switch (cursorStyle, blinkCursor) {
-        case (0, true): terminalView.getTerminal().options.cursorStyle = .blinkBlock
-        case (0, false): terminalView.getTerminal().options.cursorStyle = .steadyBlock
-        case (1, true): terminalView.getTerminal().options.cursorStyle = .blinkBar
-        case (1, false): terminalView.getTerminal().options.cursorStyle = .steadyBar
-        case (2, true): terminalView.getTerminal().options.cursorStyle = .blinkUnderline
-        case (2, false): terminalView.getTerminal().options.cursorStyle = .steadyUnderline
+        switch cursorStyle {
+        case 0: terminalView.getTerminal().options.cursorStyle = .steadyBlock
+        case 1: terminalView.getTerminal().options.cursorStyle = .steadyBar
+        case 2: terminalView.getTerminal().options.cursorStyle = .steadyUnderline
         default: terminalView.getTerminal().options.cursorStyle = .steadyBlock
         }
 

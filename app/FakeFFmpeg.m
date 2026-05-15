@@ -1,4 +1,4 @@
-// Fake ffmpeg handler for the Shell Box FFmpeg test target.
+// Fake ffmpeg handler for the ShellBox FFmpeg test target.
 // Only compiled when ISH_FFMPEG_TEST=1 (set in AppARM64-ffmpeg.xcconfig).
 // Demonstrates native offload by simulating ffmpeg encoding with real file I/O.
 
@@ -30,7 +30,7 @@ static int fake_ffmpeg_main(int argc, char **argv,
 
     // ffmpeg -version: real ffmpeg outputs to stdout
     if (argc >= 2 && strcmp(argv[1], "-version") == 0) {
-        dprintf(stdout_fd, "ffmpeg version 8.0-fake (Shell Box native builtin)\n");
+        dprintf(stdout_fd, "ffmpeg version 8.0-fake (ShellBox native builtin)\n");
         dprintf(stdout_fd, "built with Apple clang, native offload handler\n");
         dprintf(stdout_fd, "configuration: --enable-native-offload\n");
         dprintf(stdout_fd, "libavutil      59.  0.100\n");

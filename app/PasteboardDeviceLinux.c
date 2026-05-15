@@ -1,6 +1,6 @@
 //
 //  PasteboardDeviceLinux.c
-//  Shell Box Linux
+//  ShellBox Linux
 //
 //  Created by Theodore Dubois on 2/19/22.
 //

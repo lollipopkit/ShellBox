@@ -1,6 +1,6 @@
 //
 //  ExceptionExfiltrator.h
-//  Shell Box
+//  ShellBox
 //
 //  Created by Saagar Jha on 5/5/23.
 //

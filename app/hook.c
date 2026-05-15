@@ -1,6 +1,6 @@
 //
 //  hook.c
-//  Shell Box
+//  ShellBox
 //
 //  Created by Saagar Jha on 12/29/22.
 //

@@ -1,6 +1,6 @@
 //
 //  LinuxInterop.c
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 7/3/21.
 //

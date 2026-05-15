@@ -1,6 +1,6 @@
 //
 //  UIApplication+OpenURL.m
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 9/23/18.
 //

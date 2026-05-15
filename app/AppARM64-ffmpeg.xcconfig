@@ -1,7 +1,7 @@
 #include "AppARM64.xcconfig"
 
-// Shell Box FFmpeg test target: enables built-in native handlers (fake_ffmpeg)
-PRODUCT_NAME = Shell Box FFmpeg
+// ShellBox FFmpeg test target: enables built-in native handlers (fake_ffmpeg)
+PRODUCT_NAME = ShellBox FFmpeg
 PRODUCT_BUNDLE_IDENTIFIER = $(ROOT_BUNDLE_IDENTIFIER).ffmpeg
 PRODUCT_APP_GROUP_IDENTIFIER = group.$(ROOT_BUNDLE_IDENTIFIER).ffmpeg
 

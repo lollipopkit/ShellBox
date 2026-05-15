@@ -1,6 +1,6 @@
 //
 //  Terminal.h
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 10/18/17.
 //

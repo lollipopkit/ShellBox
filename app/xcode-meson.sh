@@ -9,7 +9,7 @@ if [[ -n "$SRCROOT" && -d "$SRCROOT/.venv/bin" ]]; then
     export PATH="$SRCROOT/.venv/bin:$PATH"
 fi
 if ! command -v meson >/dev/null 2>&1; then
-    echo "error: meson is required to build Shell Box. Install it with Homebrew or pip, then rebuild." >&2
+    echo "error: meson is required to build ShellBox. Install it with Homebrew or pip, then rebuild." >&2
     exit 127
 fi
 

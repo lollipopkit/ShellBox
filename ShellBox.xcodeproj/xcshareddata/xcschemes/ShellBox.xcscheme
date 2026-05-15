@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "74B674687BE68C2FE768F439"
-               BuildableName = "Shell Box FFmpeg.app"
-               BlueprintName = "Shell Box FFmpeg"
+               BlueprintIdentifier = "AA0000011F96D90D00FFB7A4"
+               BuildableName = "ShellBox.app"
+               BlueprintName = "ShellBox ARM64"
                ReferencedContainer = "container:ShellBox.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -30,9 +30,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "74B674687BE68C2FE768F439"
-            BuildableName = "Shell Box FFmpeg.app"
-            BlueprintName = "Shell Box FFmpeg"
+            BlueprintIdentifier = "AA0000011F96D90D00FFB7A4"
+            BuildableName = "ShellBox.app"
+            BlueprintName = "ShellBox ARM64"
             ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -53,9 +53,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "74B674687BE68C2FE768F439"
-            BuildableName = "Shell Box FFmpeg.app"
-            BlueprintName = "Shell Box FFmpeg"
+            BlueprintIdentifier = "AA0000011F96D90D00FFB7A4"
+            BuildableName = "ShellBox.app"
+            BlueprintName = "ShellBox ARM64"
             ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -70,9 +70,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "74B674687BE68C2FE768F439"
-            BuildableName = "Shell Box FFmpeg.app"
-            BlueprintName = "Shell Box FFmpeg"
+            BlueprintIdentifier = "AA0000011F96D90D00FFB7A4"
+            BuildableName = "ShellBox.app"
+            BlueprintName = "ShellBox ARM64"
             ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

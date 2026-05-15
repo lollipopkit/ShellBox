@@ -1,6 +1,6 @@
 //
 //  Theme.m
-//  Shell Box
+//  ShellBox
 //
 //  Created by Saagar Jha on 2/25/22.
 //

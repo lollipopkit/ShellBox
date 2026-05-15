@@ -1,6 +1,6 @@
 //
 //  ViewController.m
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 10/17/17.
 //
@@ -278,7 +278,7 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
         [NSNotificationCenter.defaultCenter postNotificationName:@"ShellBoxAlertNotification"
                                                           object:nil
                                                         userInfo:@{
-                                                            @"title": message ?: @"Shell Box",
+                                                            @"title": message ?: @"ShellBox",
                                                             @"message": subtitle ?: @"",
                                                         }];
     });

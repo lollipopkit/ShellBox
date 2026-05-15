@@ -1,6 +1,6 @@
 //
 //  NSObject+SaneKVO.m
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 11/10/20.
 //

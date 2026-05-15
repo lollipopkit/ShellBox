@@ -14,36 +14,27 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
-               BuildableName = "Shell Box.app"
-               BlueprintName = "Shell Box Legacy"
+               BlueprintIdentifier = "BBEF1964268066D1001225BD"
+               BuildableName = "ShellBox.app"
+               BlueprintName = "ShellBox Linux"
                ReferencedContainer = "container:ShellBox.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "Debug-ApplePleaseFixFB19282108"
+      buildConfiguration = "DebugLinux"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
-            BuildableName = "Shell Box.app"
-            BlueprintName = "Shell Box Legacy"
-            ReferencedContainer = "container:ShellBox.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
       <Testables>
          <TestableReference
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "BB41591B255EF9E300E0950C"
-               BuildableName = "Shell Box UITests.xctest"
-               BlueprintName = "Shell Box UITests"
+               BuildableName = "ShellBox UITests.xctest"
+               BlueprintName = "ShellBox UITests"
                ReferencedContainer = "container:ShellBox.xcodeproj">
             </BuildableReference>
             <SkippedTests>
@@ -55,7 +46,7 @@
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Debug-ApplePleaseFixFB19282108"
+      buildConfiguration = "DebugLinux"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -68,35 +59,34 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
-            BuildableName = "Shell Box.app"
-            BlueprintName = "Shell Box Legacy"
+            BlueprintIdentifier = "BBEF1964268066D1001225BD"
+            BuildableName = "ShellBox.app"
+            BlueprintName = "ShellBox Linux"
             ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
    <ProfileAction
-      buildConfiguration = "Release"
+      buildConfiguration = "ReleaseLinux"
       shouldUseLaunchSchemeArgsEnv = "YES"
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BB792B4F1F96D90D00FFB7A4"
-            BuildableName = "Shell Box.app"
-            BlueprintName = "Shell Box Legacy"
+            BlueprintIdentifier = "BBEF1964268066D1001225BD"
+            BuildableName = "ShellBox.app"
+            BlueprintName = "ShellBox Linux"
             ReferencedContainer = "container:ShellBox.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
-      buildConfiguration = "Debug-ApplePleaseFixFB19282108">
+      buildConfiguration = "DebugLinux">
    </AnalyzeAction>
    <ArchiveAction
-      buildConfiguration = "Release"
+      buildConfiguration = "ReleaseLinux"
       revealArchiveInOrganizer = "YES">
    </ArchiveAction>
 </Scheme>

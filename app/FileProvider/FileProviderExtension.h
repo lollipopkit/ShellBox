@@ -1,6 +1,6 @@
 //
 //  FileProviderExtension.h
-//  Shell Box Files
+//  ShellBox Files
 //
 //  Created by Theodore Dubois on 9/20/18.
 //

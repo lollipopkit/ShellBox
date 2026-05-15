@@ -1,6 +1,6 @@
 //
 //  NSError+ShellBoxErrno.h
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 12/15/18.
 //

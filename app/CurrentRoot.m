@@ -1,6 +1,6 @@
 //
 //  CurrentRoot.m
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 11/4/21.
 //
@@ -109,8 +109,8 @@ bool FsNeedsRepositoryUpdate(void) {
 void FsUpdateOnlyRepositoriesFile(void) {
     NSURL *repositories = [NSBundle.mainBundle URLForResource:@"repositories" withExtension:@"txt"];
     if (repositories != nil) {
-        NSMutableData *repositoriesData = [@"# This file contains pinned APT sources managed by Shell Box. If the /ish directory\n"
-                                           @"# exists, Shell Box uses the metadata stored in it to keep this file up to date (by\n"
+        NSMutableData *repositoriesData = [@"# This file contains pinned APT sources managed by ShellBox. If the /ish directory\n"
+                                           @"# exists, ShellBox uses the metadata stored in it to keep this file up to date (by\n"
                                            @"# overwriting the contents on boot.)\n" dataUsingEncoding:NSUTF8StringEncoding].mutableCopy;
         [repositoriesData appendData:[NSData dataWithContentsOfURL:repositories]];
         write_file("/etc/apt/sources.list", repositoriesData.bytes, repositoriesData.length);

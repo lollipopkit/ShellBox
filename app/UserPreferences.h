@@ -1,6 +1,6 @@
 //
 //  UserPreferences.h
-//  Shell Box
+//  ShellBox
 //
 //  Created by Charlie Melbye on 11/12/18.
 //

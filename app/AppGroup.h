@@ -1,6 +1,6 @@
 //
 //  AppGroup.h
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 2/28/20.
 //

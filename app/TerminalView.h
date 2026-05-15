@@ -1,6 +1,6 @@
 //
 //  TerminalView.h
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 11/3/17.
 //

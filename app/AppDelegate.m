@@ -1,6 +1,6 @@
 //
 //  AppDelegate.m
-//  Shell Box
+//  ShellBox
 //
 //  Created by Theodore Dubois on 10/17/17.
 //
@@ -144,7 +144,7 @@ static TerminalViewController *TerminalViewControllerFromRoot(UIViewController *
 
 #ifdef ISH_FFMPEG_TEST
     // Register built-in native handlers (fake_ffmpeg) for the ffmpeg test target.
-    // This is NOT called in the standard Shell Box ARM64 target.
+    // This is NOT called in the standard ShellBox ARM64 target.
     native_builtins_init();
 #endif
 
@@ -302,8 +302,8 @@ void SyncHostname(void) {
         [NSNotificationCenter.defaultCenter postNotificationName:@"ShellBoxAlertNotification"
                                                           object:nil
                                                         userInfo:@{
-                                                            @"title": @"Install Shell Box's built-in Debian rootfs?",
-                                                            @"message": @"Shell Box now includes a Debian rootfs with APT. Reinstall the built-in root from Settings if this root predates the Debian migration.",
+                                                            @"title": @"Install ShellBox's built-in Debian rootfs?",
+                                                            @"message": @"ShellBox now includes a Debian rootfs with APT. Reinstall the built-in root from Settings if this root predates the Debian migration.",
                                                         }];
     }
     [NSUserDefaults.standardUserDefaults setInteger:1 forKey:kSkipStartupMessage];
@@ -344,7 +344,7 @@ void NetworkReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
         [UIView setAnimationsEnabled:NO];
 
 #if !ISH_LINUX
-    NSString *ishVersion = [NSString stringWithFormat:@"Shell Box %@ (%@)",
+    NSString *ishVersion = [NSString stringWithFormat:@"ShellBox %@ (%@)",
                          [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
                          [NSBundle.mainBundle objectForInfoDictionaryKey:(NSString *) kCFBundleVersionKey]];
     extern const char *proc_ish_version;

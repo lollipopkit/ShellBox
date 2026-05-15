@@ -1,7 +1,7 @@
 #include "App.xcconfig"
 #include "GuestARM64.xcconfig"
 
-PRODUCT_NAME = Shell Box
+PRODUCT_NAME = ShellBox
 PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox
 PRODUCT_APP_GROUP_IDENTIFIER = group.com.lollipopkit.shellbox
 INFOPLIST_PREFIX_HEADER = $(CONFIGURATION_BUILD_DIR)/infoplisticons.h
