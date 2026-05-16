@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AA000160AF97000000FFB7A4 /* archive_write_set_format_cpio_binary.c in Sources */ = {isa = PBXBuildFile; fileRef = AA000163AF97000000FFB7A4 /* archive_write_set_format_cpio_binary.c */; };
+		AA000161AF97000000FFB7A4 /* archive_write_set_format_cpio_odc.c in Sources */ = {isa = PBXBuildFile; fileRef = AA000164AF97000000FFB7A4 /* archive_write_set_format_cpio_odc.c */; };
+		AA000162AF97000000FFB7A4 /* archive_time.c in Sources */ = {isa = PBXBuildFile; fileRef = AA000165AF97000000FFB7A4 /* archive_time.c */; };
 		BB10E403248DA6F1009C7A74 /* archive_read_support_format_rar.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E0E4248DA6EA009C7A74 /* archive_read_support_format_rar.c */; };
 		BB10E404248DA6F1009C7A74 /* archive_read_support_format_empty.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E0E6248DA6EA009C7A74 /* archive_read_support_format_empty.c */; };
 		BB10E405248DA6F1009C7A74 /* archive_blake2s_ref.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E0E7248DA6EA009C7A74 /* archive_blake2s_ref.c */; };
@@ -108,7 +111,6 @@
 		BB10E594248DA6F5009C7A74 /* archive_read_support_format_warc.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3CD248DA6F0009C7A74 /* archive_read_support_format_warc.c */; };
 		BB10E595248DA6F5009C7A74 /* archive_write_open_file.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3CF248DA6F0009C7A74 /* archive_write_open_file.c */; };
 		BB10E596248DA6F5009C7A74 /* archive_write_add_filter_gzip.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3D1248DA6F0009C7A74 /* archive_write_add_filter_gzip.c */; };
-		BB10E597248DA6F5009C7A74 /* archive_getdate.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3D2248DA6F0009C7A74 /* archive_getdate.c */; };
 		BB10E599248DA6F5009C7A74 /* archive_check_magic.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3D4248DA6F0009C7A74 /* archive_check_magic.c */; };
 		BB10E59B248DA6F5009C7A74 /* archive_write_disk_posix.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3D6248DA6F0009C7A74 /* archive_write_disk_posix.c */; };
 		BB10E59C248DA6F5009C7A74 /* archive_write_add_filter_compress.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E3D7248DA6F0009C7A74 /* archive_write_add_filter_compress.c */; };
@@ -139,6 +141,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AA000163AF97000000FFB7A4 /* archive_write_set_format_cpio_binary.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_write_set_format_cpio_binary.c; sourceTree = "<group>"; };
+		AA000164AF97000000FFB7A4 /* archive_write_set_format_cpio_odc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_write_set_format_cpio_odc.c; sourceTree = "<group>"; };
+		AA000165AF97000000FFB7A4 /* archive_time.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_time.c; sourceTree = "<group>"; };
 		BB10E0D6248DA67B009C7A74 /* libarchive.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libarchive.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB10E0E4248DA6EA009C7A74 /* archive_read_support_format_rar.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_read_support_format_rar.c; sourceTree = "<group>"; };
 		BB10E0E6248DA6EA009C7A74 /* archive_read_support_format_empty.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_read_support_format_empty.c; sourceTree = "<group>"; };
@@ -179,7 +184,6 @@
 		BB10E112248DA6EA009C7A74 /* archive_options.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_options.c; sourceTree = "<group>"; };
 		BB10E362248DA6EE009C7A74 /* archive_hmac.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_hmac.c; sourceTree = "<group>"; };
 		BB10E363248DA6EE009C7A74 /* archive_digest_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = archive_digest_private.h; sourceTree = "<group>"; };
-		BB10E365248DA6EE009C7A74 /* archive_getdate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = archive_getdate.h; sourceTree = "<group>"; };
 		BB10E366248DA6EE009C7A74 /* archive_read_support_format_all.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_read_support_format_all.c; sourceTree = "<group>"; };
 		BB10E367248DA6EE009C7A74 /* archive_read_open_filename.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_read_open_filename.c; sourceTree = "<group>"; };
 		BB10E368248DA6EE009C7A74 /* archive_write_set_format_cpio_newc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_write_set_format_cpio_newc.c; sourceTree = "<group>"; };
@@ -270,7 +274,6 @@
 		BB10E3CD248DA6F0009C7A74 /* archive_read_support_format_warc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_read_support_format_warc.c; sourceTree = "<group>"; };
 		BB10E3CF248DA6F0009C7A74 /* archive_write_open_file.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_write_open_file.c; sourceTree = "<group>"; };
 		BB10E3D1248DA6F0009C7A74 /* archive_write_add_filter_gzip.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_write_add_filter_gzip.c; sourceTree = "<group>"; };
-		BB10E3D2248DA6F0009C7A74 /* archive_getdate.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_getdate.c; sourceTree = "<group>"; };
 		BB10E3D3248DA6F0009C7A74 /* archive_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = archive_private.h; sourceTree = "<group>"; };
 		BB10E3D4248DA6F0009C7A74 /* archive_check_magic.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = archive_check_magic.c; sourceTree = "<group>"; };
 		BB10E3D5248DA6F0009C7A74 /* archive_pack_dev.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = archive_pack_dev.h; sourceTree = "<group>"; };
@@ -384,10 +387,11 @@
 				BB10E112248DA6EA009C7A74 /* archive_options.c */,
 				BB10E362248DA6EE009C7A74 /* archive_hmac.c */,
 				BB10E363248DA6EE009C7A74 /* archive_digest_private.h */,
-				BB10E365248DA6EE009C7A74 /* archive_getdate.h */,
 				BB10E366248DA6EE009C7A74 /* archive_read_support_format_all.c */,
 				BB10E367248DA6EE009C7A74 /* archive_read_open_filename.c */,
+				AA000163AF97000000FFB7A4 /* archive_write_set_format_cpio_binary.c */,
 				BB10E368248DA6EE009C7A74 /* archive_write_set_format_cpio_newc.c */,
+				AA000164AF97000000FFB7A4 /* archive_write_set_format_cpio_odc.c */,
 				BB10E369248DA6EE009C7A74 /* archive_entry_link_resolver.c */,
 				BB10E36A248DA6EE009C7A74 /* archive_ppmd7_private.h */,
 				BB10E36B248DA6EF009C7A74 /* archive_options_private.h */,
@@ -424,6 +428,7 @@
 				BB10E391248DA6EF009C7A74 /* archive_write_add_filter.c */,
 				BB10E392248DA6EF009C7A74 /* archive_read_filter.3 */,
 				BB10E393248DA6EF009C7A74 /* archive_version_details.c */,
+				AA000165AF97000000FFB7A4 /* archive_time.c */,
 				BB10E394248DA6EF009C7A74 /* archive_read_support_filter_lzop.c */,
 				BB10E395248DA6EF009C7A74 /* archive_write_open_fd.c */,
 				BB10E396248DA6EF009C7A74 /* archive_write_add_filter_lz4.c */,
@@ -475,7 +480,6 @@
 				BB10E3CD248DA6F0009C7A74 /* archive_read_support_format_warc.c */,
 				BB10E3CF248DA6F0009C7A74 /* archive_write_open_file.c */,
 				BB10E3D1248DA6F0009C7A74 /* archive_write_add_filter_gzip.c */,
-				BB10E3D2248DA6F0009C7A74 /* archive_getdate.c */,
 				BB10E3D3248DA6F0009C7A74 /* archive_private.h */,
 				BB10E3D4248DA6F0009C7A74 /* archive_check_magic.c */,
 				BB10E3D5248DA6F0009C7A74 /* archive_pack_dev.h */,
@@ -613,7 +617,6 @@
 				BB10E573248DA6F4009C7A74 /* archive_write_disk_windows.c in Sources */,
 				BB10E557248DA6F4009C7A74 /* archive_read_support_filter_xz.c in Sources */,
 				BB10E427248DA6F1009C7A74 /* archive_options.c in Sources */,
-				BB10E597248DA6F5009C7A74 /* archive_getdate.c in Sources */,
 				BB10E5A2248DA6F5009C7A74 /* archive_write_add_filter_b64encode.c in Sources */,
 				BB10E40A248DA6F1009C7A74 /* archive_write_disk_set_standard_lookup.c in Sources */,
 				BB10E595248DA6F5009C7A74 /* archive_write_open_file.c in Sources */,
@@ -656,6 +659,8 @@
 				BB10E56F248DA6F4009C7A74 /* archive_write_add_filter_zstd.c in Sources */,
 				BB10E411248DA6F1009C7A74 /* archive_util.c in Sources */,
 				BB10E540248DA6F4009C7A74 /* archive_write_set_format_cpio_newc.c in Sources */,
+				AA000160AF97000000FFB7A4 /* archive_write_set_format_cpio_binary.c in Sources */,
+				AA000161AF97000000FFB7A4 /* archive_write_set_format_cpio_odc.c in Sources */,
 				BB10E559248DA6F4009C7A74 /* archive_write_set_format.c in Sources */,
 				BB10E54B248DA6F4009C7A74 /* archive_read.c in Sources */,
 				BB10E578248DA6F4009C7A74 /* archive_read_support_filter_all.c in Sources */,
@@ -708,6 +713,7 @@
 				BB10E54D248DA6F4009C7A74 /* archive_entry_copy_stat.c in Sources */,
 				BB10E575248DA6F4009C7A74 /* archive_write.c in Sources */,
 				BB10E550248DA6F4009C7A74 /* archive_write_set_format_cpio.c in Sources */,
+				AA000162AF97000000FFB7A4 /* archive_time.c in Sources */,
 				BB10E58B248DA6F5009C7A74 /* archive_write_set_format_raw.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -819,6 +825,7 @@
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/libarchive";
+				OTHER_CFLAGS = "-include stdio.h -include unistd.h -include sys/stat.h";
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -859,6 +866,7 @@
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/libarchive";
+				OTHER_CFLAGS = "-include stdio.h -include unistd.h -include sys/stat.h";
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "-ObjC";

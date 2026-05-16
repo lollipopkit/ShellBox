@@ -2,7 +2,7 @@
 
 if [ ! -x /usr/bin/fish ] || [ ! -f /ish/fish-ready ]; then
     if [ -x /ish/setup-debian-utils.sh ]; then
-        /ish/setup-debian-utils.sh
+        /ish/setup-debian-utils.sh --fish-only
     fi
 fi
 
@@ -11,5 +11,6 @@ if [ -x /usr/bin/fish ]; then
 fi
 
 echo "fish is not installed and automatic setup did not complete."
+echo "See /ish/setup-debian-utils.log, then run /ish/setup-debian-utils.sh to retry."
 echo "Starting /bin/sh for this session."
 exec /bin/sh -i "$@"

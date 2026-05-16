@@ -86,6 +86,8 @@ static const char *controlKeys = "abcdefghijklmnopqrstuvwxyz@^26-=[]\\ ";
 }
 
 - (void)setInputAccessoryView:(UIInputView *)inputAccessoryView {
+    if (_inputAccessoryView == inputAccessoryView)
+        return;
     _inputAccessoryView = inputAccessoryView;
     self.hostView.customInputAccessoryView = inputAccessoryView;
 }

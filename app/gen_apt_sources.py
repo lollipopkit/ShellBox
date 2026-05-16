@@ -1,6 +1,6 @@
 import os
 
-DEBIAN_RELEASE = os.environ.get('DEBIAN_RELEASE', 'bookworm')
+DEBIAN_RELEASE = os.environ.get('DEBIAN_RELEASE', 'trixie')
 DEBIAN_MIRROR = os.environ.get('DEBIAN_MIRROR', 'https://deb.debian.org/debian')
 DEBIAN_SECURITY_MIRROR = os.environ.get('DEBIAN_SECURITY_MIRROR', 'https://security.debian.org/debian-security')
 

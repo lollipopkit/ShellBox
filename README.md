@@ -1,4 +1,4 @@
-# Shell Box
+# ShellBox
 
 > ## 🚀 ARM64 Fork Notice
 >
@@ -44,7 +44,7 @@
 </a>
 </p>
 
-Shell Box gets a Linux shell running on iOS, using usermode x86 emulation and syscall translation.
+ShellBox gets a Linux shell running on iOS, using usermode x86 emulation and syscall translation.
 
 For the current status of the project, check the issues tab, and the commit logs.
 
@@ -81,7 +81,7 @@ You can replace `ish` with `tools/ptraceomatic` to run the program in a real pro
 
 ## Logging
 
-Shell Box has several logging channels which can be enabled at build time. By default, all of them are disabled. To enable them:
+ShellBox has several logging channels which can be enabled at build time. By default, all of them are disabled. To enable them:
 
 - In Xcode: Set the `ISH_LOG` setting in ShellBox.xcconfig to a space-separated list of log channels.
 - With Meson (command line tool for testing): Run `meson configure -Dlog="<space-separated list of log channels>"`.
@@ -95,7 +95,7 @@ Available channels:
 
 # A note on the interpreter
 
-Possibly the most interesting thing I wrote as part of Shell Box is the interpreter. It's not quite a JIT since it doesn't target machine code. Instead it generates an array of pointers to functions called gadgets, and each gadget ends with a tailcall to the next function; like the threaded code technique used by some Forth interpreters. The result is a speedup of roughly 3-5x compared to emulation using a simpler switch dispatch.
+Possibly the most interesting thing I wrote as part of ShellBox is the interpreter. It's not quite a JIT since it doesn't target machine code. Instead it generates an array of pointers to functions called gadgets, and each gadget ends with a tailcall to the next function; like the threaded code technique used by some Forth interpreters. The result is a speedup of roughly 3-5x compared to emulation using a simpler switch dispatch.
 
 Unfortunately, I made the decision to write nearly all of the gadgets in assembly language. This was probably a good decision with regards to performance (though I'll never know for sure), but a horrible decision with regards to readability, maintainability, and my sanity. The amount of bullshit I've had to put up with from the compiler/assembler/linker is insane. It's like there's a demon in there that makes sure my code is sufficiently deformed, and if not, makes up stupid reasons why it shouldn't compile. In order to stay sane while writing this code, I've had to ignore best practices in code structure and naming. You'll find macros and variables with such descriptive names as `ss` and `s` and `a`. Assembler macros nested beyond belief. And to top it off, there are almost no comments.
 

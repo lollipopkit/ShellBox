@@ -48,6 +48,9 @@ final class SwiftTermHostView: UIView, TerminalViewDelegate, TerminalRenderer {
 
     @objc var customInputAccessoryView: UIInputView? {
         didSet {
+            if terminalView.inputAccessoryView === customInputAccessoryView {
+                return
+            }
             terminalView.inputAccessoryView = customInputAccessoryView
             if terminalView.isFirstResponder {
                 terminalView.reloadInputViews()
@@ -135,12 +138,15 @@ final class SwiftTermHostView: UIView, TerminalViewDelegate, TerminalRenderer {
             }
         }
 
+        var style = terminalView.getTerminal().options.cursorStyle
         switch cursorStyle {
-        case 0: terminalView.getTerminal().options.cursorStyle = .steadyBlock
-        case 1: terminalView.getTerminal().options.cursorStyle = .steadyBar
-        case 2: terminalView.getTerminal().options.cursorStyle = .steadyUnderline
-        default: terminalView.getTerminal().options.cursorStyle = .steadyBlock
+        case 0: style = blinkCursor ? .blinkBlock : .steadyBlock
+        case 1: style = blinkCursor ? .blinkBar : .steadyBar
+        case 2: style = blinkCursor ? .blinkUnderline : .steadyUnderline
+        default: style = blinkCursor ? .blinkBlock : .steadyBlock
         }
+        terminalView.getTerminal().options.cursorStyle = style
+        terminalView.cursorStyleChanged(source: terminalView.getTerminal(), newStyle: style)
 
         setNeedsLayout()
         terminalView.setNeedsDisplay()

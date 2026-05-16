@@ -10,10 +10,10 @@ row as pending unless it was run on the named target.
 |---|---|
 | Host | macOS 26.4.1 / arm64 |
 | Xcode SDKs observed | iPhoneOS 26.4, iPhoneSimulator 26.4 |
-| ARM64 scheme | `Shell Box` |
-| ARM64 target | `Shell Box ARM64` |
+| ARM64 scheme | `ShellBox` |
+| ARM64 target | `ShellBox ARM64` |
 | Local Meson | `.venv/bin/meson` 1.11.1 |
-| Xcode 26 asset build note | `Shell Box ARM64` uses `AppARM64.xcconfig`; `GuestARM64.xcconfig` excludes `x86_64` for iPhone Simulator so `actool` and generated-source phases run against the valid ARM64 simulator slice |
+| Xcode 26 asset build note | `ShellBox ARM64` uses `AppARM64.xcconfig`; `GuestARM64.xcconfig` excludes `x86_64` for iPhone Simulator so `actool` and generated-source phases run against the valid ARM64 simulator slice |
 
 ## Verification Matrix
 
@@ -22,10 +22,10 @@ row as pending unless it was run on the named target.
 | CLI ARM64 JIT smoke | macOS host binary + ARM64 fakefs | Pass | `build-arm64-release/ish -f alpine-arm64-fakefs /bin/echo hello` prints `hello` |
 | ARM64 JIT BL/LR semantic smoke | macOS host binary + ARM64 fakefs | Pass | `benchmark/jit_smoke_arm64.sh` compiles a real `add; ret` leaf and verifies `BL` leaves `X30` equal to the return address |
 | CLI ARM64 performance | macOS host binary + ARM64 fakefs | Pass | `benchmark/run.sh arm64`, latest report in `benchmark/BENCHMARK_PERF.md` |
-| iPhoneOS app build | Shell Box ARM64 / Release / iPhoneOS 26.4 SDK | Pass | `xcodebuild -project ShellBox.xcodeproj -target "Shell Box ARM64" -configuration Release CODE_SIGNING_ALLOWED=NO build` |
-| iPhone 17 simulator build | Shell Box / Release / iPhone 17 / iOS 26.4.1 Simulator | Pass | `xcodebuild -project ShellBox.xcodeproj -scheme "Shell Box" -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4.1' CODE_SIGNING_ALLOWED=NO build` |
-| iPhone 17 simulator install/launch | Shell Box / Release / iPhone 17 / iOS 26.4.1 Simulator | Pass | `benchmark/verify_modern_iphone.sh --build-simulator --install-simulator --launch-simulator` boots the iPhone 17 simulator, installs the app bundle, launches `com.lollipopkit.shellbox`, verifies the launched process stays alive, and probes the ARM64 debug server |
-| iPhone 17 simulator destination discovery | Shell Box scheme | Pass | `xcodebuild -project ShellBox.xcodeproj -scheme "Shell Box" -showdestinations` lists iPhone 17, 17 Pro, 17 Pro Max, 17e, and iPhone Air simulators |
+| iPhoneOS app build | ShellBox ARM64 / Release / iPhoneOS 26.4 SDK | Pass | `xcodebuild -project ShellBox.xcodeproj -target "ShellBox ARM64" -configuration Release CODE_SIGNING_ALLOWED=NO build` |
+| iPhone 17 simulator build | ShellBox / Release / iPhone 17 / iOS 26.4.1 Simulator | Pass | `xcodebuild -project ShellBox.xcodeproj -scheme "ShellBox" -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4.1' CODE_SIGNING_ALLOWED=NO build` |
+| iPhone 17 simulator install/launch | ShellBox / Release / iPhone 17 / iOS 26.4.1 Simulator | Pass | `benchmark/verify_modern_iphone.sh --build-simulator --install-simulator --launch-simulator` boots the iPhone 17 simulator, installs the app bundle, launches `com.lollipopkit.shellbox`, verifies the launched process stays alive, and probes the ARM64 debug server |
+| iPhone 17 simulator destination discovery | ShellBox scheme | Pass | `xcodebuild -project ShellBox.xcodeproj -scheme "ShellBox" -showdestinations` lists iPhone 17, 17 Pro, 17 Pro Max, 17e, and iPhone Air simulators |
 | Physical iOS device availability | Xcode device list | Pending | `benchmark/verify_modern_iphone.sh` reports no connected physical iPhone/iPad; Xcode has an offline `iPhone 16 Pro (iPhone17,1)` on iOS 26.4.1 and an offline iPad Pro |
 | Real iPhone 17-family install | Physical iPhone on iOS 26.x | Pending | Requires a connected physical iPhone; simulator and offline devices are not sufficient |
 | Real iPhone 17-family runtime smoke | Physical iPhone on iOS 26.x | Pending | Requires a connected device and manual/automated terminal smoke |
@@ -76,7 +76,7 @@ Install and launch a signed app bundle on a connected physical device:
 
 ```sh
 DEVICE_ID=<device-uuid-or-name> \
-APP_PATH="/path/to/Shell Box.app" \
+APP_PATH="/path/to/ShellBox.app" \
 BUNDLE_ID=com.lollipopkit.shellbox \
   benchmark/verify_modern_iphone.sh --require-physical --install-device --launch-device
 ```
@@ -93,7 +93,7 @@ List the shared ARM64 scheme and modern destinations:
 
 ```sh
 xcodebuild -project ShellBox.xcodeproj -list
-xcodebuild -project ShellBox.xcodeproj -scheme "Shell Box" -showdestinations
+xcodebuild -project ShellBox.xcodeproj -scheme "ShellBox" -showdestinations
 ```
 
 Build the ARM64 app for the iPhone 17 simulator:
@@ -101,7 +101,7 @@ Build the ARM64 app for the iPhone 17 simulator:
 ```sh
 env PATH="$PWD/.venv/bin:$PATH" \
   xcodebuild -project ShellBox.xcodeproj \
-    -scheme "Shell Box" \
+    -scheme "ShellBox" \
     -configuration Release \
     -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4.1' \
     CODE_SIGNING_ALLOWED=NO \
@@ -113,7 +113,7 @@ Build the ARM64 app for generic iPhoneOS:
 ```sh
 env PATH="$PWD/.venv/bin:$PATH" \
   xcodebuild -project ShellBox.xcodeproj \
-    -target "Shell Box ARM64" \
+    -target "ShellBox ARM64" \
     -configuration Release \
     CODE_SIGNING_ALLOWED=NO \
     build

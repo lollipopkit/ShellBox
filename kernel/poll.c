@@ -228,7 +228,9 @@ dword_t sys_pselect(fd_t nfds, addr_t readfds_addr, addr_t writefds_addr, addr_t
     struct {
         addr_t mask_addr;
         dword_t mask_size;
-    } sigmask;
+    } sigmask = {};
+    if (sigmask_addr == 0)
+        return select_common(nfds, readfds_addr, writefds_addr, exceptfds_addr, timeout_ts_addr, "pselect");
 #ifdef GUEST_ARM64
     struct {
         uint64_t mask_addr;

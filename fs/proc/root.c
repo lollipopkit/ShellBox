@@ -35,7 +35,7 @@ static int proc_show_cpuinfo(struct proc_entry *UNUSED(entry), struct proc_data 
 #ifdef GUEST_ARM64
         // ARM64 format
         proc_printf(buf, "BogoMIPS\t: 48.00\n");
-        // Include crypto features that Shell Box ARM64 emulates
+        // Include crypto features that ShellBox ARM64 emulates
         proc_printf(buf, "Features\t: fp asimd evtstrm aes pmull atomics\n");
         proc_printf(buf, "CPU implementer\t: 0x00\n");
         proc_printf(buf, "CPU architecture: 8\n");

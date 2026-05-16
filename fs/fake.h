@@ -18,7 +18,7 @@ struct fd *fakefs_open_inode(struct mount *mount, ino_t inode);
  * Can be called from Swift/ObjC after the kernel has booted.
  *
  * `read_only`: when true, the top-level mount directory's meta.db entry is
- * written with mode 0555 (dr-xr-xr-x) instead of 0755, so Shell Box's generic
+ * written with mode 0555 (dr-xr-xr-x) instead of 0755, so ShellBox's generic
  * N_PARENT_DIR_WRITE check rejects any create/unlink/rename/rmdir with
  * EACCES at the normal access-check layer — no special fakefs plumbing
  * required. Existing writable mounts should pass `false`. */

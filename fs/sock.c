@@ -738,7 +738,7 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
     // on the kernel returning EAGAIN immediately on empty buffer to
     // terminate its "drain all pending responses" loop. If we wait when
     // the fd itself is nonblock, musl loops forever and DNS resolution
-    // appears to hang. We check both the Shell Box-level fd flags and the host
+    // appears to hang. We check both the ShellBox-level fd flags and the host
     // fd's real flags, in case they diverge (e.g. set via fcntl only).
     int host_flags = fcntl(sock->real_fd, F_GETFL, 0);
     bool host_nonblock = (host_flags >= 0) && (host_flags & O_NONBLOCK);
@@ -1466,7 +1466,7 @@ static void sock_translate_err(struct fd *fd, int *err) {
 // surface EINTR back to the guest instead of blindly retrying.
 //
 // The original realfs_read/realfs_write does `while (errno == EINTR) retry`,
-// which swallows the SIGUSR1 wake Shell Box uses to deliver guest signals into
+// which swallows the SIGUSR1 wake ShellBox uses to deliver guest signals into
 // blocked host syscalls. Combined with iOS occasionally deferring signal
 // delivery (thread suspension on backgrounding), this causes indefinite
 // hangs on any blocking socket read/write (git HTTPS, nc, telnet, etc.).

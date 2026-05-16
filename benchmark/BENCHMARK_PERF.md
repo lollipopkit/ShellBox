@@ -1,4 +1,4 @@
-# Shell Box Performance Benchmark
+# ShellBox Performance Benchmark
 
 > **Generated:** 2026-05-07 00:01:50
 > **Host:** macOS 26.4.1 / arm64
@@ -18,7 +18,7 @@
 
 ## 1. ARM64 Shell Benchmark (Native vs ARM64)
 
-> **Guest-side timing** — each test measured inside ARM64 Shell Box with
+> **Guest-side timing** — each test measured inside ARM64 ShellBox with
 > monotonic clock. Startup overhead (fakefs init) is excluded.
 > Use `./run.sh arm64` for a fast modern-iPhone/ARM64 performance pass
 > when x86 rootfs is not available.

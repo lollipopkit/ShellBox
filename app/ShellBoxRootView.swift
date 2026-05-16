@@ -44,7 +44,6 @@ struct ShellBoxRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             TerminalControllerView(controller: terminalViewController)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         }
@@ -82,37 +81,6 @@ struct ShellBoxRootView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("ShellBox")
-                    .font(.headline)
-                Text("Debian ARM64")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer(minLength: 8)
-
-            Button {
-                isShowingRoots = true
-            } label: {
-                Image(systemName: "externaldrive")
-            }
-            .accessibility(label: Text("Roots"))
-
-            Button {
-                isShowingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .accessibility(label: Text("Settings"))
-        }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.regularMaterial)
-    }
 }
 
 @objc(SceneDelegate)

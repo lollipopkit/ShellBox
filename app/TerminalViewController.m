@@ -28,10 +28,12 @@
 
 @property int sessionPid;
 @property (nonatomic) Terminal *sessionTerminal;
+@property (nonatomic) BOOL setupLogReported;
 
 @property BOOL ignoreKeyboardMotion;
 @property (nonatomic) BOOL hasExternalKeyboard;
 @property (nonatomic) BOOL processNotificationsRegistered;
+@property (nonatomic) CGFloat lastKeyboardPad;
 
 @end
 
@@ -73,6 +75,47 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
         return nil;
 
     return ((UIViewController *(*)(id, SEL, BOOL))objc_msgSend)(hostingClass, selector, recoveryMode);
+}
+
+static NSData *ReadGuestFileTail(const char *path, size_t maxSize) {
+#if !ISH_LINUX
+    struct task *savedCurrent = current;
+    current = pid_get_task(1);
+    struct fd *fd = generic_open(path, O_RDONLY_, 0);
+    current = savedCurrent;
+    if (IS_ERR(fd))
+        return nil;
+
+    NSMutableData *data = [NSMutableData data];
+    char buf[1024];
+    for (;;) {
+        ssize_t n = fd->ops->read(fd, buf, sizeof(buf));
+        if (n <= 0)
+            break;
+        [data appendBytes:buf length:(NSUInteger) n];
+        if (data.length > maxSize)
+            [data replaceBytesInRange:NSMakeRange(0, data.length - maxSize) withBytes:NULL length:0];
+    }
+    fd_close(fd);
+    return data;
+#else
+    return nil;
+#endif
+}
+
+static BOOL GuestFileExists(const char *path) {
+#if !ISH_LINUX
+    struct task *savedCurrent = current;
+    current = pid_get_task(1);
+    struct fd *fd = generic_open(path, O_RDONLY_, 0);
+    current = savedCurrent;
+    if (IS_ERR(fd))
+        return NO;
+    fd_close(fd);
+    return YES;
+#else
+    return NO;
+#endif
 }
 
 - (void)loadView {
@@ -216,6 +259,7 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
     }
     self.sessionPid = current->pid;
     task_start(current);
+    [self scheduleSetupLogChecks];
 #else
     const char *argv_arr[command.count + 1];
     for (NSUInteger i = 0; i < command.count; i++)
@@ -246,6 +290,34 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
     self.sessionPid = sessionPid;
 #endif
     return 0;
+}
+
+- (void)scheduleSetupLogChecks {
+    NSArray<NSNumber *> *delays = @[@15, @45, @90, @150];
+    for (NSNumber *delay in delays) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self reportSetupLogIfNeeded];
+        });
+    }
+}
+
+- (void)reportSetupLogIfNeeded {
+    if (self.setupLogReported)
+        return;
+    if (GuestFileExists("/ish/fish-ready")) {
+        self.setupLogReported = YES;
+        NSLog(@"[FishSetup] ready; fish is installed");
+        return;
+    }
+    if (!GuestFileExists("/ish/fish-setup-failed"))
+        return;
+
+    self.setupLogReported = YES;
+    NSData *data = ReadGuestFileTail("/ish/setup-debian-utils.log", 128 * 1024);
+    NSString *log = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (log.length == 0)
+        log = @"<empty or unreadable>";
+    NSLog(@"[FishSetup] failed; /ish/setup-debian-utils.log:\n%@", log);
 }
 
 #if !ISH_LINUX
@@ -339,8 +411,7 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
         return;
     CGRect intersection = CGRectIntersection(keyboardFrame, self.view.bounds);
     keyboardFrame = intersection;
-    NSLog(@"%@ %@", notification.name, @(keyboardFrame));
-    self.hasExternalKeyboard = keyboardFrame.size.height < 100;
+    BOOL hasExternalKeyboard = keyboardFrame.size.height < 100;
     CGFloat pad = CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(keyboardFrame);
     // The keyboard appears to be undocked. This means it can either be split or
     // truly floating. In the former case we want to keep the pad, but in the
@@ -349,7 +420,10 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
     if (pad != keyboardFrame.size.height && keyboardFrame.size.width != UIScreen.mainScreen.bounds.size.width) {
         pad = MAX(self.view.safeAreaInsets.bottom, self.termView.inputAccessoryView.frame.size.height);
     }
-    // NSLog(@"pad %f", pad);
+    if (fabs(self.lastKeyboardPad - pad) < 0.5 && self.hasExternalKeyboard == hasExternalKeyboard)
+        return;
+    self.lastKeyboardPad = pad;
+    self.hasExternalKeyboard = hasExternalKeyboard;
     self.bottomConstraint.constant = pad;
 
     BOOL initialLayout = self.termView.needsUpdateConstraints;
@@ -369,6 +443,8 @@ static UIViewController *SwiftUISettingsController(BOOL recoveryMode) {
 }
 
 - (void)setHasExternalKeyboard:(BOOL)hasExternalKeyboard {
+    if (_hasExternalKeyboard == hasExternalKeyboard)
+        return;
     _hasExternalKeyboard = hasExternalKeyboard;
     [self _updateStyleFromPreferences:YES];
 }

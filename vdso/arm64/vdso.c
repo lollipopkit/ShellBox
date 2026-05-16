@@ -11,7 +11,7 @@
  * - __kernel_clock_getres
  * - __kernel_rt_sigreturn
  *
- * In Shell Box, we implement these as simple wrappers that invoke the SVC #0
+ * In ShellBox, we implement these as simple wrappers that invoke the SVC #0
  * instruction to perform the actual system call.
  */
 

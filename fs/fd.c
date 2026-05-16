@@ -218,6 +218,37 @@ dword_t sys_close(fd_t f) {
     return f_close(f);
 }
 
+#define CLOSE_RANGE_UNSHARE_ (1U << 1)
+#define CLOSE_RANGE_CLOEXEC_ (1U << 2)
+
+dword_t sys_close_range(dword_t first, dword_t last, dword_t flags) {
+    STRACE("close_range(%u, %u, %u)", first, last, flags);
+    if (first > last)
+        return _EINVAL;
+    if (flags & ~(CLOSE_RANGE_UNSHARE_ | CLOSE_RANGE_CLOEXEC_))
+        return _EINVAL;
+
+    struct fdtable *table = current->files;
+    lock(&table->lock);
+    if (first >= table->size) {
+        unlock(&table->lock);
+        return 0;
+    }
+    if (last >= table->size)
+        last = table->size - 1;
+
+    for (fd_t f = (fd_t) first; (dword_t) f <= last; f++) {
+        if (table->files[f] == NULL)
+            continue;
+        if (flags & CLOSE_RANGE_CLOEXEC_)
+            bit_set(f, table->cloexec);
+        else
+            fdtable_close(table, f);
+    }
+    unlock(&table->lock);
+    return 0;
+}
+
 void fdtable_do_cloexec(struct fdtable *table) {
     lock(&table->lock);
     for (fd_t f = 0; (unsigned) f < table->size; f++)

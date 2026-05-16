@@ -1,4 +1,4 @@
-# Shell Box Compatibility: x86 vs ARM64
+# ShellBox Compatibility: x86 vs ARM64
 
 > **Generated:** 2026-04-23 20:04:33 | **Tests:** 205 | **Host:** macOS 26.4.1
 >

@@ -5,8 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SCHEME="Shell Box"
-TARGET="Shell Box ARM64"
+SCHEME="ShellBox"
+TARGET="ShellBox ARM64"
 SIM_DESTINATION="${SIM_DESTINATION:-platform=iOS Simulator,name=iPhone 17,OS=26.4.1}"
 RUN_SIM_BUILD=0
 RUN_DEVICE_BUILD=0

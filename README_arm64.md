@@ -1,4 +1,4 @@
-# Shell Box — ARM64 Linux on iOS via Native Threaded-Code Interpreter
+# ShellBox — ARM64 Linux on iOS via Native Threaded-Code Interpreter
 
 **Fork of [ish-app/ish](https://github.com/ish-app/ish)** — a userspace Linux emulator for iOS.
 
@@ -50,7 +50,7 @@ fundamental limits:
 
 ```
 +--------------------------------------------------------------+
-|  iOS App (Shell Box)                                         |
+|  iOS App (ShellBox)                                         |
 |                                                              |
 |  +--------------------------------------------------------+  |
 |  |  Asbestos (threaded-code interpreter)                  |  |
@@ -206,8 +206,8 @@ Enables AI agents to share files between the host app and the Linux guest withou
 | Target | Scheme | xcconfig | Guest Arch | Bundle ID Suffix |
 |--------|--------|----------|------------|------------------|
 | x86 (original) | iSH | `App.xcconfig` | i386 | — |
-| ARM64 | Shell Box ARM64 | `AppARM64.xcconfig` | aarch64 | `com.lollipopkit.shellbox` |
-| ARM64 + FFmpeg | Shell Box FFmpeg | `AppARM64-ffmpeg.xcconfig` | aarch64 | `.arm64` |
+| ARM64 | ShellBox ARM64 | `AppARM64.xcconfig` | aarch64 | `com.lollipopkit.shellbox` |
+| ARM64 + FFmpeg | ShellBox FFmpeg | `AppARM64-ffmpeg.xcconfig` | aarch64 | `.arm64` |
 
 The ARM64 target links meson-built libraries (`libish.a`, `libish_emu.a`, `libfakefs.a`) directly
 from `build-arm64-release/`, bypassing Xcode's auto-discovery of x86 library targets.

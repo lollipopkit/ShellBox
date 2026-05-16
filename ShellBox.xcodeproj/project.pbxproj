@@ -2298,12 +2298,12 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
-		497F6CE8254E5E4C00C82F46 /* Debug-ApplePleaseFixFB19282108 */ = {
+		497F6CE8254E5E4C00C82F46 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		497F6CE9254E5E4C00C82F46 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2312,12 +2312,12 @@
 			};
 			name = Release;
 		};
-		497F6D4C254E605F00C82F46 /* Debug-ApplePleaseFixFB19282108 */ = {
+		497F6D4C254E605F00C82F46 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 493B378F290F5320000C41ED /* CLI.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		497F6D4D254E605F00C82F46 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2338,7 +2338,7 @@
 			};
 			name = Release;
 		};
-		AA0000041F96D90D00FFB7A4 /* Debug-ApplePleaseFixFB19282108 */ = {
+		AA0000041F96D90D00FFB7A4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA000015AF96D90D00FFB7A4 /* AppARM64.xcconfig */;
 			buildSettings = {
@@ -2347,7 +2347,7 @@
 				DEVELOPMENT_TEAM = BA88US33G6;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		AA0000051F96D90D00FFB7A4 /* DebugLinux */ = {
 			isa = XCBuildConfiguration;
@@ -2396,7 +2396,7 @@
 			};
 			name = ReleaseLinux;
 		};
-		AAB2DDFCA9F64FB629D35CE7 /* Debug-ApplePleaseFixFB19282108 */ = {
+		AAB2DDFCA9F64FB629D35CE7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 40AEF95FC5D957E4D8F5E6A1 /* AppARM64-ffmpeg.xcconfig */;
 			buildSettings = {
@@ -2406,13 +2406,13 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.shellbox.ffmpeg;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
-		BB13F7CC200ACC31003D1C4D /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB13F7CC200ACC31003D1C4D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB13F7CD200ACC31003D1C4D /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2420,11 +2420,11 @@
 			};
 			name = Release;
 		};
-		BB13F7D2200ACCA2003D1C4D /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB13F7D2200ACCA2003D1C4D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB13F7D3200ACCA2003D1C4D /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2432,12 +2432,12 @@
 			};
 			name = Release;
 		};
-		BB13F7E3200AD81E003D1C4D /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB13F7E3200AD81E003D1C4D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBFB2CDA259028DC00545EAB /* StaticLib.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB13F7E4200AD81E003D1C4D /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2446,12 +2446,12 @@
 			};
 			name = Release;
 		};
-		BB21A16B2689041500BD19B4 /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB21A16B2689041500BD19B4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBFB2CDA259028DC00545EAB /* StaticLib.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB21A16C2689041500BD19B4 /* DebugLinux */ = {
 			isa = XCBuildConfiguration;
@@ -2474,7 +2474,7 @@
 			};
 			name = ReleaseLinux;
 		};
-		BB415923255EF9E300E0950C /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB415923255EF9E300E0950C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
@@ -2496,7 +2496,7 @@
 				SWIFT_VERSION = 5.0;
 				TEST_TARGET_NAME = "ShellBox ARM64";
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB415924255EF9E300E0950C /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2521,11 +2521,11 @@
 			};
 			name = Release;
 		};
-		BB4A922524ED9402002F5A96 /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB4A922524ED9402002F5A96 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB4A922624ED9402002F5A96 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2533,14 +2533,14 @@
 			};
 			name = Release;
 		};
-		BB792B4A1F96D8E000FFB7A4 /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB792B4A1F96D8E000FFB7A4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B85A42586F1CB00208600 /* ProjectDebug.xcconfig */;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 805;
 				DEVELOPMENT_TEAM = BA88US33G6;
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB792B4B1F96D8E000FFB7A4 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2660,7 +2660,7 @@
 			};
 			name = DebugLinux;
 		};
-		BB88F4A02154760800A341FD /* Debug-ApplePleaseFixFB19282108 */ = {
+		BB88F4A02154760800A341FD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86D52587009D00208600 /* iOS.xcconfig */;
 			buildSettings = {
@@ -2674,7 +2674,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BB88F4A12154760800A341FD /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2692,13 +2692,13 @@
 			};
 			name = Release;
 		};
-		BBBDDF8B2CE00F6A0071F1F3 /* Debug-ApplePleaseFixFB19282108 */ = {
+		BBBDDF8B2CE00F6A0071F1F3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBBDDF902CE00F8D0071F1F3 /* StaticLibLinuxUser.xcconfig */;
 			buildSettings = {
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BBBDDF8C2CE00F6A0071F1F3 /* DebugLinux */ = {
 			isa = XCBuildConfiguration;
@@ -2724,12 +2724,12 @@
 			};
 			name = ReleaseLinux;
 		};
-		BBECF3A92691314C00DEC937 /* Debug-ApplePleaseFixFB19282108 */ = {
+		BBECF3A92691314C00DEC937 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBECF3BA2691379100DEC937 /* StaticLibLinux.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BBECF3AA2691314C00DEC937 /* DebugLinux */ = {
 			isa = XCBuildConfiguration;
@@ -2752,12 +2752,12 @@
 			};
 			name = ReleaseLinux;
 		};
-		BBECF3B4269136E100DEC937 /* Debug-ApplePleaseFixFB19282108 */ = {
+		BBECF3B4269136E100DEC937 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBFB2CDA259028DC00545EAB /* StaticLib.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BBECF3B5269136E100DEC937 /* DebugLinux */ = {
 			isa = XCBuildConfiguration;
@@ -2780,12 +2780,12 @@
 			};
 			name = ReleaseLinux;
 		};
-		BBEF192426806364001225BD /* Debug-ApplePleaseFixFB19282108 */ = {
+		BBEF192426806364001225BD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBEF192C26806546001225BD /* AppLib.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BBEF192526806364001225BD /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2794,12 +2794,12 @@
 			};
 			name = Release;
 		};
-		BBEF199A268066D1001225BD /* Debug-ApplePleaseFixFB19282108 */ = {
+		BBEF199A268066D1001225BD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BB0B86CD2586FD8800208600 /* App.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BBEF199B268066D1001225BD /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2916,12 +2916,12 @@
 			};
 			name = ReleaseLinux;
 		};
-		BBFB2C592590257E00545EAB /* Debug-ApplePleaseFixFB19282108 */ = {
+		BBFB2C592590257E00545EAB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BBFB2CDA259028DC00545EAB /* StaticLib.xcconfig */;
 			buildSettings = {
 			};
-			name = "Debug-ApplePleaseFixFB19282108";
+			name = "Debug";
 		};
 		BBFB2C5A2590257E00545EAB /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2936,7 +2936,7 @@
 		497F6CEA254E5E4C00C82F46 /* Build configuration list for PBXNativeTarget "MakeXcodeAutoCompleteWork" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				497F6CE8254E5E4C00C82F46 /* Debug-ApplePleaseFixFB19282108 */,
+				497F6CE8254E5E4C00C82F46 /* Debug */,
 				BB7F62102688EAB5003C0220 /* DebugLinux */,
 				497F6CE9254E5E4C00C82F46 /* Release */,
 				BBEF19B626806D1F001225BD /* ReleaseLinux */,
@@ -2947,7 +2947,7 @@
 		497F6D4B254E605F00C82F46 /* Build configuration list for PBXNativeTarget "ish" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				497F6D4C254E605F00C82F46 /* Debug-ApplePleaseFixFB19282108 */,
+				497F6D4C254E605F00C82F46 /* Debug */,
 				BB7F62112688EAB5003C0220 /* DebugLinux */,
 				497F6D4D254E605F00C82F46 /* Release */,
 				BBEF19B726806D1F001225BD /* ReleaseLinux */,
@@ -2958,7 +2958,7 @@
 		AA0000031F96D90D00FFB7A4 /* Build configuration list for PBXNativeTarget "ShellBox ARM64" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AA0000041F96D90D00FFB7A4 /* Debug-ApplePleaseFixFB19282108 */,
+				AA0000041F96D90D00FFB7A4 /* Debug */,
 				AA0000051F96D90D00FFB7A4 /* DebugLinux */,
 				AA0000061F96D90D00FFB7A4 /* Release */,
 				AA0000071F96D90D00FFB7A4 /* ReleaseLinux */,
@@ -2969,7 +2969,7 @@
 		ACF7C657334FB697AE177303 /* Build configuration list for PBXNativeTarget "ShellBox FFmpeg" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AAB2DDFCA9F64FB629D35CE7 /* Debug-ApplePleaseFixFB19282108 */,
+				AAB2DDFCA9F64FB629D35CE7 /* Debug */,
 				A111B9DA002FA9142419CAE0 /* Release */,
 				AA9C2BB52F44A3C700F41633 /* DebugLinux */,
 				AA9C2BB62F44A3C700F41633 /* ReleaseLinux */,
@@ -2980,7 +2980,7 @@
 		BB13F7CB200ACC31003D1C4D /* Build configuration list for PBXLegacyTarget "Meson" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB13F7CC200ACC31003D1C4D /* Debug-ApplePleaseFixFB19282108 */,
+				BB13F7CC200ACC31003D1C4D /* Debug */,
 				BB7F620B2688EAB5003C0220 /* DebugLinux */,
 				BB13F7CD200ACC31003D1C4D /* Release */,
 				BBEF19B126806D1F001225BD /* ReleaseLinux */,
@@ -2991,7 +2991,7 @@
 		BB13F7D1200ACCA2003D1C4D /* Build configuration list for PBXLegacyTarget "Ninja" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB13F7D2200ACCA2003D1C4D /* Debug-ApplePleaseFixFB19282108 */,
+				BB13F7D2200ACCA2003D1C4D /* Debug */,
 				BB7F620C2688EAB5003C0220 /* DebugLinux */,
 				BB13F7D3200ACCA2003D1C4D /* Release */,
 				BBEF19B226806D1F001225BD /* ReleaseLinux */,
@@ -3002,7 +3002,7 @@
 		BB13F7E2200AD81E003D1C4D /* Build configuration list for PBXNativeTarget "libish" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB13F7E3200AD81E003D1C4D /* Debug-ApplePleaseFixFB19282108 */,
+				BB13F7E3200AD81E003D1C4D /* Debug */,
 				BB7F620D2688EAB5003C0220 /* DebugLinux */,
 				BB13F7E4200AD81E003D1C4D /* Release */,
 				BBEF19B326806D1F001225BD /* ReleaseLinux */,
@@ -3013,7 +3013,7 @@
 		BB21A16A2689041500BD19B4 /* Build configuration list for PBXNativeTarget "libfakefs" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB21A16B2689041500BD19B4 /* Debug-ApplePleaseFixFB19282108 */,
+				BB21A16B2689041500BD19B4 /* Debug */,
 				BB21A16C2689041500BD19B4 /* DebugLinux */,
 				BB21A16D2689041500BD19B4 /* Release */,
 				BB21A16E2689041500BD19B4 /* ReleaseLinux */,
@@ -3024,7 +3024,7 @@
 		BB415925255EF9E300E0950C /* Build configuration list for PBXNativeTarget "ShellBox UITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB415923255EF9E300E0950C /* Debug-ApplePleaseFixFB19282108 */,
+				BB415923255EF9E300E0950C /* Debug */,
 				BB7F620A2688EAB5003C0220 /* DebugLinux */,
 				BB415924255EF9E300E0950C /* Release */,
 				BBEF19B026806D1F001225BD /* ReleaseLinux */,
@@ -3035,7 +3035,7 @@
 		BB4A922424ED9402002F5A96 /* Build configuration list for PBXAggregateTarget "ShellBox pre" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB4A922524ED9402002F5A96 /* Debug-ApplePleaseFixFB19282108 */,
+				BB4A922524ED9402002F5A96 /* Debug */,
 				BB7F620F2688EAB5003C0220 /* DebugLinux */,
 				BB4A922624ED9402002F5A96 /* Release */,
 				BBEF19B526806D1F001225BD /* ReleaseLinux */,
@@ -3046,7 +3046,7 @@
 		BB792B491F96D8E000FFB7A4 /* Build configuration list for PBXProject "ShellBox" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB792B4A1F96D8E000FFB7A4 /* Debug-ApplePleaseFixFB19282108 */,
+				BB792B4A1F96D8E000FFB7A4 /* Debug */,
 				BB7F62052688EAB5003C0220 /* DebugLinux */,
 				BB792B4B1F96D8E000FFB7A4 /* Release */,
 				BBEF19AB26806D1F001225BD /* ReleaseLinux */,
@@ -3057,7 +3057,7 @@
 		BB88F4A22154760800A341FD /* Build configuration list for PBXNativeTarget "ShellBox FileProvider" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB88F4A02154760800A341FD /* Debug-ApplePleaseFixFB19282108 */,
+				BB88F4A02154760800A341FD /* Debug */,
 				BB7F62092688EAB5003C0220 /* DebugLinux */,
 				BB88F4A12154760800A341FD /* Release */,
 				BBEF19AF26806D1F001225BD /* ReleaseLinux */,
@@ -3068,7 +3068,7 @@
 		BBBDDF8A2CE00F6A0071F1F3 /* Build configuration list for PBXNativeTarget "libShellBoxLinuxUser" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BBBDDF8B2CE00F6A0071F1F3 /* Debug-ApplePleaseFixFB19282108 */,
+				BBBDDF8B2CE00F6A0071F1F3 /* Debug */,
 				BBBDDF8C2CE00F6A0071F1F3 /* DebugLinux */,
 				BBBDDF8D2CE00F6A0071F1F3 /* Release */,
 				BBBDDF8E2CE00F6A0071F1F3 /* ReleaseLinux */,
@@ -3079,7 +3079,7 @@
 		BBECF3A82691314C00DEC937 /* Build configuration list for PBXNativeTarget "libShellBoxLinux" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BBECF3A92691314C00DEC937 /* Debug-ApplePleaseFixFB19282108 */,
+				BBECF3A92691314C00DEC937 /* Debug */,
 				BBECF3AA2691314C00DEC937 /* DebugLinux */,
 				BBECF3AB2691314C00DEC937 /* Release */,
 				BBECF3AC2691314C00DEC937 /* ReleaseLinux */,
@@ -3090,7 +3090,7 @@
 		BBECF3B3269136E100DEC937 /* Build configuration list for PBXNativeTarget "liblinux" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BBECF3B4269136E100DEC937 /* Debug-ApplePleaseFixFB19282108 */,
+				BBECF3B4269136E100DEC937 /* Debug */,
 				BBECF3B5269136E100DEC937 /* DebugLinux */,
 				BBECF3B6269136E100DEC937 /* Release */,
 				BBECF3B7269136E100DEC937 /* ReleaseLinux */,
@@ -3101,7 +3101,7 @@
 		BBEF192626806364001225BD /* Build configuration list for PBXNativeTarget "libShellBoxApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BBEF192426806364001225BD /* Debug-ApplePleaseFixFB19282108 */,
+				BBEF192426806364001225BD /* Debug */,
 				BB7F62082688EAB5003C0220 /* DebugLinux */,
 				BBEF192526806364001225BD /* Release */,
 				BBEF19AE26806D1F001225BD /* ReleaseLinux */,
@@ -3112,7 +3112,7 @@
 		BBEF1999268066D1001225BD /* Build configuration list for PBXNativeTarget "ShellBox Linux" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BBEF199A268066D1001225BD /* Debug-ApplePleaseFixFB19282108 */,
+				BBEF199A268066D1001225BD /* Debug */,
 				BB7F62072688EAB5003C0220 /* DebugLinux */,
 				BBEF199B268066D1001225BD /* Release */,
 				BBEF19AD26806D1F001225BD /* ReleaseLinux */,
@@ -3123,7 +3123,7 @@
 		BBFB2C582590257E00545EAB /* Build configuration list for PBXNativeTarget "libish_emu" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BBFB2C592590257E00545EAB /* Debug-ApplePleaseFixFB19282108 */,
+				BBFB2C592590257E00545EAB /* Debug */,
 				BB7F620E2688EAB5003C0220 /* DebugLinux */,
 				BBFB2C5A2590257E00545EAB /* Release */,
 				BBEF19B426806D1F001225BD /* ReleaseLinux */,

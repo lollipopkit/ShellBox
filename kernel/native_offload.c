@@ -194,7 +194,7 @@ static const char *get_root_source(void) {
 }
 
 // Translate a guest absolute path to the real host path, honoring bind
-// mounts. Shell Box bind-mounts guest directories (e.g. /var/minis/workspace) to
+// mounts. ShellBox bind-mounts guest directories (e.g. /var/minis/workspace) to
 // real host locations outside the fakefs data/ tree; native offload
 // handlers that execute on the host must follow those bind mounts, or
 // they'll read/write the wrong files and the guest will see a ghost

@@ -288,6 +288,8 @@ syscall_t syscall_table[] = {
     [290] = (syscall_t) syscall_stub, // pkey_free
     [291] = (syscall_t) sys_statx,
     [293] = (syscall_t) syscall_silent_stub, // rseq
+    [435] = (syscall_t) syscall_silent_stub, // clone3
+    [436] = (syscall_t) sys_close_range,
     [439] = (syscall_t) sys_faccessat2,
 };
 

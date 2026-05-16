@@ -188,5 +188,6 @@ struct fd *f_get(fd_t f);
 // flags is checked for O_CLOEXEC and O_NONBLOCK
 fd_t f_install(struct fd *fd, int flags);
 int f_close(fd_t f);
+dword_t sys_close_range(dword_t first, dword_t last, dword_t flags);
 
 #endif

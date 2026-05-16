@@ -23,8 +23,8 @@ void FsUpdateRepositories(void);
 /// - update the default rootfs to the same version
 /// - update gen_apt_sources.py to generate the new version of /etc/apt/sources.list
 /// - set both of the following constants appropriately, making sure to use a larger number than the previous one
-#define CURRENT_APT_VERSION 1200
-#define CURRENT_APT_VERSION_STRING "Debian 12 bookworm"
+#define CURRENT_APT_VERSION 1300
+#define CURRENT_APT_VERSION_STRING "Debian 13 trixie"
 
 /// Apply rootfs patches from RootfsPatch.bundle on boot.
 /// The bundle contains a manifest.plist with a version number and file list.

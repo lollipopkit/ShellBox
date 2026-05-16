@@ -39,7 +39,7 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     // Enable case-sensitive filesystem mode on macOS, if possible.
     // In order for this to succeed, either we need to be running as root, or
     // be given the com.apple.private.iopol.case_sensitivity entitlement. The
-    // second option isn't possible so you'll need to give Shell Box the setuid root
+    // second option isn't possible so you'll need to give ShellBox the setuid root
     // bit. In that case it's important to drop root permissions ASAP.
     // https://worthdoingbadly.com/casesensitive-iossim/
     int iopol_err = setiopolicy_np(IOPOL_TYPE_VFS_HFS_CASE_SENSITIVITY,

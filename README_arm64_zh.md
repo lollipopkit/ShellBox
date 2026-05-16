@@ -1,4 +1,4 @@
-# Shell Box — 通过原生 threaded-code 解释器在 iOS 上运行 ARM64 Linux
+# ShellBox — 通过原生 threaded-code 解释器在 iOS 上运行 ARM64 Linux
 
 **Fork 自 [ish-app/ish](https://github.com/ish-app/ish)** — iOS 上的用户态 Linux 模拟器。
 
@@ -45,7 +45,7 @@
 
 ```
 +--------------------------------------------------------------+
-|  iOS App (Shell Box)                                         |
+|  iOS App (ShellBox)                                         |
 |                                                              |
 |  +--------------------------------------------------------+  |
 |  |  Asbestos (threaded-code 解释器)                       |  |
@@ -198,8 +198,8 @@ fakefs_bind_mount("/host/path/to/data", "/mnt/data", /*read_only=*/true);
 | Target | Scheme | xcconfig | Guest Arch | Bundle ID 后缀 |
 |--------|--------|----------|------------|------------------|
 | x86（原版） | iSH | `App.xcconfig` | i386 | — |
-| ARM64 | Shell Box ARM64 | `AppARM64.xcconfig` | aarch64 | `com.lollipopkit.shellbox` |
-| ARM64 + FFmpeg | Shell Box FFmpeg | `AppARM64-ffmpeg.xcconfig` | aarch64 | `.arm64` |
+| ARM64 | ShellBox ARM64 | `AppARM64.xcconfig` | aarch64 | `com.lollipopkit.shellbox` |
+| ARM64 + FFmpeg | ShellBox FFmpeg | `AppARM64-ffmpeg.xcconfig` | aarch64 | `.arm64` |
 
 ARM64 target 直接链接 `build-arm64-release/` 中 meson 构建的库
 （`libish.a`、`libish_emu.a`、`libfakefs.a`），避免 Xcode 自动发现 x86 的 library target。

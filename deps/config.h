@@ -1,4 +1,5 @@
 /* config.h.  Generated from config.h.in by configure.  */
+#define __LIBARCHIVE_CONFIG_H_INCLUDED 1
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
 /* Darwin ACL support */
@@ -955,6 +956,9 @@
 /* Define to 1 if you have the <stdarg.h> header file. */
 #define HAVE_STDARG_H 1
 
+/* Define to 1 if you have the <stdio.h> header file. */
+#define HAVE_STDIO_H 1
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
 
@@ -1237,10 +1241,10 @@
 #define ICONV_CONST 
 
 /* Version number of libarchive as a single integer */
-#define LIBARCHIVE_VERSION_NUMBER "3004003"
+#define LIBARCHIVE_VERSION_NUMBER "3008007"
 
 /* Version number of libarchive */
-#define LIBARCHIVE_VERSION_STRING "3.4.3"
+#define LIBARCHIVE_VERSION_STRING "3.8.7"
 
 /* Define to 1 if `lstat' dereferences a symlink specified with a trailing
    slash. */
@@ -1270,7 +1274,7 @@
 #define PACKAGE_NAME "libarchive"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libarchive 3.4.3"
+#define PACKAGE_STRING "libarchive 3.8.7"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libarchive"
@@ -1279,7 +1283,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "3.4.3"
+#define PACKAGE_VERSION "3.8.7"
 
 /* Define to 1 if PCRE_STATIC needs to be defined. */
 /* #undef PCRE_STATIC */

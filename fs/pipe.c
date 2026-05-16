@@ -1,11 +1,21 @@
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include "kernel/calls.h"
+#include "kernel/errno.h"
 #include "fs/fd.h"
 #include "fs/real.h"
 #include "debug.h"
 
 static fd_t pipe_f_create(int pipe_fd, int flags) {
+    if (flags & O_NONBLOCK_) {
+        int real_flags = fcntl(pipe_fd, F_GETFL);
+        if (real_flags < 0)
+            return errno_map();
+        if (fcntl(pipe_fd, F_SETFL, real_flags | O_NONBLOCK) < 0)
+            return errno_map();
+    }
+
     struct fd *fd = adhoc_fd_create(&realfs_fdops);
     if (fd == NULL)
         return _ENOMEM;
