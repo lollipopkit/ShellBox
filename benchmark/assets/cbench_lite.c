@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 // cbench_lite.c — lightweight C benchmark for emulators
 // Reduced workloads to finish in ~30s under emulation
 #include <stdio.h>
@@ -5,11 +6,18 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <sys/time.h>
 
-static long long now_ms(void) {
+static long long now_ns(void) {
+#ifdef __APPLE__
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (long long)tv.tv_sec * 1000000000LL + tv.tv_usec * 1000LL;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+#endif
 }
 
 static volatile long long sink_i;
@@ -156,10 +164,10 @@ int main(void) {
     };
     int n = sizeof(tests)/sizeof(tests[0]);
     for (int i = 0; i < n; i++) {
-        long long t0 = now_ms();
+        long long t0 = now_ns();
         tests[i].fn();
-        long long t1 = now_ms();
-        printf("%-18s %6lld ms\n", tests[i].name, t1 - t0);
+        long long t1 = now_ns();
+        printf("%-18s %lld ns\n", tests[i].name, t1 - t0);
     }
     return 0;
 }

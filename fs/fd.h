@@ -100,6 +100,7 @@ struct fd {
     DIR *dir;
     struct inode_data *inode;
     ino_t fake_inode;
+    uint64_t fake_stat_generation;
     struct statbuf stat; // for adhoc fs
     struct fd_sockrestart sockrestart; // argh
 

@@ -1,9 +1,13 @@
 #ifndef FS_FAKEFS_API_H
 #define FS_FAKEFS_API_H
 
+#include <limits.h>
+#include <stdatomic.h>
 #include <sqlite3.h>
 #include "fs/fix_path.h"
 #include "misc.h"
+
+typedef uint64_t inode_t;
 
 struct fakefs_db {
     sqlite3 *db;
@@ -25,6 +29,11 @@ struct fakefs_db {
         sqlite3_stmt *try_cleanup_inode;
     } stmt;
     sqlite3_mutex *lock;
+    atomic_uint_fast64_t stat_generation;
+    atomic_uint_fast64_t path_generation;
+    uint64_t cached_path_generation;
+    inode_t cached_path_inode;
+    char cached_path[PATH_MAX];
 };
 
 int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd);
@@ -45,8 +54,6 @@ struct ish_stat {
     uint32_t gid;
     uint32_t rdev;
 };
-
-typedef uint64_t inode_t;
 
 inode_t path_get_inode(struct fakefs_db *fs, const char *path);
 bool path_read_stat(struct fakefs_db *fs, const char *path, struct ish_stat *stat, uint64_t *inode);

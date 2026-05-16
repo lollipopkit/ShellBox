@@ -245,6 +245,42 @@ static inode_t bind_mount_ensure_inode(struct fakefs_db *fs, struct mount *mount
 // this exists only to override readdir to fix the returned inode numbers
 static struct fd_ops fakefs_fdops;
 
+static void fakefs_apply_ish_stat(struct statbuf *fake_stat, inode_t inode, const struct ish_stat *ishstat) {
+    fake_stat->inode = inode;
+    fake_stat->mode = ishstat->mode;
+    fake_stat->uid = ishstat->uid;
+    fake_stat->gid = ishstat->gid;
+    fake_stat->rdev = ishstat->rdev;
+}
+
+static bool fakefs_refresh_fd_stat_cache(struct fakefs_db *fs, struct fd *fd, uint64_t generation) {
+    db_begin_read(fs);
+    struct ish_stat ishstat;
+    if (!inode_read_stat_if_exist(fs, fd->fake_inode, &ishstat)) {
+        db_rollback(fs);
+        return false;
+    }
+    db_commit(fs);
+    fakefs_apply_ish_stat(&fd->stat, fd->fake_inode, &ishstat);
+    fd->fake_stat_generation = generation;
+    return true;
+}
+
+static inode_t fakefs_cached_path_inode(struct fakefs_db *fs, const char *path) {
+    uint64_t generation = atomic_load_explicit(&fs->path_generation, memory_order_acquire);
+    if (fs->cached_path_generation == generation && strcmp(fs->cached_path, path) == 0)
+        return fs->cached_path_inode;
+
+    inode_t inode = path_get_inode(fs, path);
+    size_t len = strlen(path);
+    if (len < sizeof(fs->cached_path)) {
+        memcpy(fs->cached_path, path, len + 1);
+        fs->cached_path_inode = inode;
+        fs->cached_path_generation = generation;
+    }
+    return inode;
+}
+
 static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, int mode) {
     struct fakefs_db *fs = &mount->fakefs;
 
@@ -283,7 +319,7 @@ static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, 
             return fd;
     }
     db_begin_write(fs);
-    fd->fake_inode = path_get_inode(fs, path);
+    fd->fake_inode = fakefs_cached_path_inode(fs, path);
     if (flags & O_CREAT_) {
         struct ish_stat ishstat;
         ishstat.mode = mode | S_IFREG;
@@ -292,7 +328,7 @@ static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, 
         ishstat.rdev = 0;
         if (fd->fake_inode == 0) {
             path_create(fs, path, &ishstat);
-            fd->fake_inode = path_get_inode(fs, path);
+            fd->fake_inode = fakefs_cached_path_inode(fs, path);
         }
     }
     db_commit(fs);
@@ -525,18 +561,16 @@ static int fakefs_fstat(struct fd *fd, struct statbuf *fake_stat) {
     int err = realfs.fstat(fd, fake_stat);
     if (err < 0)
         return err;
-    db_begin_read(fs);
-    struct ish_stat ishstat;
-    if (!inode_read_stat_if_exist(fs, fd->fake_inode, &ishstat)) {
-        db_rollback(fs);
-        return _ENOENT;
+    uint64_t generation = atomic_load_explicit(&fs->stat_generation, memory_order_acquire);
+    if (fd->stat.inode != fd->fake_inode || fd->fake_stat_generation != generation) {
+        if (!fakefs_refresh_fd_stat_cache(fs, fd, generation))
+            return _ENOENT;
     }
-    db_commit(fs);
-    fake_stat->inode = fd->fake_inode;
-    fake_stat->mode = ishstat.mode;
-    fake_stat->uid = ishstat.uid;
-    fake_stat->gid = ishstat.gid;
-    fake_stat->rdev = ishstat.rdev;
+    fake_stat->inode = fd->stat.inode;
+    fake_stat->mode = fd->stat.mode;
+    fake_stat->uid = fd->stat.uid;
+    fake_stat->gid = fd->stat.gid;
+    fake_stat->rdev = fd->stat.rdev;
     return 0;
 }
 
@@ -597,6 +631,8 @@ static int fakefs_fsetattr(struct fd *fd, struct attr attr) {
     fake_stat_setattr(&ishstat, attr);
     inode_write_stat(fs, fd->fake_inode, &ishstat);
     db_commit(fs);
+    fakefs_apply_ish_stat(&fd->stat, fd->fake_inode, &ishstat);
+    fd->fake_stat_generation = atomic_load_explicit(&fs->stat_generation, memory_order_acquire);
     return 0;
 }
 

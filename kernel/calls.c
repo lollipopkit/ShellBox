@@ -9,10 +9,12 @@
 #include "kernel/memory.h"
 #include "kernel/signal.h"
 #include "kernel/task.h"
+#include "kernel/time.h"
 #include "fs/stat.h"
 #include "fs/fd.h"
 #include "fs/dev.h"
 #include "fs/real.h"
+#include "util/perf_counters.h"
 
 dword_t syscall_stub(void) {
     return _ENOSYS;
@@ -39,6 +41,7 @@ void dump_maps(void);
 static inline int fast_fstat64(struct cpu_state *cpu);
 static inline int fast_read(struct cpu_state *cpu);
 static inline int fast_write(struct cpu_state *cpu);
+static inline int fast_clock_gettime(struct cpu_state *cpu);
 #endif
 
 // Diagnostic: JIT crash info from signal handler
@@ -50,6 +53,7 @@ __thread volatile int jit_crash_count = 0;
 void handle_interrupt(int interrupt) {
     struct cpu_state *cpu = &current->cpu;
     if (interrupt == INT_SYSCALL) {
+        perf_counter_inc(PERF_SYSCALL_TOTAL);
 #if defined(GUEST_X86) || !defined(GUEST_ARM64)
         // x86: syscall number in eax, args in ebx, ecx, edx, esi, edi, ebp
         unsigned syscall_num = cpu->eax;
@@ -93,8 +97,15 @@ void handle_interrupt(int interrupt) {
             if (fast_result != -1)
                 fast_path_taken = true;
         }
+        // Fast path 4: clock_gettime (syscall 113) - hot timing syscall
+        else if (syscall_num == 113) {
+            fast_result = fast_clock_gettime(cpu);
+            if (fast_result != -1)
+                fast_path_taken = true;
+        }
 
         if (fast_path_taken) {
+            perf_counter_inc(PERF_SYSCALL_FAST);
             // Fast path succeeded, return immediately
             // Fast paths return int (small values), safe to use directly
             STRACE("%d call %-3d (fast) = 0x%x\n", current->pid, syscall_num, fast_result);
@@ -105,6 +116,7 @@ void handle_interrupt(int interrupt) {
                 cpu->regs[0] = (uint64_t)(uint32_t)fast_result;
             }
         } else {
+            perf_counter_inc(PERF_SYSCALL_SLOW);
             // === SLOW PATH: Full syscall ===
             if (syscall_num >= syscall_table_size || syscall_table[syscall_num] == NULL) {
                 printk("%d(%s) missing syscall %d\n", current->pid, current->comm, syscall_num);
@@ -150,8 +162,10 @@ void handle_interrupt(int interrupt) {
         // Blocking calls (futex, epoll, ppoll, waitid, nanosleep) that
         // return and retry should NOT refresh the timestamp, as they
         // don't represent real forward progress.
+        // clock_gettime already performed a host clock read in the fast path;
+        // doing a second one here dominates tight timing loops.
         if (syscall_num != 22 && syscall_num != 73 && syscall_num != 95 &&
-            syscall_num != 98 && syscall_num != 101) {
+            syscall_num != 98 && syscall_num != 101 && syscall_num != 113) {
             struct timespec _ts;
             clock_gettime(CLOCK_MONOTONIC, &_ts);
             uint64_t now = (uint64_t)_ts.tv_sec * 1000000000ULL + _ts.tv_nsec;
@@ -314,12 +328,14 @@ void handle_interrupt(int interrupt) {
                 // (above duplicates — keep the explicit reservation
                 //  check below)
                 in_explicit_cage = false;
+#ifdef GUEST_ARM64
                 {
                     read_wrlock(&current->mem->lock);
                     if (mem_find_reservation(current->mem, fault_page) != NULL)
                         in_explicit_cage = true;
                     read_wrunlock(&current->mem->lock);
                 }
+#endif
                 if (!in_explicit_cage &&
                     cpu->segfault_addr >= 0xb0000000ULL &&
                     cpu->segfault_addr < 0xf0000000ULL)
@@ -1049,8 +1065,47 @@ void dump_stack(int lines) {
 // === Fast Path Implementations ===
 #ifdef GUEST_ARM64
 
+static inline int fast_put_stat_arm64(addr_t statbuf_addr, const struct statbuf *fake_stat) {
+    struct stat_arm64 arm64stat = {};
+    arm64stat.dev = fake_stat->dev;
+    arm64stat.ino = fake_stat->inode;
+    arm64stat.mode = fake_stat->mode;
+    arm64stat.nlink = fake_stat->nlink;
+    arm64stat.uid = fake_stat->uid;
+    arm64stat.gid = fake_stat->gid;
+    arm64stat.rdev = fake_stat->rdev;
+    arm64stat.__pad1 = 0;
+    arm64stat.size = fake_stat->size;
+    arm64stat.blksize = fake_stat->blksize;
+    arm64stat.__pad2 = 0;
+    arm64stat.blocks = fake_stat->blocks;
+    arm64stat.atime_ = fake_stat->atime;
+    arm64stat.atime_nsec = fake_stat->atime_nsec;
+    arm64stat.mtime_ = fake_stat->mtime;
+    arm64stat.mtime_nsec = fake_stat->mtime_nsec;
+    arm64stat.ctime_ = fake_stat->ctime;
+    arm64stat.ctime_nsec = fake_stat->ctime_nsec;
+    arm64stat.__unused4 = 0;
+    arm64stat.__unused5 = 0;
+
+    if (PGOFFSET(statbuf_addr) + sizeof(arm64stat) <= PAGE_SIZE) {
+        read_wrlock(&current->mem->lock);
+        char *ptr = mem_ptr(current->mem, statbuf_addr, MEM_WRITE);
+        if (ptr != NULL) {
+            memcpy(ptr, &arm64stat, sizeof(arm64stat));
+            read_wrunlock(&current->mem->lock);
+            return 0;
+        }
+        read_wrunlock(&current->mem->lock);
+    }
+
+    if (user_put(statbuf_addr, arm64stat))
+        return _EFAULT;
+    return 0;
+}
+
 // Fast path for fstat64 (syscall 80)
-// Bypasses generic_statat path normalization when fd is already validated realfs
+// Bypasses the generic syscall dispatch path for hot fstat calls.
 static inline int fast_fstat64(struct cpu_state *cpu) {
     fd_t fd_no = (fd_t)cpu->regs[0];
     addr_t statbuf_addr = (addr_t)cpu->regs[1];
@@ -1060,68 +1115,42 @@ static inline int fast_fstat64(struct cpu_state *cpu) {
     if (fd == NULL)
         return -1;  // Fall back to slow path
 
-    // Fast path condition: fd is realfs (not adhoc, not procfs, etc.)
-    if (fd->ops != &realfs_fdops)
-        return -1;  // Fall back to slow path
-
-    // Direct host fstat call (bypass generic layers)
-    struct stat real_stat;
-    if (fstat(fd->real_fd, &real_stat) < 0)
-        return errno_map();
-
-    // Convert to guest statbuf
     struct statbuf fake_stat = {};
-    fake_stat.dev = dev_fake_from_real(real_stat.st_dev);
-    fake_stat.inode = real_stat.st_ino;
-    fake_stat.mode = real_stat.st_mode;
-    fake_stat.nlink = real_stat.st_nlink;
-    fake_stat.uid = real_stat.st_uid;
-    fake_stat.gid = real_stat.st_gid;
-    fake_stat.rdev = dev_fake_from_real(real_stat.st_rdev);
-    fake_stat.size = real_stat.st_size;
-    fake_stat.blksize = real_stat.st_blksize;
-    fake_stat.blocks = real_stat.st_blocks;
-    fake_stat.atime = real_stat.st_atime;
-    fake_stat.mtime = real_stat.st_mtime;
-    fake_stat.ctime = real_stat.st_ctime;
+    if (fd->ops == &realfs_fdops) {
+        // Direct host fstat call (bypass generic layers)
+        struct stat real_stat;
+        if (fstat(fd->real_fd, &real_stat) < 0)
+            return errno_map();
+
+        fake_stat.dev = dev_fake_from_real(real_stat.st_dev);
+        fake_stat.inode = real_stat.st_ino;
+        fake_stat.mode = real_stat.st_mode;
+        fake_stat.nlink = real_stat.st_nlink;
+        fake_stat.uid = real_stat.st_uid;
+        fake_stat.gid = real_stat.st_gid;
+        fake_stat.rdev = dev_fake_from_real(real_stat.st_rdev);
+        fake_stat.size = real_stat.st_size;
+        fake_stat.blksize = real_stat.st_blksize;
+        fake_stat.blocks = real_stat.st_blocks;
+        fake_stat.atime = real_stat.st_atime;
+        fake_stat.mtime = real_stat.st_mtime;
+        fake_stat.ctime = real_stat.st_ctime;
 #if __APPLE__
-    fake_stat.atime_nsec = real_stat.st_atimespec.tv_nsec;
-    fake_stat.mtime_nsec = real_stat.st_mtimespec.tv_nsec;
-    fake_stat.ctime_nsec = real_stat.st_ctimespec.tv_nsec;
+        fake_stat.atime_nsec = real_stat.st_atimespec.tv_nsec;
+        fake_stat.mtime_nsec = real_stat.st_mtimespec.tv_nsec;
+        fake_stat.ctime_nsec = real_stat.st_ctimespec.tv_nsec;
 #elif __linux__
-    fake_stat.atime_nsec = real_stat.st_atim.tv_nsec;
-    fake_stat.mtime_nsec = real_stat.st_mtim.tv_nsec;
-    fake_stat.ctime_nsec = real_stat.st_ctim.tv_nsec;
+        fake_stat.atime_nsec = real_stat.st_atim.tv_nsec;
+        fake_stat.mtime_nsec = real_stat.st_mtim.tv_nsec;
+        fake_stat.ctime_nsec = real_stat.st_ctim.tv_nsec;
 #endif
+    } else {
+        int err = fd->mount->fs->fstat(fd, &fake_stat);
+        if (err < 0)
+            return -1;  // Fall back to slow path to preserve exact errno.
+    }
 
-    // Convert to ARM64 stat structure
-    struct stat_arm64 arm64stat = {};
-    arm64stat.dev = fake_stat.dev;
-    arm64stat.ino = fake_stat.inode;
-    arm64stat.mode = fake_stat.mode;
-    arm64stat.nlink = fake_stat.nlink;
-    arm64stat.uid = fake_stat.uid;
-    arm64stat.gid = fake_stat.gid;
-    arm64stat.rdev = fake_stat.rdev;
-    arm64stat.__pad1 = 0;
-    arm64stat.size = fake_stat.size;
-    arm64stat.blksize = fake_stat.blksize;
-    arm64stat.__pad2 = 0;
-    arm64stat.blocks = fake_stat.blocks;
-    arm64stat.atime_ = fake_stat.atime;
-    arm64stat.atime_nsec = fake_stat.atime_nsec;
-    arm64stat.mtime_ = fake_stat.mtime;
-    arm64stat.mtime_nsec = fake_stat.mtime_nsec;
-    arm64stat.ctime_ = fake_stat.ctime;
-    arm64stat.ctime_nsec = fake_stat.ctime_nsec;
-    arm64stat.__unused4 = 0;
-    arm64stat.__unused5 = 0;
-
-    // Copy to user space
-    if (user_put(statbuf_addr, arm64stat))
-        return _EFAULT;
-
-    return 0;  // Success
+    return fast_put_stat_arm64(statbuf_addr, &fake_stat);
 }
 
 // Fast path for read (syscall 63) - small buffers only
@@ -1184,6 +1213,100 @@ static inline int fast_write(struct cpu_state *cpu) {
         return errno_map();
 
     return res;
+}
+
+static inline int fast_clock_gettime(struct cpu_state *cpu) {
+    dword_t clock = (dword_t)cpu->regs[0];
+    addr_t tp = (addr_t)cpu->regs[1];
+    clockid_t clock_id;
+
+    switch (clock) {
+        case CLOCK_REALTIME_:
+        case CLOCK_REALTIME_COARSE_:
+            clock_id = CLOCK_REALTIME;
+            break;
+        case CLOCK_MONOTONIC_:
+        case CLOCK_MONOTONIC_RAW_:
+        case CLOCK_MONOTONIC_COARSE_:
+        case CLOCK_BOOTTIME_:
+            clock_id = CLOCK_MONOTONIC;
+            break;
+        default:
+            return -1;  // Fall back to slow path for CPU clocks/invalid IDs.
+    }
+
+    struct timespec ts;
+    if (clock_gettime(clock_id, &ts) < 0)
+        return errno_map();
+
+    struct timespec_ guest_ts = {
+        .sec = ts.tv_sec,
+        .nsec = ts.tv_nsec,
+    };
+    if (user_put(tp, guest_ts))
+        return _EFAULT;
+    return 0;
+}
+
+int arm64_try_fast_syscall(struct cpu_state *cpu) {
+    unsigned syscall_num = cpu->regs[8];
+    int64_t fast_result = -1;
+
+    switch (syscall_num) {
+        case 56:
+            fast_result = sys_openat((fd_t)cpu->regs[0], (addr_t)cpu->regs[1],
+                                     (dword_t)cpu->regs[2], (mode_t_)cpu->regs[3]);
+            break;
+        case 57:
+            fast_result = sys_close((fd_t)cpu->regs[0]);
+            break;
+        case 80:
+            fast_result = fast_fstat64(cpu);
+            break;
+        case 63:
+            fast_result = fast_read(cpu);
+            break;
+        case 64:
+            fast_result = fast_write(cpu);
+            break;
+        case 113:
+            fast_result = fast_clock_gettime(cpu);
+            break;
+        case 172:
+            fast_result = cpu->tgid_cache;
+            break;
+        default:
+            return 0;
+    }
+
+    if (fast_result == -1)
+        return 0;
+
+    perf_counter_inc(PERF_SYSCALL_TOTAL);
+    perf_counter_inc(PERF_SYSCALL_FAST);
+
+    uint32_t low32 = (uint32_t)fast_result;
+    if (((uint64_t)fast_result >> 32) == 0 &&
+            (int32_t)low32 >= -4095 && (int32_t)low32 < 0) {
+        cpu->regs[0] = (uint64_t)(int64_t)(int32_t)low32;
+    } else {
+        cpu->regs[0] = (uint64_t)fast_result;
+    }
+
+    atomic_fetch_add(&current->group->syscall_count, 1);
+    if (syscall_num != 22 && syscall_num != 73 && syscall_num != 95 &&
+        syscall_num != 98 && syscall_num != 101 && syscall_num != 113) {
+        struct timespec _ts;
+        clock_gettime(CLOCK_MONOTONIC, &_ts);
+        uint64_t now = (uint64_t)_ts.tv_sec * 1000000000ULL + _ts.tv_nsec;
+        current->last_unblocked_ns = now;
+        atomic_store_explicit(&current->group->last_progress_ns, now,
+                              memory_order_relaxed);
+    }
+    if (current->group->doing_group_exit)
+        do_exit(current->group->group_exit_code);
+
+    return 1;
 }
 
 #endif // GUEST_ARM64

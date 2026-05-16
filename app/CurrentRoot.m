@@ -66,11 +66,10 @@ static void create_directory_chain(NSString *path) {
 void FsInitialize(void) {
     // /ish/version is the last ish version that opened this root. Used to migrate the filesystem.
     char buf[1000];
+    NSString *currentVersion = NSBundle.mainBundle.infoDictionary[(__bridge NSString *) kCFBundleVersionKey];
+    NSString *currentVersionFile = [NSString stringWithFormat:@"%@\n", currentVersion];
     ssize_t n = read_file("/ish/version", buf, sizeof(buf));
     if (n >= 0) {
-        NSString *currentVersion = NSBundle.mainBundle.infoDictionary[(__bridge NSString *) kCFBundleVersionKey];
-        NSString *currentVersionFile = [NSString stringWithFormat:@"%@\n", currentVersion];
-
         NSString *version = [[NSString alloc] initWithBytesNoCopy:buf length:n encoding:NSUTF8StringEncoding freeWhenDone:NO];
         version = [version stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         fs_ish_version = version.intValue;
@@ -96,6 +95,12 @@ void FsInitialize(void) {
 
     // Apply rootfs overlay patches (e.g. fetch-polyfill.js)
     FsApplyOverlay();
+
+    if (fs_ish_version == 0) {
+        create_directory_chain(@"/ish");
+        fs_ish_version = currentVersion.intValue;
+        write_file("/ish/version", currentVersionFile.UTF8String, [currentVersionFile lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+    }
 }
 
 bool FsIsManaged(void) {
@@ -157,7 +162,9 @@ void FsApplyOverlay(void) {
     if (patchVersion <= 0)
         return;
 
-    // Check installed overlay version in guest fs
+    // Check installed overlay version in guest fs. This version must increase
+    // whenever patch contents change because the app group container can
+    // survive uninstall/reinstall during development.
     char buf[100];
     int installedVersion = 0;
     ssize_t n = read_file("/ish/overlay-version", buf, sizeof(buf));
@@ -166,11 +173,11 @@ void FsApplyOverlay(void) {
         installedVersion = atoi(buf);
     }
     if (installedVersion >= patchVersion) {
-        NSLog(@"[RootfsPatch] v%d already installed (bundle v%d), skipping", installedVersion, patchVersion);
+        NSLog(@"[RootfsPatch] patch %d already installed (bundle %d), skipping", installedVersion, patchVersion);
         return;
     }
 
-    NSLog(@"[RootfsPatch] applying v%d (installed v%d)", patchVersion, installedVersion);
+    NSLog(@"[RootfsPatch] applying patch %d over installed %d", patchVersion, installedVersion);
 
     // Apply each file from the manifest
     NSArray *files = manifest[@"files"];
@@ -218,7 +225,7 @@ void FsApplyOverlay(void) {
     write_file("/ish/overlay-version", versionStr.UTF8String,
                [versionStr lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
 
-    NSLog(@"[RootfsPatch] done: %d applied, %d failed, now at v%d", applied, failed, patchVersion);
+    NSLog(@"[RootfsPatch] patch %d done: %d applied, %d failed", patchVersion, applied, failed);
 }
 
 NSString *const FsUpdatedNotification = @"FsUpdatedNotification";

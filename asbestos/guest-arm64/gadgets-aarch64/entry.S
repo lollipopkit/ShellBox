@@ -244,6 +244,55 @@ NAME(handle_write_miss):
  */
 .global NAME(crosspage_load)
 NAME(crosspage_load):
+#ifndef PERF_COUNTERS
+    cmp x19, #8
+    b.ne crosspage_load_c
+
+    and x8, x7, #0xfffffffffffff000
+    ubfx x9, x7, #12, #13
+    eor x9, x9, x7, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x8, x10
+    b.ne crosspage_load_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x12, x10, x7
+
+    add x13, x8, #0x1000
+    ubfx x14, x13, #12, #13
+    eor x14, x14, x13, lsr #25
+    and w14, w14, #0x1fff
+    lsl x14, x14, #5
+    add x14, x14, _tlb
+    ldr x10, [x14, #TLB_ENTRY_page]
+    cmp x13, x10
+    b.ne crosspage_load_c
+    ldr x10, [x14, #TLB_ENTRY_data_minus_addr]
+    add x17, x10, x13
+
+    and x15, x7, #0xfff
+    mov x16, #0x1000
+    sub x15, x16, x15          // bytes available on first page
+    mov x16, #8
+    sub x16, x16, x15          // bytes to back up on first page
+    sub x12, x12, x16          // safe: points to page_end - 8
+    ldr x4, [x12]
+    lsl x16, x16, #3
+    lsr x4, x4, x16
+    ldr x5, [x17]
+    lsl x15, x15, #3
+    lsl x5, x5, x15
+    orr x4, x4, x5
+
+    str x4, [_cpu, #LOCAL_value]
+    str x7, [_cpu, #LOCAL_value_addr]
+    add _addr, _cpu, #LOCAL_value
+    ret
+
+crosspage_load_c:
+#endif
     // Save callee-saved registers (x19 has size, save it first to temp)
     mov x8, x19                      // save size to temp
     stp x19, x20, [sp, #-0x60]!
@@ -303,6 +352,64 @@ segfault_read_cp:
  */
 .global NAME(crosspage_store)
 NAME(crosspage_store):
+#ifndef PERF_COUNTERS
+    cmp x19, #8
+    b.ne crosspage_store_c
+
+    ldr x11, [_cpu, #LOCAL_value_addr]
+    and x8, x11, #0xfffffffffffff000
+    ubfx x9, x11, #12, #13
+    eor x9, x9, x11, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page_if_writable]
+    cmp x8, x10
+    b.ne crosspage_store_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x12, x10, x11
+
+    add x13, x8, #0x1000
+    ubfx x14, x13, #12, #13
+    eor x14, x14, x13, lsr #25
+    and w14, w14, #0x1fff
+    lsl x14, x14, #5
+    add x14, x14, _tlb
+    ldr x10, [x14, #TLB_ENTRY_page_if_writable]
+    cmp x13, x10
+    b.ne crosspage_store_c
+    ldr x10, [x14, #TLB_ENTRY_data_minus_addr]
+    add x17, x10, x13
+    str x13, [_tlb, #(-TLB_entries+TLB_dirty_page)]
+
+    ldr x4, [x7]
+    and x15, x11, #0xfff
+    mov x16, #0x1000
+    sub x15, x16, x15          // bytes available on first page
+    mov x16, #8
+    sub x16, x16, x15          // bytes written on second page
+    lsl x6, x16, #3            // second-page bytes in bits
+    mov x0, #-1
+    lsl x0, x0, x6             // mask for bytes after second-page payload
+
+    sub x12, x12, x16          // safe: points to page_end - 8
+    ldr x5, [x12]
+    bic x5, x5, x0             // keep bytes before the guest store
+    lsl x3, x4, x6
+    orr x5, x5, x3
+    str x5, [x12]
+
+    ldr x5, [x17]
+    and x5, x5, x0             // keep bytes after the guest store
+    lsl x6, x15, #3
+    lsr x3, x4, x6
+    bic x3, x3, x0             // keep only second-page payload bytes
+    orr x5, x5, x3
+    str x5, [x17]
+    ret
+
+crosspage_store_c:
+#endif
     // Save callee-saved registers (x19 has size, save it first to temp)
     mov x8, x19                      // save size to temp
     stp x19, x20, [sp, #-0x60]!

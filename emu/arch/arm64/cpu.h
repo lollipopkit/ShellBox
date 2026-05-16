@@ -25,6 +25,7 @@ static_assert(sizeof(union arm64_vreg) == 16, "arm64_vreg size");
 struct cpu_state {
     struct mmu *mmu;
     long cycle;
+    uint64_t tgid_cache;
 
     // 31 general-purpose 64-bit registers (X0-X30)
     // X30 is the link register (LR)

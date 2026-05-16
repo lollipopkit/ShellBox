@@ -75,6 +75,9 @@ static struct task *construct_task(struct task *parent) {
     list_add(&group->threads, &task->group_links);
     task->group = group;
     task->tgid = task->pid;
+#ifdef GUEST_ARM64
+    task->cpu.tgid_cache = task->tgid;
+#endif
     task_setsid(task);
 
     task_set_mm(task, mm_new());

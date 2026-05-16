@@ -24,6 +24,9 @@ add_project_arguments('-DENGINE_' + get_option('engine').to_upper() + '=1', lang
 
 guest_arch = get_option('guest_arch')
 add_project_arguments('-DGUEST_' + guest_arch.to_upper() + '=1', language: 'c')
+if get_option('perf_counters')
+    add_project_arguments('-DPERF_COUNTERS=1', language: 'c')
+endif
 
 if get_option('no_crlf')
     add_project_arguments('-DNO_CRLF', language: 'c')
@@ -57,6 +60,7 @@ offsets = custom_target('offsets',
 # Common emu sources
 emu_src = [
     'emu/tlb.c',
+    'util/perf_counters.c',
 ]
 
 # Architecture-specific emu sources

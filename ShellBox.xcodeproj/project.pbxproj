@@ -23,7 +23,8 @@
 /* Begin PBXBuildFile section */
 		0FC2383C2991FBA6004C09EC /* mmx.c in Sources */ = {isa = PBXBuildFile; fileRef = 0FC2383B2991FB82004C09EC /* mmx.c */; };
 		49302D8E277669D300C9885A /* ish.c in Sources */ = {isa = PBXBuildFile; fileRef = 49302D8D277669D300C9885A /* ish.c */; };
-		496C7AB227CC697E005D7613 /* Theme.m in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1E27C8FB65008B1DFA /* Theme.m */; };
+		496C7AB227CC697E005D7613 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1E27C8FB65008B1DFA /* Theme.swift */; };
+		496C7AB327CC697E005D7613 /* ThemeSupport.m in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1F27C8FB65008B1DFA /* ThemeSupport.m */; };
 		497A08BF29633FF400B323CF /* mach_exc.defs in Sources */ = {isa = PBXBuildFile; fileRef = 49087C26295DF1350058075B /* mach_exc.defs */; settings = {ATTRIBUTES = (Server, ); }; };
 		497A08C029633FFA00B323CF /* hook.c in Sources */ = {isa = PBXBuildFile; fileRef = 49087C14295DF0490058075B /* hook.c */; };
 		497F6CF5254E5EA500C82F46 /* float80-test.c in Sources */ = {isa = PBXBuildFile; fileRef = 497F6C5A254E5C7E00C82F46 /* float80-test.c */; };
@@ -119,14 +120,15 @@
 		AA000043AF96D90D00FFB7A4 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = BBBF7B5B2415CDBB00EC4C14 /* Settings.bundle */; };
 		AA000044AF96D90D00FFB7A4 /* Icons.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB0F552D239F8A790032A2A1 /* Icons.plist */; };
 		AA000047AF96D90D00FFB7A4 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = AA000154AF96D90D00FFB7A4 /* SwiftTerm */; };
-		AA000103AF96D90D00FFB7A4 /* Theme.m in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1E27C8FB65008B1DFA /* Theme.m */; };
+		AA000103AF96D90D00FFB7A4 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1E27C8FB65008B1DFA /* Theme.swift */; };
+		AA000104AF96D90D00FFB7A4 /* ThemeSupport.m in Sources */ = {isa = PBXBuildFile; fileRef = 491C4C1F27C8FB65008B1DFA /* ThemeSupport.m */; };
 		AA000105AF96D90D00FFB7A4 /* TerminalViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B571F96D90D00FFB7A4 /* TerminalViewController.m */; };
 		AA000106AF96D90D00FFB7A4 /* IOSCalls.m in Sources */ = {isa = PBXBuildFile; fileRef = BB123ACD26C9F13500419CDA /* IOSCalls.m */; };
 		AA000107AF96D90D00FFB7A4 /* CurrentRoot.m in Sources */ = {isa = PBXBuildFile; fileRef = BB565EA32734F1FB00C93EAE /* CurrentRoot.m */; };
-		AA000109AF96D90D00FFB7A4 /* TerminalView.m in Sources */ = {isa = PBXBuildFile; fileRef = BB78AB2A1FAD22440013E782 /* TerminalView.m */; };
+		AA000109AF96D90D00FFB7A4 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB78AB2A1FAD22440013E782 /* TerminalView.swift */; };
 		AA00010AAF96D90D00FFB7A4 /* mach_exc.defs in Sources */ = {isa = PBXBuildFile; fileRef = 49087C26295DF1350058075B /* mach_exc.defs */; settings = {ATTRIBUTES = (Server, ); }; };
-		AA00010BAF96D90D00FFB7A4 /* ScrollbarView.m in Sources */ = {isa = PBXBuildFile; fileRef = BB23F58C231E1D1400585522 /* ScrollbarView.m */; };
-		AA00010CAF96D90D00FFB7A4 /* DelayedUITask.m in Sources */ = {isa = PBXBuildFile; fileRef = BB455E101FB37F6600AFB48B /* DelayedUITask.m */; };
+		AA00010BAF96D90D00FFB7A4 /* ScrollbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB23F58C231E1D1400585522 /* ScrollbarView.swift */; };
+		AA00010CAF96D90D00FFB7A4 /* DelayedUITask.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB455E101FB37F6600AFB48B /* DelayedUITask.swift */; };
 		AA00010DAF96D90D00FFB7A4 /* hook.c in Sources */ = {isa = PBXBuildFile; fileRef = 49087C14295DF0490058075B /* hook.c */; };
 		AA00010EAF96D90D00FFB7A4 /* Roots.m in Sources */ = {isa = PBXBuildFile; fileRef = BB10E5CD248DBE66009C7A74 /* Roots.m */; };
 		AA00010FAF96D90D00FFB7A4 /* Terminal.m in Sources */ = {isa = PBXBuildFile; fileRef = BB0FC5911F980A6B00803272 /* Terminal.m */; };
@@ -134,9 +136,9 @@
 		AA000115AF96D90D00FFB7A4 /* UserPreferences.m in Sources */ = {isa = PBXBuildFile; fileRef = 8632A7BE219A59FB00F02325 /* UserPreferences.m */; };
 		AA000118AF96D90D00FFB7A4 /* AppGroup.m in Sources */ = {isa = PBXBuildFile; fileRef = BB9C7B84240A240E00F5D4F0 /* AppGroup.m */; };
 		AA000119AF96D90D00FFB7A4 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B541F96D90D00FFB7A4 /* AppDelegate.m */; };
-		AA00011AAF96D90D00FFB7A4 /* UIApplication+OpenURL.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */; };
+		AA00011AAF96D90D00FFB7A4 /* UIApplication+OpenURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.swift */; };
 		AA00011BAF96D90D00FFB7A4 /* ExceptionExfiltrator.m in Sources */ = {isa = PBXBuildFile; fileRef = 49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */; };
-		AA00011FAF96D90D00FFB7A4 /* NSObject+SaneKVO.m in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */; };
+		AA00011FAF96D90D00FFB7A4 /* NSObject+SaneKVO.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.swift */; };
 		AA000121AF96D90D00FFB7A4 /* fakefs.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E5C2248DBA7B009C7A74 /* fakefs.c */; };
 		AA000130AF96D90D00FFB7A4 /* DebugServer.c in Sources */ = {isa = PBXBuildFile; fileRef = AA000131AF96D90D00FFB7A4 /* DebugServer.c */; };
 		AA000133AF96D90D00FFB7A4 /* ShellBoxRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000134AF96D90D00FFB7A4 /* ShellBoxRootView.swift */; };
@@ -154,15 +156,15 @@
 		BB21A1862689500000BD19B4 /* libish_emu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB2C5B2590257E00545EAB /* libish_emu.a */; };
 		BB235537235D49B300139E00 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BB235536235D49B300139E00 /* CoreLocation.framework */; };
 		BB28C79526896B1F00BDC834 /* TerminalViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BB792B571F96D90D00FFB7A4 /* TerminalViewController.m */; };
-		BB28C79726896B1F00BDC834 /* TerminalView.m in Sources */ = {isa = PBXBuildFile; fileRef = BB78AB2A1FAD22440013E782 /* TerminalView.m */; };
-		BB28C79826896B1F00BDC834 /* ScrollbarView.m in Sources */ = {isa = PBXBuildFile; fileRef = BB23F58C231E1D1400585522 /* ScrollbarView.m */; };
-		BB28C79926896B1F00BDC834 /* DelayedUITask.m in Sources */ = {isa = PBXBuildFile; fileRef = BB455E101FB37F6600AFB48B /* DelayedUITask.m */; };
+		BB28C79726896B1F00BDC834 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB78AB2A1FAD22440013E782 /* TerminalView.swift */; };
+		BB28C79826896B1F00BDC834 /* ScrollbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB23F58C231E1D1400585522 /* ScrollbarView.swift */; };
+		BB28C79926896B1F00BDC834 /* DelayedUITask.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB455E101FB37F6600AFB48B /* DelayedUITask.swift */; };
 		BB28C79A26896B1F00BDC834 /* Terminal.m in Sources */ = {isa = PBXBuildFile; fileRef = BB0FC5911F980A6B00803272 /* Terminal.m */; };
 		BB28C79D26896B1F00BDC834 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BBCC9D952365430800424C83 /* SceneDelegate.m */; };
 		BB28C7A026896B1F00BDC834 /* UserPreferences.m in Sources */ = {isa = PBXBuildFile; fileRef = 8632A7BE219A59FB00F02325 /* UserPreferences.m */; };
 		BB28C7A426896B1F00BDC834 /* AppGroup.m in Sources */ = {isa = PBXBuildFile; fileRef = BB9C7B84240A240E00F5D4F0 /* AppGroup.m */; };
-		BB28C7A526896B1F00BDC834 /* UIApplication+OpenURL.m in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */; };
-		BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.m in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */; };
+		BB28C7A526896B1F00BDC834 /* UIApplication+OpenURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.swift */; };
+		BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.swift */; };
 		BB28C7AE26896C1D00BDC834 /* libShellBoxApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBEF191E26806364001225BD /* libShellBoxApp.a */; };
 		BB28C7B226896C4600BDC834 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB792B621F96D90D00FFB7A4 /* main.swift */; };
 		BB28C7BA268975AA00BDC834 /* iOSFS.m in Sources */ = {isa = PBXBuildFile; fileRef = 408A2639236440F8008A4E81 /* iOSFS.m */; };
@@ -197,7 +199,7 @@
 		BB3859A627BCEE6B000A1082 /* colontildehash.png in Resources */ = {isa = PBXBuildFile; fileRef = BB4A922F24EDA55C002F5A96 /* colontildehash.png */; };
 		BB3859A727BCEE6B000A1082 /* uninspired.png in Resources */ = {isa = PBXBuildFile; fileRef = BB0F552F239F8B360032A2A1 /* uninspired.png */; };
 		BB3859A827BCEE6C000A1082 /* is.png in Resources */ = {isa = PBXBuildFile; fileRef = BB38598327BCEC83000A1082 /* is.png */; };
-		BB41591F255EF9E300E0950C /* UITests.m in Sources */ = {isa = PBXBuildFile; fileRef = BB41591E255EF9E300E0950C /* UITests.m */; };
+		BB41591F255EF9E300E0950C /* UITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB41591E255EF9E300E0950C /* UITests.swift */; };
 		BB6DB261216435340047A611 /* libiconv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BB6DB260216435330047A611 /* libiconv.tbd */; };
 		BB77636726E486A7008DB44A /* fakefs.c in Sources */ = {isa = PBXBuildFile; fileRef = BB10E5C2248DBA7B009C7A74 /* fakefs.c */; };
 		BB792B5D1F96D90D00FFB7A4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB792B5C1F96D90D00FFB7A4 /* Assets.xcassets */; };
@@ -215,9 +217,10 @@
 		BBBF7B5C2415CDBB00EC4C14 /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = BBBF7B5B2415CDBB00EC4C14 /* Settings.bundle */; };
 		BBBF9CBD27C217B6002A30F7 /* PasteboardDeviceLinux.c in Sources */ = {isa = PBXBuildFile; fileRef = BBBF9CBB27C217A6002A30F7 /* PasteboardDeviceLinux.c */; };
 		BBBF9CBF27C44114002A30F7 /* ShellBox FileProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BB88F4902154760800A341FD /* ShellBox FileProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrno.m in Sources */ = {isa = PBXBuildFile; fileRef = BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */; };
+		BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrnoSupport.m in Sources */ = {isa = PBXBuildFile; fileRef = BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrnoSupport.m */; };
+		BBBFE94A21C5CFF100509DD5 /* NSError+ShellBoxErrno.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB13F4DE21C5770000343E17 /* NSError+ShellBoxErrno.swift */; };
 		BBC3863F276817AD00CC8C2E /* CurrentRoot.m in Sources */ = {isa = PBXBuildFile; fileRef = BB565EA32734F1FB00C93EAE /* CurrentRoot.m */; };
-		BBD23D5F258DA450003DCB40 /* Screenshots.m in Sources */ = {isa = PBXBuildFile; fileRef = BBD23D5E258DA450003DCB40 /* Screenshots.m */; };
+		BBD23D5F258DA450003DCB40 /* Screenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD23D5E258DA450003DCB40 /* Screenshots.swift */; };
 		BBE64AC22A198FCC00589372 /* ExceptionExfiltrator.m in Sources */ = {isa = PBXBuildFile; fileRef = 49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */; };
 		BBECF3AD269132F400DEC937 /* LinuxInterop.c in Sources */ = {isa = PBXBuildFile; fileRef = BBECF39D2691313B00DEC937 /* LinuxInterop.c */; };
 		BBECF3AE2691330F00DEC937 /* libShellBoxLinux.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBECF3A22691314C00DEC937 /* libShellBoxLinux.a */; };
@@ -462,7 +465,8 @@
 		49087C14295DF0490058075B /* hook.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hook.c; sourceTree = "<group>"; };
 		49087C26295DF1350058075B /* mach_exc.defs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.mig; name = mach_exc.defs; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/mach/mach_exc.defs; sourceTree = DEVELOPER_DIR; };
 		491C4C1D27C8FB65008B1DFA /* Theme.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Theme.h; sourceTree = "<group>"; };
-		491C4C1E27C8FB65008B1DFA /* Theme.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Theme.m; sourceTree = "<group>"; };
+		491C4C1E27C8FB65008B1DFA /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		491C4C1F27C8FB65008B1DFA /* ThemeSupport.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ThemeSupport.m; sourceTree = "<group>"; };
 		49302D8D277669D300C9885A /* ish.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ish.c; sourceTree = "<group>"; };
 		49302D972777FAB400C9885A /* ish.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ish.h; sourceTree = "<group>"; };
 		493B378F290F5320000C41ED /* CLI.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CLI.xcconfig; sourceTree = "<group>"; };
@@ -654,7 +658,8 @@
 		BB123ACB26C9EFD900419CDA /* LinuxTTY.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxTTY.c; sourceTree = "<group>"; };
 		BB123ACD26C9F13500419CDA /* IOSCalls.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IOSCalls.m; sourceTree = "<group>"; };
 		BB13F4DC21C5770000343E17 /* NSError+ShellBoxErrno.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSError+ShellBoxErrno.h"; sourceTree = "<group>"; };
-		BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSError+ShellBoxErrno.m"; sourceTree = "<group>"; };
+		BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrnoSupport.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSError+ShellBoxErrnoSupport.m"; sourceTree = "<group>"; };
+		BB13F4DE21C5770000343E17 /* NSError+ShellBoxErrno.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSError+ShellBoxErrno.swift"; sourceTree = "<group>"; };
 		BB13F7C8200ACC24003D1C4D /* xcode-meson.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; name = "xcode-meson.sh"; path = "app/xcode-meson.sh"; sourceTree = "<group>"; };
 		BB13F7DC200AD81D003D1C4D /* libish.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libish.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB1B9A4223A5E96900414052 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = app/Icons/icon.png; sourceTree = SOURCE_ROOT; };
@@ -664,7 +669,7 @@
 		BB235535235D489400139E00 /* LocationDevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocationDevice.h; sourceTree = "<group>"; };
 		BB235536235D49B300139E00 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		BB23F58B231E1D1400585522 /* ScrollbarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScrollbarView.h; sourceTree = "<group>"; };
-		BB23F58C231E1D1400585522 /* ScrollbarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ScrollbarView.m; sourceTree = "<group>"; };
+		BB23F58C231E1D1400585522 /* ScrollbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollbarView.swift; sourceTree = "<group>"; };
 		BB28C7522689522700BDC834 /* ProjectReleaseLinux.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectReleaseLinux.xcconfig; sourceTree = "<group>"; };
 		BB28C7532689522C00BDC834 /* ProjectDebugLinux.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ProjectDebugLinux.xcconfig; sourceTree = "<group>"; };
 		BB28C755268956C900BDC834 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS15.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
@@ -675,10 +680,10 @@
 		BB38598227BCEC83000A1082 /* ishcolontildehash.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = ishcolontildehash.png; sourceTree = "<group>"; };
 		BB38598327BCEC83000A1082 /* is.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = is.png; sourceTree = "<group>"; };
 		BB41591C255EF9E300E0950C /* ShellBox UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ShellBox UITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		BB41591E255EF9E300E0950C /* UITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UITests.m; sourceTree = "<group>"; };
+		BB41591E255EF9E300E0950C /* UITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITests.swift; sourceTree = "<group>"; };
 		BB415920255EF9E300E0950C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB455E0F1FB37F6600AFB48B /* DelayedUITask.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DelayedUITask.h; sourceTree = "<group>"; };
-		BB455E101FB37F6600AFB48B /* DelayedUITask.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DelayedUITask.m; sourceTree = "<group>"; };
+		BB455E101FB37F6600AFB48B /* DelayedUITask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayedUITask.swift; sourceTree = "<group>"; };
 		BB4A922D24EDA461002F5A96 /* icon1337.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon1337.png; sourceTree = "<group>"; };
 		BB4A922F24EDA55C002F5A96 /* colontildehash.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = colontildehash.png; sourceTree = "<group>"; };
 		BB4A923124EDA560002F5A96 /* 3d.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = 3d.png; sourceTree = "<group>"; };
@@ -686,7 +691,7 @@
 		BB565EA52734F22D00C93EAE /* CurrentRoot.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CurrentRoot.h; sourceTree = "<group>"; };
 		BB6DB260216435330047A611 /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 		BB78AB291FAD22440013E782 /* TerminalView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TerminalView.h; sourceTree = "<group>"; };
-		BB78AB2A1FAD22440013E782 /* TerminalView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TerminalView.m; sourceTree = "<group>"; };
+		BB78AB2A1FAD22440013E782 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		BB792B531F96D90D00FFB7A4 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		BB792B541F96D90D00FFB7A4 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		BB792B561F96D90D00FFB7A4 /* TerminalViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TerminalViewController.h; sourceTree = "<group>"; };
@@ -729,8 +734,8 @@
 		BBCC9D942365430800424C83 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
 		BBCC9D952365430800424C83 /* SceneDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
 		BBCED895255BB65A00CA0701 /* NSObject+SaneKVO.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSObject+SaneKVO.h"; sourceTree = "<group>"; };
-		BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSObject+SaneKVO.m"; sourceTree = "<group>"; };
-		BBD23D5E258DA450003DCB40 /* Screenshots.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Screenshots.m; sourceTree = "<group>"; };
+		BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSObject+SaneKVO.swift"; sourceTree = "<group>"; };
+		BBD23D5E258DA450003DCB40 /* Screenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Screenshots.swift; sourceTree = "<group>"; };
 		BBD23D95258DEF6B003DCB40 /* Screenshots.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Screenshots.xctestplan; sourceTree = "<group>"; };
 		BBECF39B2691311D00DEC937 /* LinuxInterop.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LinuxInterop.h; sourceTree = "<group>"; };
 		BBECF39D2691313B00DEC937 /* LinuxInterop.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = LinuxInterop.c; sourceTree = "<group>"; };
@@ -747,7 +752,7 @@
 		BBFB2CDA259028DC00545EAB /* StaticLib.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = StaticLib.xcconfig; sourceTree = "<group>"; };
 		BBFB55652158644C00DFE6DE /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		BBFB557A215878C600DFE6DE /* UIApplication+OpenURL.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "UIApplication+OpenURL.h"; sourceTree = "<group>"; };
-		BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "UIApplication+OpenURL.m"; sourceTree = "<group>"; };
+		BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIApplication+OpenURL.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -970,8 +975,8 @@
 		BB41591D255EF9E300E0950C /* UITests */ = {
 			isa = PBXGroup;
 			children = (
-				BB41591E255EF9E300E0950C /* UITests.m */,
-				BBD23D5E258DA450003DCB40 /* Screenshots.m */,
+				BB41591E255EF9E300E0950C /* UITests.swift */,
+				BBD23D5E258DA450003DCB40 /* Screenshots.swift */,
 				BBD23D95258DEF6B003DCB40 /* Screenshots.xctestplan */,
 				BB415920255EF9E300E0950C /* Info.plist */,
 			);
@@ -1047,11 +1052,11 @@
 				BB792B571F96D90D00FFB7A4 /* TerminalViewController.m */,
 				BBFB557D21587B2B00DFE6DE /* Bar */,
 				BB78AB291FAD22440013E782 /* TerminalView.h */,
-				BB78AB2A1FAD22440013E782 /* TerminalView.m */,
+				BB78AB2A1FAD22440013E782 /* TerminalView.swift */,
 				BB0FC5901F980A6B00803272 /* Terminal.h */,
 				BB0FC5911F980A6B00803272 /* Terminal.m */,
 				BB23F58B231E1D1400585522 /* ScrollbarView.h */,
-				BB23F58C231E1D1400585522 /* ScrollbarView.m */,
+				BB23F58C231E1D1400585522 /* ScrollbarView.swift */,
 				BBECF39C2691312500DEC937 /* LinuxInterop */,
 				BB235532235D472F00139E00 /* Devices */,
 				BBFB557321586C7600DFE6DE /* About */,
@@ -1257,7 +1262,8 @@
 				BB88F4982154760800A341FD /* FileProviderEnumerator.h */,
 				BB88F4992154760800A341FD /* FileProviderEnumerator.m */,
 				BB13F4DC21C5770000343E17 /* NSError+ShellBoxErrno.h */,
-				BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrno.m */,
+				BB13F4DE21C5770000343E17 /* NSError+ShellBoxErrno.swift */,
+				BB13F4DD21C5770000343E17 /* NSError+ShellBoxErrnoSupport.m */,
 				BB88F49B2154760800A341FD /* Info.plist */,
 				BB88F49C2154760800A341FD /* ShellBoxFileProvider.entitlements */,
 			);
@@ -1285,16 +1291,16 @@
 				BB9C7B86240A29DE00F5D4F0 /* AppGroup.h */,
 				BB9C7B84240A240E00F5D4F0 /* AppGroup.m */,
 				BB455E0F1FB37F6600AFB48B /* DelayedUITask.h */,
-				BB455E101FB37F6600AFB48B /* DelayedUITask.m */,
+				BB455E101FB37F6600AFB48B /* DelayedUITask.swift */,
 				49FF844C2A0624AF00850B7A /* ExceptionExfiltrator.h */,
 				49FF844A2A06249F00850B7A /* ExceptionExfiltrator.m */,
 				49087C14295DF0490058075B /* hook.c */,
 				49087C13295DF0490058075B /* hook.h */,
 				49087C26295DF1350058075B /* mach_exc.defs */,
 				BBCED895255BB65A00CA0701 /* NSObject+SaneKVO.h */,
-				BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.m */,
+				BBCED896255BB65A00CA0701 /* NSObject+SaneKVO.swift */,
 				BBFB557A215878C600DFE6DE /* UIApplication+OpenURL.h */,
-				BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */,
+				BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.swift */,
 			);
 			name = Utilities;
 			sourceTree = "<group>";
@@ -1303,7 +1309,8 @@
 			isa = PBXGroup;
 			children = (
 				491C4C1D27C8FB65008B1DFA /* Theme.h */,
-				491C4C1E27C8FB65008B1DFA /* Theme.m */,
+				491C4C1E27C8FB65008B1DFA /* Theme.swift */,
+				491C4C1F27C8FB65008B1DFA /* ThemeSupport.m */,
 				8632A7BD219A59FB00F02325 /* UserPreferences.h */,
 				8632A7BE219A59FB00F02325 /* UserPreferences.m */,
 			);
@@ -2069,14 +2076,15 @@
 				AA000021AF96D90D00FFB7A4 /* LocationDevice.m in Sources */,
 				AA000022AF96D90D00FFB7A4 /* iOSFS.m in Sources */,
 				AA000023AF96D90D00FFB7A4 /* PasteboardDevice.m in Sources */,
-				AA000103AF96D90D00FFB7A4 /* Theme.m in Sources */,
+				AA000103AF96D90D00FFB7A4 /* Theme.swift in Sources */,
+				AA000104AF96D90D00FFB7A4 /* ThemeSupport.m in Sources */,
 				AA000105AF96D90D00FFB7A4 /* TerminalViewController.m in Sources */,
 				AA000106AF96D90D00FFB7A4 /* IOSCalls.m in Sources */,
 				AA000107AF96D90D00FFB7A4 /* CurrentRoot.m in Sources */,
-				AA000109AF96D90D00FFB7A4 /* TerminalView.m in Sources */,
+				AA000109AF96D90D00FFB7A4 /* TerminalView.swift in Sources */,
 				AA00010AAF96D90D00FFB7A4 /* mach_exc.defs in Sources */,
-				AA00010BAF96D90D00FFB7A4 /* ScrollbarView.m in Sources */,
-				AA00010CAF96D90D00FFB7A4 /* DelayedUITask.m in Sources */,
+				AA00010BAF96D90D00FFB7A4 /* ScrollbarView.swift in Sources */,
+				AA00010CAF96D90D00FFB7A4 /* DelayedUITask.swift in Sources */,
 				AA00010DAF96D90D00FFB7A4 /* hook.c in Sources */,
 				AA00010EAF96D90D00FFB7A4 /* Roots.m in Sources */,
 				AA00010FAF96D90D00FFB7A4 /* Terminal.m in Sources */,
@@ -2084,9 +2092,9 @@
 				AA000115AF96D90D00FFB7A4 /* UserPreferences.m in Sources */,
 				AA000118AF96D90D00FFB7A4 /* AppGroup.m in Sources */,
 				AA000119AF96D90D00FFB7A4 /* AppDelegate.m in Sources */,
-				AA00011AAF96D90D00FFB7A4 /* UIApplication+OpenURL.m in Sources */,
+				AA00011AAF96D90D00FFB7A4 /* UIApplication+OpenURL.swift in Sources */,
 				AA00011BAF96D90D00FFB7A4 /* ExceptionExfiltrator.m in Sources */,
-				AA00011FAF96D90D00FFB7A4 /* NSObject+SaneKVO.m in Sources */,
+				AA00011FAF96D90D00FFB7A4 /* NSObject+SaneKVO.swift in Sources */,
 				AA000121AF96D90D00FFB7A4 /* fakefs.c in Sources */,
 				AA000130AF96D90D00FFB7A4 /* DebugServer.c in Sources */,
 				AA000133AF96D90D00FFB7A4 /* ShellBoxRootView.swift in Sources */,
@@ -2106,8 +2114,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB41591F255EF9E300E0950C /* UITests.m in Sources */,
-				BBD23D5F258DA450003DCB40 /* Screenshots.m in Sources */,
+				BB41591F255EF9E300E0950C /* UITests.swift in Sources */,
+				BBD23D5F258DA450003DCB40 /* Screenshots.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2116,7 +2124,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				BB88F49A2154760800A341FD /* FileProviderEnumerator.m in Sources */,
-				BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrno.m in Sources */,
+				BBBFE94A21C5CFF100509DD5 /* NSError+ShellBoxErrno.swift in Sources */,
+				BBBFE94921C5CFF100509DD5 /* NSError+ShellBoxErrnoSupport.m in Sources */,
 				BB9C7B87240A2B1E00F5D4F0 /* AppGroup.m in Sources */,
 				BB88F4942154760800A341FD /* FileProviderExtension.m in Sources */,
 				BBE64AC22A198FCC00589372 /* ExceptionExfiltrator.m in Sources */,
@@ -2150,14 +2159,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				BB28C7B226896C4600BDC834 /* main.swift in Sources */,
-				496C7AB227CC697E005D7613 /* Theme.m in Sources */,
+				496C7AB227CC697E005D7613 /* Theme.swift in Sources */,
+				496C7AB327CC697E005D7613 /* ThemeSupport.m in Sources */,
 				BB28C79526896B1F00BDC834 /* TerminalViewController.m in Sources */,
 				BB123ACE26C9F13500419CDA /* IOSCalls.m in Sources */,
 				BBC3863F276817AD00CC8C2E /* CurrentRoot.m in Sources */,
-				BB28C79726896B1F00BDC834 /* TerminalView.m in Sources */,
+				BB28C79726896B1F00BDC834 /* TerminalView.swift in Sources */,
 				497A08BF29633FF400B323CF /* mach_exc.defs in Sources */,
-				BB28C79826896B1F00BDC834 /* ScrollbarView.m in Sources */,
-				BB28C79926896B1F00BDC834 /* DelayedUITask.m in Sources */,
+				BB28C79826896B1F00BDC834 /* ScrollbarView.swift in Sources */,
+				BB28C79926896B1F00BDC834 /* DelayedUITask.swift in Sources */,
 				497A08C029633FFA00B323CF /* hook.c in Sources */,
 				BB28C7BF2689799800BDC834 /* Roots.m in Sources */,
 				BB28C79A26896B1F00BDC834 /* Terminal.m in Sources */,
@@ -2165,9 +2175,9 @@
 				BB28C7A026896B1F00BDC834 /* UserPreferences.m in Sources */,
 				BB28C7A426896B1F00BDC834 /* AppGroup.m in Sources */,
 				BBECF3BC26913F1600DEC937 /* AppDelegate.m in Sources */,
-				BB28C7A526896B1F00BDC834 /* UIApplication+OpenURL.m in Sources */,
+				BB28C7A526896B1F00BDC834 /* UIApplication+OpenURL.swift in Sources */,
 				49FF844B2A06249F00850B7A /* ExceptionExfiltrator.m in Sources */,
-				BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.m in Sources */,
+				BB28C7A826896B1F00BDC834 /* NSObject+SaneKVO.swift in Sources */,
 				BB77636726E486A7008DB44A /* fakefs.c in Sources */,
 				BB28C7C126896C4600BDC834 /* SwiftTermHostView.swift in Sources */,
 			);
@@ -2587,6 +2597,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = DebugLinux;
 		};
@@ -2673,6 +2684,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = "Debug";
 		};
@@ -2689,6 +2701,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -2844,6 +2857,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = ReleaseLinux;
 		};

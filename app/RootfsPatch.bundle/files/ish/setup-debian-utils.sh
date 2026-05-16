@@ -24,6 +24,13 @@ print_log_tail() {
     echo "---- end log ----"
 }
 
+clean_apt_lists() {
+    if [ -d /var/lib/apt/lists ]; then
+        find /var/lib/apt/lists -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    fi
+    mkdir -p /var/lib/apt/lists/partial
+}
+
 configure_dns() {
     cat >/etc/resolv.conf <<'EOF'
 nameserver 1.1.1.1
@@ -163,6 +170,20 @@ EOF
     fi
 }
 
+reset_fish_package_state() {
+    rm -f /ish/fish-ready
+    if run_logged apt-get purge -y fish fish-common; then
+        return 0
+    fi
+
+    echo "apt-get purge fish failed; forcing broken fish package state removal."
+    repair_debian_file_paths
+    repair_problem_package_postinsts
+    run_logged dpkg --remove --force-remove-reinstreq fish fish-common || true
+    run_logged dpkg --purge --force-remove-reinstreq fish fish-common || true
+    run_logged apt-get install -f -y --no-install-recommends || true
+}
+
 repair_profile_file
 repair_base_files_postinst
 repair_debian_file_paths
@@ -170,7 +191,7 @@ repair_problem_package_postinsts
 configure_dns
 configure_apt_sources
 configure_hosts_fallback
-rm -f /var/lib/apt/lists/* /var/lib/apt/lists/partial/*
+clean_apt_lists
 
 echo "Updating APT indexes..."
 if ! run_logged apt-get update -o APT::Update::Error-Mode=any; then
@@ -184,6 +205,9 @@ if ! run_logged apt-get update -o APT::Update::Error-Mode=any; then
         exit 1
     fi
 fi
+
+echo "Resetting fish package state..."
+reset_fish_package_state
 
 echo "Installing fish..."
 if ! run_logged apt-get install -y --no-install-recommends \
@@ -203,6 +227,13 @@ if ! run_logged apt-get install -y --no-install-recommends \
     if ! run_logged apt-get install -f -y --no-install-recommends; then
         touch /ish/fish-setup-failed
         echo "apt-get install -f failed after package postinst repair."
+        print_log_tail
+        echo "See /ish/setup-debian-utils.log, then run /ish/setup-debian-utils.sh --fish-only to retry."
+        exit 1
+    fi
+    if ! run_logged apt-get install -y --no-install-recommends fish; then
+        touch /ish/fish-setup-failed
+        echo "apt-get install fish failed after package postinst repair."
         print_log_tail
         echo "See /ish/setup-debian-utils.log, then run /ish/setup-debian-utils.sh --fish-only to retry."
         exit 1
@@ -255,6 +286,6 @@ if ! run_logged apt-get install -y --no-install-recommends \
 fi
 
 apt-get clean
-rm -rf /var/lib/apt/lists/*
+clean_apt_lists
 
 echo "Debian common utilities are installed."

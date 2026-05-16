@@ -1288,6 +1288,26 @@ dword_t sys_fsync(fd_t f) {
     return err;
 }
 
+#define SYNC_FILE_RANGE_WAIT_BEFORE_ 1
+#define SYNC_FILE_RANGE_WRITE_ 2
+#define SYNC_FILE_RANGE_WAIT_AFTER_ 4
+#define SYNC_FILE_RANGE_VALID_FLAGS_ \
+    (SYNC_FILE_RANGE_WAIT_BEFORE_ | SYNC_FILE_RANGE_WRITE_ | SYNC_FILE_RANGE_WAIT_AFTER_)
+
+dword_t sys_sync_file_range(fd_t f, off_t_ offset, off_t_ nbytes, uint_t flags) {
+    STRACE("sync_file_range(%d, %lld, %lld, 0x%x)", f, (long long) offset, (long long) nbytes, flags);
+    if (offset < 0 || nbytes < 0)
+        return _EINVAL;
+    if (flags & ~SYNC_FILE_RANGE_VALID_FLAGS_)
+        return _EINVAL;
+    struct fd *fd = f_get(f);
+    if (fd == NULL)
+        return _EBADF;
+    if (!fd->ops->fsync)
+        return 0;
+    return fd->ops->fsync(fd);
+}
+
 // a few stubs
 dword_t sys_sendfile(fd_t out_fd, fd_t in_fd, addr_t offset_addr, dword_t count) {
     return sys_sendfile64(out_fd, in_fd, offset_addr, count);

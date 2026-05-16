@@ -8,6 +8,7 @@
 #include <resolv.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <dlfcn.h>
 #include <objc/message.h>
 #import <SystemConfiguration/SystemConfiguration.h>
 #import "AppDelegate.h"
@@ -75,6 +76,51 @@ void ReportPanic(const char *message) {
 
 static int bootError;
 static NSString *const kSkipStartupMessage = @"Skip Startup Message";
+
+static NSString *UserAssignedDeviceName(void) {
+    typedef CFTypeRef (*MGCopyAnswerFn)(CFStringRef key);
+    static MGCopyAnswerFn MGCopyAnswer = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        void *handle = dlopen("/usr/lib/libMobileGestalt.dylib", RTLD_LAZY);
+        if (handle)
+            MGCopyAnswer = (MGCopyAnswerFn)dlsym(handle, "MGCopyAnswer");
+    });
+    if (!MGCopyAnswer)
+        return nil;
+
+    CFTypeRef answer = MGCopyAnswer(CFSTR("UserAssignedDeviceName"));
+    if (!answer)
+        return nil;
+    if (CFGetTypeID(answer) != CFStringGetTypeID()) {
+        CFRelease(answer);
+        return nil;
+    }
+    return CFBridgingRelease(answer);
+}
+
+static BOOL HostnameLooksLikeDeviceModel(NSString *hostname) {
+    if (hostname.length == 0)
+        return NO;
+    return [hostname isEqualToString:UIDevice.currentDevice.model] ||
+           [hostname isEqualToString:UIDevice.currentDevice.localizedModel] ||
+           [hostname isEqualToString:@"iPhone"] ||
+           [hostname isEqualToString:@"iPad"];
+}
+
+static NSString *CurrentDeviceHostname(void) {
+    NSString *userAssignedDeviceName = UserAssignedDeviceName();
+    NSString *hostname = UserPreferences.shared.hostnameOverride;
+    if (HostnameLooksLikeDeviceModel(hostname) && userAssignedDeviceName.length > 0)
+        hostname = userAssignedDeviceName;
+    if (hostname.length == 0)
+        hostname = userAssignedDeviceName;
+    if (hostname.length == 0)
+        hostname = UIDevice.currentDevice.name;
+    if (hostname.length == 0)
+        hostname = @"ShellBox";
+    return hostname;
+}
 
 static UIViewController *SwiftUIRootControllerForTerminal(TerminalViewController *terminalViewController) {
     NSArray<NSString *> *classNames = @[
@@ -246,12 +292,30 @@ const char *DefaultRootPath() {
 }
 
 void SyncHostname(void) {
+    NSString *hostname = CurrentDeviceHostname();
+    NSLog(@"[Hostname] syncing guest hostname: %@", hostname);
     async_do_in_workqueue(^{
-        char hostname[256];
-        if (gethostname(hostname, sizeof(hostname)) < 0)
-            return;
-        linux_sethostname(hostname);
+        linux_sethostname(hostname.UTF8String);
+        NSString *hostnameFile = [hostname stringByAppendingString:@"\n"];
+        NSData *hostnameData = [hostnameFile dataUsingEncoding:NSUTF8StringEncoding];
+        linux_write_file("/etc/hostname", hostnameData.bytes, hostnameData.length);
     });
+}
+#else
+static void SyncGuestHostname(void) {
+    NSString *hostname = CurrentDeviceHostname();
+    NSLog(@"[Hostname] syncing guest hostname: %@", hostname);
+
+    extern const char *uname_hostname_override;
+    uname_hostname_override = strdup(hostname.UTF8String);
+
+    current = pid_get_task(1);
+    NSString *hostnameFile = [hostname stringByAppendingString:@"\n"];
+    struct fd *fd = generic_open("/etc/hostname", O_WRONLY_ | O_CREAT_ | O_TRUNC_, 0644);
+    if (!IS_ERR(fd)) {
+        fd->ops->write(fd, hostnameFile.UTF8String, [hostnameFile lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+        fd_close(fd);
+    }
 }
 #endif
 
@@ -298,14 +362,6 @@ void SyncHostname(void) {
 + (void)maybePresentStartupMessageOnViewController:(UIViewController *)vc {
     if ([NSUserDefaults.standardUserDefaults integerForKey:kSkipStartupMessage] >= 1)
         return;
-    if (!FsIsManaged()) {
-        [NSNotificationCenter.defaultCenter postNotificationName:@"ShellBoxAlertNotification"
-                                                          object:nil
-                                                        userInfo:@{
-                                                            @"title": @"Install ShellBox's built-in Debian rootfs?",
-                                                            @"message": @"ShellBox now includes a Debian rootfs with APT. Reinstall the built-in root from Settings if this root predates the Debian migration.",
-                                                        }];
-    }
     [NSUserDefaults.standardUserDefaults setInteger:1 forKey:kSkipStartupMessage];
 }
 
@@ -349,15 +405,7 @@ void NetworkReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
                          [NSBundle.mainBundle objectForInfoDictionaryKey:(NSString *) kCFBundleVersionKey]];
     extern const char *proc_ish_version;
     proc_ish_version = strdup(ishVersion.UTF8String);
-    // this defaults key is set when taking app store screenshots
-    extern const char *uname_hostname_override;
-    NSString *hostnameOverride = UserPreferences.shared._hostnameOverride;
-    if (@available(iOS 16.0, *)) { // Hostname obfuscation is in effect
-        hostnameOverride = hostnameOverride ? hostnameOverride : UserPreferences.shared.hostnameOverride;
-    }
-    if (hostnameOverride) {
-        uname_hostname_override = strdup(hostnameOverride.UTF8String);
-    }
+    SyncGuestHostname();
 #endif
     
     [UserPreferences.shared observe:@[@"shouldDisableDimming"] options:NSKeyValueObservingOptionInitial

@@ -6,6 +6,10 @@
 #   ./run.sh             # Run both performance + compatibility suites
 #   ./run.sh shell       # Performance only (Shell + Python + Node.js + Go + C)
 #   ./run.sh arm64       # ARM64 performance only (Native + ARM64, no x86 rootfs)
+#   ./run.sh arm64-workload # Native vs ARM64 emulated/JIT C workload gate
+#   ./run.sh arm64-workload-offload # Native vs ARM64 native-offload reference
+#   ./run.sh arm64-micro # ARM64 focused microbenchmarks + /proc/ish/perf counters
+#   ./run.sh arm64-deep  # ARM64 shell benchmark + microbenchmarks
 #   ./run.sh compat      # Compatibility only (205 tests across 18 categories)
 #
 # Performance: assets/shellbench.sh runs guest-side inside each architecture
@@ -27,10 +31,11 @@ RESULTS_DIR="$SCRIPT_DIR/results"
 ASSETS_DIR="$SCRIPT_DIR/assets"
 DATE=$(date +%Y%m%d_%H%M%S)
 
-ISH_X86="$PROJECT_DIR/build-x86-release/ish"
-ISH_ARM64="$PROJECT_DIR/build-arm64-release/ish"
-FAKEFS_X86="$PROJECT_DIR/alpine-x86-fakefs"
-FAKEFS_ARM64="$PROJECT_DIR/alpine-arm64-fakefs"
+ISH_X86="${ISH_X86:-$PROJECT_DIR/build-x86-release/ish}"
+ISH_ARM64="${ISH_ARM64:-$PROJECT_DIR/build-arm64-release/ish}"
+ISH_ARM64_PERF="${ISH_ARM64_PERF:-$PROJECT_DIR/build-arm64-perf/ish}"
+FAKEFS_X86="${FAKEFS_X86:-$PROJECT_DIR/alpine-x86-fakefs}"
+FAKEFS_ARM64="${FAKEFS_ARM64:-$PROJECT_DIR/alpine-arm64-fakefs}"
 
 PERF_MD="$SCRIPT_DIR/BENCHMARK_PERF.md"
 COMPAT_MD="$SCRIPT_DIR/BENCHMARK_COMPAT.md"
@@ -71,9 +76,14 @@ preflight() {
     local suite="${1:-all}"
     local ok=1
     case "$suite" in
-        arm64|arm64-perf)
+        arm64|arm64-perf|arm64-micro|arm64-deep)
             [ -x "$ISH_ARM64" ]     || { fail "ARM64 binary: $ISH_ARM64"; ok=0; }
             [ -d "$FAKEFS_ARM64" ]  || { fail "ARM64 fakefs: $FAKEFS_ARM64"; ok=0; }
+            ;;
+        arm64-workload|arm64-workload-offload)
+            [ -x "$ISH_ARM64" ]     || { fail "ARM64 binary: $ISH_ARM64"; ok=0; }
+            [ -d "$FAKEFS_ARM64" ]  || { fail "ARM64 fakefs: $FAKEFS_ARM64"; ok=0; }
+            [ -f "$ASSETS_DIR/cbench_lite.c" ] || { fail "C workload source: $ASSETS_DIR/cbench_lite.c"; ok=0; }
             ;;
         *)
             [ -x "$ISH_X86" ]       || { fail "x86 binary: $ISH_X86"; ok=0; }
@@ -118,6 +128,35 @@ _ratio() {
     local a="$1" b="$2"
     { [ "$a" = "FAIL" ] || [ "$b" = "FAIL" ]; } && { echo "—"; return; }
     awk "BEGIN{b=$b; if(b>0.00001)printf\"%.1fx\",$a/b; else print\"—\"}"
+}
+
+_fmt_ms_display() {
+    local ms="$1"
+    case "$ms" in
+        ''|'—'|'FAIL') echo "$ms"; return ;;
+    esac
+    if [ "$ms" = "0" ]; then
+        echo "<1ms"
+    else
+        echo "${ms}ms"
+    fi
+}
+
+_ratio_display() {
+    local numerator="$1" denominator="$2"
+    if [ "$denominator" -gt 0 ] 2>/dev/null; then
+        awk "BEGIN{r=$numerator/$denominator; if(r>0 && r<0.1)print\"<0.1x\"; else printf\"%.1fx\",r}"
+    else
+        echo "—"
+    fi
+}
+
+_fmt_ns_display() {
+    local ns="$1"
+    case "$ns" in
+        ''|'—'|'FAIL') echo "$ns"; return ;;
+    esac
+    echo "${ns}ns"
 }
 
 _fmti() {
@@ -299,13 +338,9 @@ suite_shell_arm64() {
         local nat_ms nat_f arm_f ratio
         nat_ms=$(grep "^${cat}|${name}|" "$native_out" | head -1 | cut -d'|' -f3)
         [ -z "$nat_ms" ] && nat_ms="—"
-        [ "$nat_ms" = "—" ] && nat_f="—" || nat_f="${nat_ms}ms"
-        arm_f="${arm_ms}ms"
-        if [ "$nat_ms" != "—" ] && [ "$nat_ms" -gt 0 ] 2>/dev/null; then
-            ratio=$(awk "BEGIN{printf\"%.1fx\",$arm_ms/$nat_ms}")
-        else
-            ratio="—"
-        fi
+        nat_f=$(_fmt_ms_display "$nat_ms")
+        arm_f=$(_fmt_ms_display "$arm_ms")
+        ratio=$(_ratio_display "$arm_ms" "$nat_ms")
 
         printf "%-9s %-18s │ %8s │ %8s │ %10s\n" \
             "$cat" "$name" "$nat_f" "$arm_f" "$ratio"
@@ -380,6 +415,361 @@ _md_shell_section() {
 # via assets/shellbench.sh. The separate suite_python / suite_node / suite_c
 # functions were removed — shellbench.sh performs identical work with
 # guest-side timing (no startup overhead) and produces comparable x86 data.
+
+build_native_microbench() {
+    local out="$1"
+    local cc_bin="${CC:-cc}"
+    "$cc_bin" -O2 -std=c11 -Wall -Wextra -o "$out" "$ASSETS_DIR/microbench.c"
+}
+
+build_native_c_workload() {
+    local out="$1"
+    local cc_bin="${CC:-cc}"
+    "$cc_bin" -O2 -std=c11 -Wall -Wextra -o "$out" "$ASSETS_DIR/cbench_lite.c" -lm
+}
+
+find_arm64_cross_clang() {
+    if [ -n "${ARM64_CROSS_CLANG:-}" ] && [ -x "$ARM64_CROSS_CLANG" ]; then
+        echo "$ARM64_CROSS_CLANG"
+        return 0
+    fi
+    for candidate in /opt/homebrew/opt/llvm/bin/clang clang; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+build_arm64_c_workload_host() {
+    local out="$1" clang_bin gcc_lib log_file
+    clang_bin=$(find_arm64_cross_clang) || return 1
+    gcc_lib=$(find "$FAKEFS_ARM64/data/usr/lib/gcc/aarch64-alpine-linux-musl" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)
+    [ -n "$gcc_lib" ] || return 1
+    log_file="$out.log"
+    rm -f "$out" "$log_file"
+    "$clang_bin" --target=aarch64-linux-musl --sysroot="$FAKEFS_ARM64/data" -fuse-ld=lld \
+        -B "$gcc_lib" -L "$gcc_lib" \
+        -O2 -g -std=c11 -Wall -Wextra \
+        -o "$out" "$ASSETS_DIR/cbench_lite.c" -lm >"$log_file" 2>&1
+}
+
+push_microbench() {
+    cat "$ASSETS_DIR/microbench.c" | run_timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/microbench.c" 2>/dev/null
+}
+
+build_arm64_microbench_host() {
+    local clang_bin gcc_lib out log_file
+    clang_bin=$(find_arm64_cross_clang) || return 1
+    gcc_lib=$(find "$FAKEFS_ARM64/data/usr/lib/gcc/aarch64-alpine-linux-musl" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)
+    [ -n "$gcc_lib" ] || return 1
+    out="$FAKEFS_ARM64/data/tmp/microbench"
+    log_file="$FAKEFS_ARM64/data/tmp/microbench-build.log"
+    rm -f "$out" "$log_file"
+    "$clang_bin" --target=aarch64-linux-musl --sysroot="$FAKEFS_ARM64/data" -fuse-ld=lld \
+        -B "$gcc_lib" -L "$gcc_lib" \
+        -O2 -fno-inline-functions -g -std=c11 -Wall -Wextra \
+        -o "$out" "$ASSETS_DIR/microbench.c" >"$log_file" 2>&1
+}
+
+build_guest_microbench() {
+    rm -f "$FAKEFS_ARM64/data/tmp/microbench" "$FAKEFS_ARM64/data/tmp/microbench-build.log"
+    if build_arm64_microbench_host; then
+        return 0
+    fi
+    push_microbench || return 1
+    run_timeout 120 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c \
+        "rm -f /tmp/microbench; (cc -O2 -std=c11 -Wall -Wextra -o /tmp/microbench /tmp/microbench.c || gcc -O2 -std=c11 -Wall -Wextra -o /tmp/microbench /tmp/microbench.c) >/tmp/microbench-build.log 2>&1 && test -x /tmp/microbench" \
+        >/dev/null 2>&1
+}
+
+capture_perf_counters() {
+    local out="$1"
+    if [ ! -x "$ISH_ARM64_PERF" ]; then
+        return 0
+    fi
+    run_timeout 900 "$ISH_ARM64_PERF" -f "$FAKEFS_ARM64" /bin/sh -c \
+        "/tmp/microbench >/dev/null 2>&1; cat /proc/ish/perf 2>/dev/null" > "$out" 2>/dev/null || true
+}
+
+suite_arm64_micro() {
+    log "ARM64 microbenchmarks (native vs ARM64, plus /proc/ish/perf when enabled)"
+    hr
+
+    if [ ! -f "$ASSETS_DIR/microbench.c" ]; then
+        fail "Missing asset: $ASSETS_DIR/microbench.c"
+        return 1
+    fi
+
+    local native_bin; native_bin=$(mktemp)
+    rm -f "$native_bin"
+    if ! build_native_microbench "$native_bin"; then
+        fail "Native microbench build failed"
+        return 1
+    fi
+
+    if ! build_guest_microbench; then
+        fail "Guest microbench build failed. Check /tmp/microbench-build.log inside ARM64 fakefs."
+        rm -f "$native_bin"
+        return 1
+    fi
+
+    local native_raw; native_raw=$(mktemp)
+    local arm_raw; arm_raw=$(mktemp)
+    local native_out; native_out=$(mktemp)
+    local arm_out; arm_out=$(mktemp)
+    local perf_out; perf_out=$(mktemp)
+
+    for ((run = 1; run <= RUNS; run++)); do
+        log "Running microbench on Native ($run/$RUNS)..."
+        run_timeout 300 "$native_bin" >> "$native_raw" 2>/dev/null || true
+
+        log "Running microbench on ARM64 ($run/$RUNS)..."
+        run_timeout 900 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "/tmp/microbench" >> "$arm_raw" 2>/dev/null || true
+    done
+
+    capture_perf_counters "$perf_out"
+    _median_results_file "$native_raw" "$native_out"
+    _median_results_file "$arm_raw" "$arm_out"
+
+    echo ""
+    printf "${BOLD}%-9s %-24s │ %12s │ %12s │ %10s${NC}\n" \
+        "Cat" "Test" "Native" "ARM64" "A64/Native"
+    hr
+
+    local rows=()
+    while IFS='|' read -r cat name arm_ns; do
+        [ -z "$cat" ] && continue
+        local nat_ns nat_f arm_f ratio
+        nat_ns=$(grep "^${cat}|${name}|" "$native_out" | head -1 | cut -d'|' -f3)
+        [ -z "$nat_ns" ] && nat_ns="—"
+        nat_f=$(_fmt_ns_display "$nat_ns")
+        arm_f=$(_fmt_ns_display "$arm_ns")
+        ratio=$(_ratio_display "$arm_ns" "$nat_ns")
+
+        printf "%-9s %-24s │ %12s │ %12s │ %10s\n" \
+            "$cat" "$name" "$nat_f" "$arm_f" "$ratio"
+
+        echo "micro-arm64,$cat,$name,$nat_ns,0,—,—,$arm_ns,0" >> "$CSV"
+        rows+=("$cat|$name|$nat_f|$arm_f|$ratio")
+    done < "$arm_out"
+
+    while read -r name value; do
+        [ -z "$name" ] && continue
+        case "$value" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        echo "perf-counter,Perf,$name,—,—,—,—,$value,0" >> "$CSV"
+    done < "$perf_out"
+
+    rm -f "$native_bin" "$native_raw" "$arm_raw" "$native_out" "$arm_out"
+    if [ ${#rows[@]} -eq 0 ]; then
+        fail "ARM64 microbench produced no rows"
+        rm -f "$perf_out"
+        return 1
+    fi
+    _md_arm64_micro_section "$perf_out" "${rows[@]}"
+    rm -f "$perf_out"
+}
+
+_md_arm64_micro_section() {
+    local perf_file="$1"
+    shift
+    local rows=("$@") prev=""
+    {
+        echo "## ARM64 Microbenchmarks"
+        echo ""
+        echo "> Focused native-vs-ARM64 measurements for string/byte operations,"
+        echo "> memory/TLB behavior, and syscall overhead. Use \`./run.sh arm64-micro\`"
+        echo "> for fast hotspot triage, or \`./run.sh arm64-deep\` for a full ARM64 pass."
+        echo "> Timings are reported in nanoseconds using guest/native monotonic clocks."
+        echo ""
+    } >> "$PERF_MD"
+
+    for r in "${rows[@]}"; do
+        IFS='|' read -r cat name nat arm ratio <<< "$r"
+        if [ "$cat" != "$prev" ]; then
+            [ -n "$prev" ] && echo "" >> "$PERF_MD"
+            echo "### $cat" >> "$PERF_MD"
+            echo "" >> "$PERF_MD"
+            echo "| Test | Native | ARM64 | **ARM64/Native** |" >> "$PERF_MD"
+            echo "|------|:---:|:---:|:---:|" >> "$PERF_MD"
+            prev="$cat"
+        fi
+        echo "| $name | $nat | $arm | **$ratio** |" >> "$PERF_MD"
+    done
+
+    echo "" >> "$PERF_MD"
+    echo "### Perf Counters" >> "$PERF_MD"
+    echo "" >> "$PERF_MD"
+    if grep -q '^perf_counters disabled' "$perf_file" 2>/dev/null; then
+        echo "_Disabled in this build. Rebuild with \`-Dperf_counters=true\` to populate this section._" >> "$PERF_MD"
+    elif [ -s "$perf_file" ]; then
+        echo "| Counter | Value |" >> "$PERF_MD"
+        echo "|---|---:|" >> "$PERF_MD"
+        while read -r name value; do
+            [ -z "$name" ] && continue
+            echo "| \`$name\` | $value |" >> "$PERF_MD"
+        done < "$perf_file"
+    else
+        echo "_No counter data was readable from \`/proc/ish/perf\`._" >> "$PERF_MD"
+    fi
+    echo "" >> "$PERF_MD"
+}
+
+_parse_c_workload_output() {
+    local input="$1" output="$2"
+    : > "$output"
+    awk 'NF >= 2 {
+        name=$1;
+        value=$2;
+        if (value ~ /^[0-9]+$/) print "C|" name "|" value;
+    }' "$input" > "$output"
+}
+
+suite_arm64_workload() {
+    local mode="${1:-jit}"
+    local label="ARM64 emulated/JIT"
+    local csv_suite="workload-arm64-jit"
+    if [ "$mode" = "offload" ]; then
+        label="ARM64 native-offload"
+        csv_suite="workload-arm64-offload"
+    fi
+
+    log "ARM64 real C workload (native binary vs $label)"
+    hr
+
+    if [ ! -f "$ASSETS_DIR/cbench_lite.c" ]; then
+        fail "Missing asset: $ASSETS_DIR/cbench_lite.c"
+        return 1
+    fi
+
+    local native_bin arm_bin
+    native_bin=$(mktemp)
+    arm_bin=$(mktemp)
+    rm -f "$native_bin" "$arm_bin"
+
+    if ! build_native_c_workload "$native_bin"; then
+        fail "Native C workload build failed"
+        rm -f "$native_bin" "$arm_bin"
+        return 1
+    fi
+    if ! build_arm64_c_workload_host "$arm_bin"; then
+        fail "ARM64 C workload cross-build failed"
+        rm -f "$native_bin" "$arm_bin"
+        return 1
+    fi
+
+    local native_raw arm_raw native_out arm_out
+    native_raw=$(mktemp)
+    arm_raw=$(mktemp)
+    native_out=$(mktemp)
+    arm_out=$(mktemp)
+
+    for ((run = 1; run <= RUNS; run++)); do
+        log "Running C workload on Native ($run/$RUNS)..."
+        run_timeout 300 "$native_bin" >> "$native_raw" 2>/dev/null || true
+
+        log "Running C workload on $label ($run/$RUNS)..."
+        cat "$arm_bin" | run_timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c \
+            "cat > /tmp/cbench_lite_current && chmod +x /tmp/cbench_lite_current" 2>/dev/null || {
+                fail "Failed to push ARM64 C workload"
+                rm -f "$native_bin" "$arm_bin" "$native_raw" "$arm_raw" "$native_out" "$arm_out"
+                return 1
+            }
+        if [ "$mode" = "offload" ]; then
+            run_timeout 900 "$ISH_ARM64" -n "cbench_lite_current=$native_bin" -f "$FAKEFS_ARM64" \
+                /bin/sh -c "/tmp/cbench_lite_current" >> "$arm_raw" 2>/dev/null || true
+        else
+            run_timeout 900 "$ISH_ARM64" -f "$FAKEFS_ARM64" \
+                /bin/sh -c "/tmp/cbench_lite_current" >> "$arm_raw" 2>/dev/null || true
+        fi
+    done
+
+    _parse_c_workload_output "$native_raw" "$native_out"
+    _parse_c_workload_output "$arm_raw" "$arm_out"
+    _median_results_file "$native_out" "$native_out.median"
+    _median_results_file "$arm_out" "$arm_out.median"
+    mv "$native_out.median" "$native_out"
+    mv "$arm_out.median" "$arm_out"
+
+    echo ""
+    printf "${BOLD}%-9s %-18s │ %8s │ %8s │ %10s${NC}\n" \
+        "Cat" "Test" "Native" "ARM64" "A64/Native"
+    hr
+
+    local rows=() failed=0
+    while IFS='|' read -r cat name arm_ms; do
+        [ -z "$cat" ] && continue
+        local nat_ms nat_f arm_f ratio over
+        nat_ms=$(grep "^${cat}|${name}|" "$native_out" | head -1 | cut -d'|' -f3)
+        [ -z "$nat_ms" ] && nat_ms="—"
+        nat_f=$(_fmt_ns_display "$nat_ms")
+        arm_f=$(_fmt_ns_display "$arm_ms")
+        ratio=$(_ratio_display "$arm_ms" "$nat_ms")
+        over=$(awk "BEGIN{if($nat_ms>0 && $arm_ms/$nat_ms>1.5)print 1; else print 0}" 2>/dev/null || echo 0)
+        [ "$over" = "1" ] && failed=1
+
+        printf "%-9s %-18s │ %8s │ %8s │ %10s\n" \
+            "$cat" "$name" "$nat_f" "$arm_f" "$ratio"
+        echo "$csv_suite,$cat,$name,$nat_ms,0,—,—,$arm_ms,0" >> "$CSV"
+        rows+=("$cat|$name|$nat_f|$arm_f|$ratio")
+    done < "$arm_out"
+
+    rm -f "$native_bin" "$arm_bin" "$native_raw" "$arm_raw" "$native_out" "$arm_out"
+    if [ ${#rows[@]} -eq 0 ]; then
+        fail "ARM64 C workload produced no rows"
+        return 1
+    fi
+
+    _md_arm64_workload_section "$mode" "${rows[@]}"
+    if [ "$failed" -ne 0 ]; then
+        fail "ARM64 C workload has ratios above 1.5x"
+        return 1
+    fi
+}
+
+_md_arm64_workload_section() {
+    local mode="$1"
+    shift
+    local rows=("$@") prev=""
+    {
+        if [ "$mode" = "offload" ]; then
+            echo "## ARM64 Real C Workload (Native Offload Reference)"
+        else
+            echo "## ARM64 Real C Workload (Emulated/JIT)"
+        fi
+        echo ""
+        if [ "$mode" = "offload" ]; then
+            echo "> Native macOS and ARM64 Linux guest binaries are rebuilt from"
+            echo "> \`benchmark/assets/cbench_lite.c\` for each run. The guest path invokes"
+            echo "> \`/tmp/cbench_lite_current\` through iSH with a registered native-offload"
+            echo "> companion for the same workload. This is a reference path, not the"
+            echo "> emulated/JIT performance gate."
+        else
+            echo "> Native macOS and ARM64 Linux guest binaries are rebuilt from"
+            echo "> \`benchmark/assets/cbench_lite.c\` for each run. The ARM64 column runs"
+            echo "> the ARM64 Linux guest ELF inside iSH without native offload. This is"
+            echo "> the real emulated/JIT workload gate; \`arm64-micro\` is only hotspot triage."
+        fi
+        echo ""
+    } >> "$PERF_MD"
+
+    for r in "${rows[@]}"; do
+        IFS='|' read -r cat name nat arm ratio <<< "$r"
+        if [ "$cat" != "$prev" ]; then
+            [ -n "$prev" ] && echo "" >> "$PERF_MD"
+            echo "### $cat" >> "$PERF_MD"
+            echo "" >> "$PERF_MD"
+            echo "| Test | Native | ARM64 | **ARM64/Native** |" >> "$PERF_MD"
+            echo "|------|:---:|:---:|:---:|" >> "$PERF_MD"
+            prev="$cat"
+        fi
+        echo "| $name | $nat | $arm | **$ratio** |" >> "$PERF_MD"
+    done
+    echo "" >> "$PERF_MD"
+}
 
 # ═══════════════════════════════════════════════════════════════════
 # SUITE 2: Compatibility — pass/fail across x86 and ARM64
@@ -838,7 +1228,7 @@ write_perf_header() {
 
 | | x86 Emulation | ARM64 JIT |
 |---|:---:|:---:|
-| Engine | Interpreter (Jitter) | JIT Compiler (Asbestos) |
+| Engine | Interpreter (Jitter) | Threaded-code (Asbestos) |
 | Guest | i386 → ARM64 host | AArch64 → AArch64 host |
 | Address | 32-bit (4 GB) | 48-bit (256 TB) |
 | SIMD | Partial SSE/SSE2 | Full NEON + Crypto |
@@ -898,8 +1288,36 @@ main() {
             write_perf_header
             suite_shell_arm64 || { restore_perf_report; exit 1; }
             ;;
+        arm64-micro)
+            backup_perf_report
+            write_perf_header
+            suite_arm64_micro || { restore_perf_report; exit 1; }
+            ;;
+        arm64-workload)
+            backup_perf_report
+            write_perf_header
+            suite_arm64_workload || exit 1
+            ;;
+        arm64-workload-offload)
+            backup_perf_report
+            write_perf_header
+            suite_arm64_workload offload || exit 1
+            ;;
+        arm64-deep)
+            backup_perf_report
+            write_perf_header
+            suite_arm64_workload || { restore_perf_report; exit 1; }
+            echo ""; suite_shell_arm64 || { restore_perf_report; exit 1; }
+            echo ""; suite_arm64_micro || { restore_perf_report; exit 1; }
+            ;;
+        arm64-deep-legacy)
+            backup_perf_report
+            write_perf_header
+            suite_shell_arm64 || { restore_perf_report; exit 1; }
+            echo ""; suite_arm64_micro || { restore_perf_report; exit 1; }
+            ;;
         compat)      suite_compat ;;
-        *)           echo "Usage: $0 [all|shell|arm64|compat]"; exit 1 ;;
+        *)           echo "Usage: $0 [all|shell|arm64|arm64-workload|arm64-workload-offload|arm64-micro|arm64-deep|arm64-deep-legacy|compat]"; exit 1 ;;
     esac
 
     echo ""

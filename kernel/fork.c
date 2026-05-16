@@ -117,6 +117,9 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
         task->group = tgroup_copy(old_group);
         task->group->leader = task;
         task->tgid = task->pid;
+#ifdef GUEST_ARM64
+        task->cpu.tgid_cache = task->tgid;
+#endif
     }
     list_add(&task->group->threads, &task->group_links);
     unlock(&old_group->lock);

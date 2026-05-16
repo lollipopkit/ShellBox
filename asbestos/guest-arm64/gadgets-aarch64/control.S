@@ -19,6 +19,16 @@
 
 .text
 
+.macro save_fast_helper
+    stp x1, x2, [sp, #-0x20]!
+    str lr, [sp, #0x10]
+.endm
+
+.macro restore_fast_helper
+    ldr lr, [sp, #0x10]
+    ldp x1, x2, [sp], #0x20
+.endm
+
 /*
  * Macro: inline_chain reg
  * Inlines the fiber_ret_chain fast path for a chained block pointer in \reg.
@@ -163,28 +173,59 @@
     // demand-mapped slot or was touched by branch-chaining code —
     // neither should land in cpu->pc uncleaned.
     and x10, x10, #0xffffffffffff
+#ifndef DISABLE_BLOCK_CHAINING
+    eor x9, x10, x10, lsr #12
+    and x9, x9, #0xfff
+    add x12, _tlb, #(TLB_block_cache - TLB_entries)
+    ldr x12, [x12, x9, lsl #3]
+    cbz x12, branch_reg_miss
+    ldr x13, [x12, #FIBER_BLOCK_addr]
+    cmp x13, x10
+    b.ne branch_reg_miss
+    add x9, x12, #FIBER_BLOCK_code
+    inline_chain x9, branch_reg_miss
+branch_reg_miss:
+#endif
     str x10, [_cpu, #CPU_pc]
     // Indirect branch: always return to main loop
     b fiber_ret
 
 /*
  * Branch to register with link (BLR)
- * Code stream: [gadget addr][rn (64-bit)][return addr (64-bit)]
+ * Code stream: [gadget addr][block_self_ptr][return_addr][fake_return_cont][rn]
  */
 .gadget branch_link_reg
-    ldr x8, [_pc]           // rn
-    add _pc, _pc, #8
-    ldr x11, [_pc]          // return address
-
+    ldr x8, [_pc, #24]      // rn
+    ldr x11, [_pc, #8]      // return address
     and x8, x8, #0x1f
     add x9, _cpu, #CPU_x0
     ldr x10, [x9, x8, lsl #3]
 
     // Save return address to X30
     str x11, [_cpu, #(CPU_x0 + 30*8)]
+#ifndef DISABLE_RET_CACHE
+    // BLR has an unknown target, but the return site is known. Store the
+    // same ret_cache tuple used by direct BL so RET can stay inside JIT.
+    ubfx w12, w11, #4, #12
+    add x13, _cpu, #LOCAL_ret_cache
+    str _pc, [x13, x12, lsl #3]
+#endif
 
     // Mask to 48-bit (see branch_reg for rationale)
     and x10, x10, #0xffffffffffff
+#ifndef DISABLE_BLOCK_CHAINING
+    eor x9, x10, x10, lsr #12
+    and x9, x9, #0xfff
+    add x12, _tlb, #(TLB_block_cache - TLB_entries)
+    ldr x12, [x12, x9, lsl #3]
+    cbz x12, branch_link_reg_miss
+    ldr x13, [x12, #FIBER_BLOCK_addr]
+    cmp x13, x10
+    b.ne branch_link_reg_miss
+    add x9, x12, #FIBER_BLOCK_code
+    inline_chain x9, branch_link_reg_miss
+branch_link_reg_miss:
+#endif
     str x10, [_cpu, #CPU_pc]
     // Indirect branch: always return to main loop
     b fiber_ret
@@ -600,10 +641,20 @@ fused_tst_imm_bcond_flags:
  * Sets guest PC to next instruction before exiting.
  */
 .gadget svc
-    ldr x8, [_pc]           // Load next instruction address
-    str x8, [_cpu, #CPU_pc] // Store as guest PC
+    ldr x20, [_pc]          // Load next instruction address
+
+    save_fast_helper
+    mov x0, _cpu
+    bl NAME(arm64_try_fast_syscall)
+    mov x19, x0
+    restore_fast_helper
+
+    str x20, [_cpu, #CPU_pc] // Store as guest PC
+    cbnz x19, svc_fast_done
     mov w0, #INT_SYSCALL
     b fiber_exit
+svc_fast_done:
+    b fiber_ret
 
 /*
  * Conditional select (CSEL)
@@ -1595,6 +1646,711 @@ fused_cmp32_reg_bne_cbnz_ne_unchained:
     and x11, x9, #0xffffffffffff
     str x11, [_cpu, #CPU_pc]
     mov _pc, x9
+    b fiber_ret_chain
+
+/*
+ * Fused musl byte-at-a-time memcmp loop:
+ *   cbz  x2, zero
+ *   ldrb w3, [x0]
+ *   sub  x2, x2, #1
+ *   ldrb w4, [x1]
+ *   add  x0, x0, #1
+ *   add  x1, x1, #1
+ *   cmp  w3, w4
+ *   b.eq loop
+ *
+ * Code stream:
+ *   [gadget addr][fake_zero_target][fake_mismatch_target]
+ */
+.gadget fused_memcmp_byte_loop
+    ldr x20, [_pc]              // count reached zero
+    add _pc, _pc, #8
+    ldr x21, [_pc]              // mismatch fallthrough
+    add _pc, _pc, #8
+
+    save_c
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_memcmp_loop)
+    mov x19, x0
+    restore_c
+
+    cmp x19, #0
+    b.lt fused_memcmp_byte_loop_fault
+    b.eq fused_memcmp_byte_loop_zero
+
+    inline_chain x21, fused_memcmp_byte_loop_mismatch_unchained
+fused_memcmp_byte_loop_mismatch_unchained:
+    and x11, x21, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x21
+    b fiber_ret_chain
+fused_memcmp_byte_loop_zero:
+    inline_chain x20, fused_memcmp_byte_loop_zero_unchained
+fused_memcmp_byte_loop_zero_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_memcmp_byte_loop_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused musl byte-at-a-time strcmp loop:
+ *   ldrb w4, [x0, x2]
+ *   ldrb w3, [x1, x2]
+ *   add  x2, x2, #1
+ *   cmp  w4, w3
+ *   b.ne mismatch
+ *   cbnz w3, loop
+ *
+ * Code stream:
+ *   [gadget addr][fake_zero_target][fake_mismatch_target]
+ */
+.gadget fused_strcmp_byte_loop
+    ldr x20, [_pc]              // equal zero fallthrough
+    add _pc, _pc, #8
+    ldr x21, [_pc]              // mismatch target
+    add _pc, _pc, #8
+
+    save_c
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_strcmp_loop)
+    mov x19, x0
+    restore_c
+
+    cmp x19, #0
+    b.lt fused_strcmp_byte_loop_fault
+    b.eq fused_strcmp_byte_loop_zero
+
+    inline_chain x21, fused_strcmp_byte_loop_mismatch_unchained
+fused_strcmp_byte_loop_mismatch_unchained:
+    and x11, x21, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x21
+    b fiber_ret_chain
+fused_strcmp_byte_loop_zero:
+    inline_chain x20, fused_strcmp_byte_loop_zero_unchained
+fused_strcmp_byte_loop_zero_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_strcmp_byte_loop_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused musl backward byte-copy memmove tail:
+ *   cbnz x3, loop
+ * loop:
+ *   sub  x3, x3, #1
+ *   ldrb w0, [x4, x3]
+ *   strb w0, [x5, x3]
+ *   cbnz x3, loop
+ *
+ * Code stream:
+ *   [gadget addr][fake_done_target]
+ */
+.gadget fused_memmove_backwards_byte_loop
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_c
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_memmove_backwards_loop)
+    mov x19, x0
+    restore_c
+
+    cmp x19, #0
+    b.lt fused_memmove_backwards_byte_loop_fault
+
+    inline_chain x20, fused_memmove_backwards_byte_loop_done_unchained
+fused_memmove_backwards_byte_loop_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_memmove_backwards_byte_loop_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    ldrb w9, [_cpu, #CPU_segfault_was_write]
+    cbnz w9, 1f
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+1:
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused repeated 64-bit load sum loop:
+ *   ldr  x3, [x4]
+ *   add  x2, x2, x3
+ *   subs w1, w1, #1
+ *   b.ne loop
+ *
+ * Code stream: [gadget addr][fake_done_target]
+ */
+.gadget fused_repeated_load64_sum_loop
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_c
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_repeated_load64_sum_loop)
+    mov x19, x0
+    restore_c
+
+    cmp x19, #0
+    b.lt fused_repeated_load64_sum_loop_fault
+
+    inline_chain x20, fused_repeated_load64_sum_loop_done_unchained
+fused_repeated_load64_sum_loop_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_repeated_load64_sum_loop_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused repeated 64-bit store loop:
+ *   str x1, [x3]
+ *   add x1, x1, #1
+ *   cmp x1, x2
+ *   b.ne loop
+ *
+ * Code stream: [gadget addr][fake_done_target]
+ */
+.gadget fused_repeated_store64_loop
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_c
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_repeated_store64_loop)
+    mov x19, x0
+    restore_c
+
+    cmp x19, #0
+    b.lt fused_repeated_store64_loop_fault
+
+    inline_chain x20, fused_repeated_store64_loop_done_unchained
+fused_repeated_store64_loop_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_repeated_store64_loop_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    mov w9, #1
+    strb w9, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+.macro make_fused_c_read_loop name, helper
+.gadget fused_\name
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_c
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(\helper)
+    mov x19, x0
+    restore_c
+
+    cmp x19, #0
+    b.lt fused_\name\()_fault
+
+    inline_chain x20, fused_\name\()_done_unchained
+fused_\name\()_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_\name\()_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+.endm
+
+make_fused_c_read_loop page_seq_read_loop, arm64_fast_page_seq_read_loop
+make_fused_c_read_loop page_random_read_loop, arm64_fast_page_random_read_loop
+make_fused_c_read_loop page_seq_read_loop_clang, arm64_fast_page_seq_read_loop_clang
+make_fused_c_read_loop page_random_read_loop_clang, arm64_fast_page_random_read_loop_clang
+
+/*
+ * Fused repeated libc call loop.
+ * Code stream: [gadget addr][mode][fake_done_target]
+ */
+.gadget fused_libcall_loop
+    ldr x20, [_pc]
+    ldr x21, [_pc, #8]
+    add _pc, _pc, #16
+
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    mov x2, x20
+    bl NAME(arm64_fast_libcall_loop)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_libcall_loop_fault
+
+    inline_chain x21, fused_libcall_loop_done_unchained
+fused_libcall_loop_done_unchained:
+    and x11, x21, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x21
+    b fiber_ret_chain
+fused_libcall_loop_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    ldrb w9, [_cpu, #CPU_segfault_was_write]
+    cbnz w9, 1f
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+1:
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused musl memchr function entry.
+ * Code stream: [gadget addr][fake_ret_target]
+ */
+.gadget fused_memchr_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_memchr_func)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_memchr_func_fault
+    inline_chain x20, fused_memchr_func_done_unchained
+fused_memchr_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_memchr_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused musl strlen function entry.
+ * Code stream: [gadget addr][fake_ret_target]
+ */
+.gadget fused_strlen_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    ldr x3, [_cpu, #CPU_x0]         // string base
+    and w8, w3, #0xfff
+    cmp x8, #(0x1000 - 9)
+    b.hi fused_strlen_func_c
+    and x6, x3, #0xfffffffffffff000
+    ubfx x9, x3, #12, #13
+    eor x9, x9, x3, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x6, x10
+    b.ne fused_strlen_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x12, x10, x3
+    ldrb w6, [x12, #8]
+    cbnz w6, fused_strlen_func_c
+    mov x5, #8
+    str x5, [_cpu, #CPU_x0]
+    b fused_strlen_func_done
+
+fused_strlen_func_c:
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_strlen_func)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_strlen_func_fault
+fused_strlen_func_done:
+    inline_chain x20, fused_strlen_func_done_unchained
+fused_strlen_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_strlen_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * Fused musl memcpy function entry.
+ * Code stream: [gadget addr][fake_ret_target]
+ */
+.gadget fused_memcpy_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    ldr x5, [_cpu, #(CPU_x0 + 2*8)] // n
+    cmp x5, #8
+    b.eq fused_memcpy_func_fast_copy
+    cmp x5, #64
+    b.ne fused_memcpy_func_c
+
+fused_memcpy_func_fast_copy:
+    ldr x3, [_cpu, #CPU_x0]         // dst
+    ldr x4, [_cpu, #(CPU_x0 + 1*8)] // src
+
+    and w8, w4, #0xfff
+    mov x11, #0x1000
+    sub x11, x11, x5
+    cmp x8, x11
+    b.hi fused_memcpy_func_c
+    and x6, x4, #0xfffffffffffff000
+    ubfx x9, x4, #12, #13
+    eor x9, x9, x4, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x6, x10
+    b.ne fused_memcpy_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x12, x10, x4
+
+    and w8, w3, #0xfff
+    cmp x8, x11
+    b.hi fused_memcpy_func_c
+    and x6, x3, #0xfffffffffffff000
+    ubfx x9, x3, #12, #13
+    eor x9, x9, x3, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page_if_writable]
+    cmp x6, x10
+    b.ne fused_memcpy_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x13, x10, x3
+    str x6, [_tlb, #(-TLB_entries+TLB_dirty_page)]
+
+    cmp x5, #64
+    b.eq fused_memcpy_func_fast_copy_64
+    ldr x14, [x12]
+    str x14, [x13]
+    b fused_memcpy_func_done
+
+fused_memcpy_func_fast_copy_64:
+    ldr x14, [x12]
+    str x14, [x13]
+    ldr x14, [x12, #8]
+    str x14, [x13, #8]
+    ldr x14, [x12, #16]
+    str x14, [x13, #16]
+    ldr x14, [x12, #24]
+    str x14, [x13, #24]
+    ldr x14, [x12, #32]
+    str x14, [x13, #32]
+    ldr x14, [x12, #40]
+    str x14, [x13, #40]
+    ldr x14, [x12, #48]
+    str x14, [x13, #48]
+    ldr x14, [x12, #56]
+    str x14, [x13, #56]
+    b fused_memcpy_func_done
+
+fused_memcpy_func_c:
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_memcpy_func)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_memcpy_func_fault
+fused_memcpy_func_done:
+    inline_chain x20, fused_memcpy_func_done_unchained
+fused_memcpy_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_memcpy_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    ldrb w9, [_cpu, #CPU_segfault_was_write]
+    cbnz w9, 1f
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+1:
+    mov w0, #INT_GPF
+    b fiber_exit
+
+.macro make_fused_simple_c_func name, helper
+/*
+ * Fused musl \name function entry.
+ * Code stream: [gadget addr][fake_ret_target]
+ */
+.gadget fused_\name\()_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(\helper)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_\name\()_func_fault
+    inline_chain x20, fused_\name\()_func_done_unchained
+fused_\name\()_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_\name\()_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+.endm
+
+/*
+ * Fused musl memset function entry.
+ * Code stream: [gadget addr][fake_ret_target]
+ */
+.gadget fused_memset_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_memset_func)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_memset_func_fault
+    inline_chain x20, fused_memset_func_done_unchained
+fused_memset_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_memset_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    mov w9, #1
+    strb w9, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+.gadget fused_memcmp_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    ldr x5, [_cpu, #(CPU_x0 + 2*8)] // n
+    cmp x5, #8
+    b.ne fused_memcmp_func_c
+
+    ldr x3, [_cpu, #CPU_x0]         // left
+    ldr x4, [_cpu, #(CPU_x0 + 1*8)] // right
+
+    and w8, w3, #0xfff
+    cmp x8, #(0x1000 - 8)
+    b.hi fused_memcmp_func_c
+    and x6, x3, #0xfffffffffffff000
+    ubfx x9, x3, #12, #13
+    eor x9, x9, x3, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x6, x10
+    b.ne fused_memcmp_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x12, x10, x3
+
+    and w8, w4, #0xfff
+    cmp x8, #(0x1000 - 8)
+    b.hi fused_memcmp_func_c
+    and x6, x4, #0xfffffffffffff000
+    ubfx x9, x4, #12, #13
+    eor x9, x9, x4, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x6, x10
+    b.ne fused_memcmp_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x13, x10, x4
+
+    ldr x14, [x12]
+    ldr x15, [x13]
+    cmp x14, x15
+    b.ne fused_memcmp_func_diff
+    str xzr, [_cpu, #CPU_x0]
+    b fused_memcmp_func_done
+
+fused_memcmp_func_diff:
+    mov x16, #0
+1:
+    ldrb w14, [x12, x16]
+    ldrb w15, [x13, x16]
+    cmp w14, w15
+    b.ne 2f
+    add x16, x16, #1
+    cmp x16, #8
+    b.ne 1b
+    str xzr, [_cpu, #CPU_x0]
+    b fused_memcmp_func_done
+2:
+    sub w14, w14, w15
+    and x14, x14, #0xffffffff
+    str x14, [_cpu, #CPU_x0]
+    b fused_memcmp_func_done
+
+fused_memcmp_func_c:
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_memcmp_func)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_memcmp_func_fault
+fused_memcmp_func_done:
+    inline_chain x20, fused_memcmp_func_done_unchained
+fused_memcmp_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_memcmp_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+.gadget fused_strcmp_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+
+    ldr x3, [_cpu, #CPU_x0]         // left
+    ldr x4, [_cpu, #(CPU_x0 + 1*8)] // right
+
+    and x6, x3, #0xfffffffffffff000
+    ubfx x9, x3, #12, #13
+    eor x9, x9, x3, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x6, x10
+    b.ne fused_strcmp_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x12, x10, x3
+
+    and x6, x4, #0xfffffffffffff000
+    ubfx x9, x4, #12, #13
+    eor x9, x9, x4, lsr #25
+    and w9, w9, #0x1fff
+    lsl x9, x9, #5
+    add x9, x9, _tlb
+    ldr x10, [x9, #TLB_ENTRY_page]
+    cmp x6, x10
+    b.ne fused_strcmp_func_c
+    ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
+    add x13, x10, x4
+
+    ldrb w14, [x12]
+    ldrb w15, [x13]
+    cmp w14, w15
+    b.ne fused_strcmp_func_first_diff
+    cbnz w14, fused_strcmp_func_c
+    str xzr, [_cpu, #CPU_x0]
+    b fused_strcmp_func_done
+
+fused_strcmp_func_first_diff:
+    sub w14, w14, w15
+    and x14, x14, #0xffffffff
+    str x14, [_cpu, #CPU_x0]
+    b fused_strcmp_func_done
+
+fused_strcmp_func_c:
+    save_fast_helper
+    mov x0, _cpu
+    sub x1, _tlb, #TLB_entries
+    bl NAME(arm64_fast_strcmp_func)
+    mov x19, x0
+    restore_fast_helper
+
+    cmp x19, #0
+    b.lt fused_strcmp_func_fault
+fused_strcmp_func_done:
+    inline_chain x20, fused_strcmp_func_done_unchained
+fused_strcmp_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
+    b fiber_ret_chain
+fused_strcmp_func_fault:
+    ldr x8, [_tlb, #(-TLB_entries+TLB_segfault_addr)]
+    str x8, [_cpu, #CPU_segfault_addr]
+    strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+.gadget fused_getpid_func
+    ldr x20, [_pc]
+    add _pc, _pc, #8
+    ldr x8, [_cpu, #CPU_tgid_cache]
+    str x8, [_cpu, #CPU_x0]
+    inline_chain x20, fused_getpid_func_done_unchained
+fused_getpid_func_done_unchained:
+    and x11, x20, #0xffffffffffff
+    str x11, [_cpu, #CPU_pc]
+    mov _pc, x20
     b fiber_ret_chain
 
 /*

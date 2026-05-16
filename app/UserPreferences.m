@@ -7,6 +7,7 @@
 
 #import "UserPreferences.h"
 #import "fs/proc/ish.h"
+#include <dlfcn.h>
 
 // IMPORTANT: If you add a constant here and expose it via UserPreferences,
 // consider if it also needs to be exposed as a friendly preference and included
@@ -33,6 +34,39 @@ NSString *const kHostnameOverrideKey = @"hostnameOverride";
 NSDictionary<NSString *, NSString *> *friendlyPreferenceMapping;
 NSDictionary<NSString *, NSString *> *friendlyPreferenceReverseMapping;
 NSDictionary<NSString *, NSString *> *kvoProperties;
+
+static NSString *UserAssignedDeviceName(void) {
+    typedef CFTypeRef (*MGCopyAnswerFn)(CFStringRef key);
+    static MGCopyAnswerFn MGCopyAnswer = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        void *handle = dlopen("/usr/lib/libMobileGestalt.dylib", RTLD_LAZY);
+        if (handle)
+            MGCopyAnswer = (MGCopyAnswerFn)dlsym(handle, "MGCopyAnswer");
+    });
+    if (!MGCopyAnswer)
+        return nil;
+
+    CFTypeRef answer = MGCopyAnswer(CFSTR("UserAssignedDeviceName"));
+    if (!answer)
+        return nil;
+    if (CFGetTypeID(answer) != CFStringGetTypeID()) {
+        CFRelease(answer);
+        return nil;
+    }
+    return CFBridgingRelease(answer);
+}
+
+static NSString *DefaultDeviceName(void) {
+    NSString *deviceName = UserAssignedDeviceName();
+    if (deviceName.length == 0)
+        deviceName = UIDevice.currentDevice.name;
+    return deviceName;
+}
+
+static NSArray<NSString *> *DefaultLaunchCommand(void) {
+    return @[@"/bin/sh", @"/ish/default-shell"];
+}
 
 static NSString *const kSystemMonospacedFontName = @"ui-monospace";
 
@@ -149,9 +183,25 @@ bool (*remove_user_default)(const char *name);
 
 - (instancetype)init {
     self = [super init];
-    self->_hostnameIsOverridden = !![NSUserDefaults.standardUserDefaults stringForKey:kHostnameOverrideKey];
     if (self) {
         _defaults = [NSUserDefaults standardUserDefaults];
+        NSString *storedHostname = [_defaults stringForKey:kHostnameOverrideKey];
+        BOOL hostnameFromLaunchArgument = [_defaults volatileDomainForName:NSArgumentDomain][kHostnameOverrideKey] != nil;
+        NSString *deviceName = DefaultDeviceName();
+        NSSet<NSString *> *modelHostnames = [NSSet setWithObjects:
+                                             UIDevice.currentDevice.model,
+                                             UIDevice.currentDevice.localizedModel,
+                                             @"iPhone",
+                                             @"iPad",
+                                             nil];
+        if (!hostnameFromLaunchArgument &&
+            storedHostname.length > 0 && deviceName.length > 0 &&
+            ![storedHostname isEqualToString:deviceName] &&
+            [modelHostnames containsObject:storedHostname]) {
+            [_defaults setObject:deviceName forKey:kHostnameOverrideKey];
+            storedHostname = nil;
+        }
+        self->_hostnameIsOverridden = hostnameFromLaunchArgument || storedHostname.length > 0;
         NSArray<NSString *> *storedLaunchCommand = [_defaults stringArrayForKey:kPreferenceLaunchCommandKey];
         NSArray<NSString *> *storedBootCommand = [_defaults stringArrayForKey:kPreferenceBootCommandKey];
         [_defaults registerDefaults:@{
@@ -162,24 +212,25 @@ bool (*remove_user_default)(const char *name);
             kPreferenceHideExtraKeysWithExternalKeyboardKey: @(NO),
             kPreferenceOverrideControlSpaceKey: @(NO),
             kPreferenceDisableDimmingKey: @(NO),
-            kPreferenceLaunchCommandKey: @[@"/ish/default-shell"],
+            kPreferenceLaunchCommandKey: DefaultLaunchCommand(),
             kPreferenceBootCommandKey: @[],
             kPreferenceBlinkCursorKey: @(NO),
             kPreferenceCursorStyleKey: @(CursorStyleBlock),
             kPreferenceHideStatusBarKey: @(NO),
             kPreferenceColorSchemeKey: @(ColorSchemeMatchSystem),
             kPreferenceThemeKey: @"Default",
-            kHostnameOverrideKey: UIDevice.currentDevice.name,
+            kHostnameOverrideKey: deviceName,
         }];
         if ([storedLaunchCommand isEqualToArray:@[@"/bin/login", @"-f", @"root"]]) {
-            [_defaults setObject:@[@"/ish/default-shell"] forKey:kPreferenceLaunchCommandKey];
+            [_defaults setObject:DefaultLaunchCommand() forKey:kPreferenceLaunchCommandKey];
         }
         if ([storedLaunchCommand.firstObject isEqualToString:@"/usr/bin/fish"] ||
             [storedLaunchCommand.firstObject isEqualToString:@"fish"]) {
-            [_defaults setObject:@[@"/ish/default-shell"] forKey:kPreferenceLaunchCommandKey];
+            [_defaults setObject:DefaultLaunchCommand() forKey:kPreferenceLaunchCommandKey];
         }
-        if ([storedLaunchCommand.firstObject isEqualToString:@"/bin/sh"]) {
-            [_defaults setObject:@[@"/ish/default-shell"] forKey:kPreferenceLaunchCommandKey];
+        if ([storedLaunchCommand isEqualToArray:@[@"/bin/sh"]] ||
+            [storedLaunchCommand isEqualToArray:@[@"/ish/default-shell"]]) {
+            [_defaults setObject:DefaultLaunchCommand() forKey:kPreferenceLaunchCommandKey];
         }
         if ([storedBootCommand isEqualToArray:@[@"/sbin/init"]]) {
             [_defaults setObject:@[] forKey:kPreferenceBootCommandKey];

@@ -13,6 +13,7 @@
 #include "emu/tlb.h"
 #include "kernel/memory.h"
 #include "util/list.h"
+#include "util/perf_counters.h"
 
 // Thread-local recovery state for JIT crash handling.
 // When a host SIGSEGV occurs inside JIT code (due to a stale TLB pointer
@@ -191,6 +192,7 @@ static struct fiber_block *fiber_lookup(struct asbestos *asbestos, addr_t addr) 
 }
 
 static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
+    perf_counter_inc(PERF_BLOCK_COMPILE);
     struct gen_state state;
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
     gen_start(ip, &state);
@@ -346,16 +348,20 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         size_t cache_index = fiber_cache_hash(ip);
         struct fiber_block *block = cache[cache_index];
         if (block == NULL || block->addr != ip) {
+            perf_counter_inc(PERF_BLOCK_CACHE_MISS);
             lock(&asbestos->lock);
             block = fiber_lookup(asbestos, ip);
             if (block == NULL) {
                 block = fiber_block_compile(ip, tlb);
                 fiber_insert(asbestos, block);
             } else {
+                perf_counter_inc(PERF_BLOCK_LOOKUP_HIT);
                 TRACE("%d %08x --- missed cache\n", current_pid(), ip);
             }
             cache[cache_index] = block;
             unlock(&asbestos->lock);
+        } else {
+            perf_counter_inc(PERF_BLOCK_CACHE_HIT);
         }
         struct fiber_block *last_block = frame->last_block;
         if (last_block != NULL &&
@@ -366,10 +372,12 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                 // can't mint new pointers to a block that has been marked jetsam
                 // and is thus assumed to have no pointers left
                 if (!last_block->is_jetsam && !block->is_jetsam) {
+                    perf_counter_inc(PERF_BLOCK_CHAIN_ATTEMPT);
                     for (int i = 0; i <= 1; i++) {
                         if (last_block->jump_ip[i] != NULL &&
                                 (*last_block->jump_ip[i] & 0xffffffff) == block->addr) {
                             *last_block->jump_ip[i] = (unsigned long) block->code;
+                            perf_counter_inc(PERF_BLOCK_CHAIN_PATCHED);
                             list_add(&block->jumps_from[i], &last_block->jumps_from_links[i]);
                         }
                     }
@@ -397,6 +405,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         // redirected PC to jit_crash_trampoline which returns INT_JIT_CRASH).
         // The signal handler already set cpu->segfault_addr, cpu->pc, etc.
         if (interrupt == INT_JIT_CRASH) {
+            perf_counter_inc(PERF_JIT_CRASH_RETRY);
             // Flush all caches to get fresh host pointers.
             tlb_flush(tlb);
             memset(cache, 0, sizeof(tlb->block_cache));

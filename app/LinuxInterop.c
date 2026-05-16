@@ -177,7 +177,9 @@ ssize_t linux_read_file(const char *path, char *buf, size_t size) {
     return res;
 }
 ssize_t linux_write_file(const char *path, const char *buf, size_t size) {
-    struct file *filp = filp_open(path, O_WRONLY, 0);
+    struct file *filp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (IS_ERR(filp))
+        return PTR_ERR(filp);
     ssize_t res = vfs_write(filp, buf, size, NULL);
     filp_close(filp, NULL);
     return res;

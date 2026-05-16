@@ -81,6 +81,7 @@ void cpu() {
     OFFSET(CPU, cpu_state, sp);
     OFFSET(CPU, cpu_state, pc);
     OFFSET(CPU, cpu_state, tls_ptr);
+    OFFSET(CPU, cpu_state, tgid_cache);
 
     // ARM64 flags (NZCV)
     OFFSET(CPU, cpu_state, nf);
@@ -120,6 +121,7 @@ void cpu() {
     OFFSET(FIBER_BLOCK, fiber_block, code);
 
     OFFSET(TLB, tlb, entries);
+    OFFSET(TLB, tlb, block_cache);
     OFFSET(TLB, tlb, dirty_page);
     OFFSET(TLB, tlb, segfault_addr);
     OFFSET(TLB_ENTRY, tlb_entry, page);

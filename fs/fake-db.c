@@ -96,6 +96,13 @@ static void bind_path(sqlite3_stmt *stmt, int i, const char *path) {
     sqlite3_bind_blob(stmt, i, path, strlen(path), SQLITE_TRANSIENT);
 }
 
+static void fake_db_note_path_change(struct fakefs_db *fs) {
+    atomic_fetch_add_explicit(&fs->path_generation, 1, memory_order_release);
+    fs->cached_path_generation = 0;
+    fs->cached_path[0] = '\0';
+    fs->cached_path_inode = 0;
+}
+
 inode_t path_get_inode(struct fakefs_db *fs, const char *path) {
     // select inode from paths where path = ?
     bind_path(fs->stmt.path_get_inode, 1, path);
@@ -126,6 +133,7 @@ inode_t path_create(struct fakefs_db *fs, const char *path, struct ish_stat *sta
     // insert or replace into paths values (?, last_insert_rowid())
     bind_path(fs->stmt.path_create_path, 1, path);
     db_exec_reset(fs, fs->stmt.path_create_path);
+    fake_db_note_path_change(fs);
     return inode;
 }
 
@@ -147,6 +155,7 @@ void inode_write_stat(struct fakefs_db *fs, inode_t inode, struct ish_stat *stat
     sqlite3_bind_blob(fs->stmt.inode_write_stat, 1, stat, sizeof(*stat), SQLITE_TRANSIENT);
     sqlite3_bind_int64(fs->stmt.inode_write_stat, 2, inode);
     db_exec_reset(fs, fs->stmt.inode_write_stat);
+    atomic_fetch_add_explicit(&fs->stat_generation, 1, memory_order_release);
 }
 
 void path_link(struct fakefs_db *fs, const char *src, const char *dst) {
@@ -157,6 +166,7 @@ void path_link(struct fakefs_db *fs, const char *src, const char *dst) {
     bind_path(fs->stmt.path_link, 1, dst);
     sqlite3_bind_int64(fs->stmt.path_link, 2, inode);
     db_exec_reset(fs, fs->stmt.path_link);
+    fake_db_note_path_change(fs);
 }
 inode_t path_unlink(struct fakefs_db *fs, const char *path) {
     inode_t inode = path_get_inode(fs, path);
@@ -165,6 +175,7 @@ inode_t path_unlink(struct fakefs_db *fs, const char *path) {
     // delete from paths where path = ?
     bind_path(fs->stmt.path_unlink, 1, path);
     db_exec_reset(fs, fs->stmt.path_unlink);
+    fake_db_note_path_change(fs);
     return inode;
 }
 void path_rename(struct fakefs_db *fs, const char *src, const char *dst) {
@@ -187,6 +198,7 @@ void path_rename(struct fakefs_db *fs, const char *src, const char *dst) {
     sqlite3_bind_blob(fs->stmt.path_rename, 4, src_extra, src_len + 1, SQLITE_TRANSIENT);
     sqlite3_bind_blob(fs->stmt.path_rename, 5, src_extra, src_len, SQLITE_TRANSIENT);
     db_exec_reset(fs, fs->stmt.path_rename);
+    fake_db_note_path_change(fs);
 }
 
 #if DEBUG_sql
@@ -215,6 +227,11 @@ extern int fakefs_rebuild(struct fakefs_db *fs, int root_fd);
 extern int fakefs_migrate(struct fakefs_db *fs, int root_fd);
 
 int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
+    atomic_init(&fs->stat_generation, 1);
+    atomic_init(&fs->path_generation, 1);
+    fs->cached_path_generation = 0;
+    fs->cached_path_inode = 0;
+    fs->cached_path[0] = '\0';
     int err = sqlite3_open_v2(db_path, &fs->db, SQLITE_OPEN_READWRITE, NULL);
     if (err != SQLITE_OK) {
         printk("error opening database: %s\n", sqlite3_errmsg(fs->db));

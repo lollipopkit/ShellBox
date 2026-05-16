@@ -497,6 +497,25 @@ static page_t x86_find_hole_from(struct mem *mem, pages_t size, page_t start) {
     return BAD_PAGE;
 }
 
+static bool reservations_overlap(struct mem *mem, page_t start, pages_t pages) {
+    (void)mem;
+    (void)start;
+    (void)pages;
+    return false;
+}
+
+static void mem_remove_reservations(struct mem *mem, page_t start, pages_t pages) {
+    (void)mem;
+    (void)start;
+    (void)pages;
+}
+
+static void *mem_find_reservation(struct mem *mem, page_t page) {
+    (void)mem;
+    (void)page;
+    return NULL;
+}
+
 page_t pt_find_hole(struct mem *mem, pages_t size) {
     page_t start = mem->mmap_hint;
     if (start == 0 || start > 0xefffd || start <= 0x40000 + size)
@@ -712,6 +731,7 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t page
     // These will be decremented per-page when the child's mm is freed.
     atomic_fetch_add(&anon_page_count, anon_copied);
 #endif
+#ifdef GUEST_ARM64
     for (struct mem_reservation *r = src->reservations; r; r = r->next) {
         struct mem_reservation *copy = malloc(sizeof(struct mem_reservation));
         if (copy) {
@@ -720,6 +740,7 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t page
             dst->reservations = copy;
         }
     }
+#endif
     mem_changed(src);
     mem_changed(dst);
     return 0;
@@ -853,6 +874,7 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         goto have_entry;
 
 check_reservation: ;
+#ifdef GUEST_ARM64
         struct mem_reservation *res = mem_find_reservation(mem, page);
         if (res == NULL)
             return NULL;
@@ -871,6 +893,9 @@ check_reservation: ;
         write_wrunlock(&mem->lock);
         read_wrlock(&mem->lock);
         entry = mem_pt(mem, page);
+#else
+        return NULL;
+#endif
     }
 
 have_entry:

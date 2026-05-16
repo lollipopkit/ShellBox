@@ -11,16 +11,16 @@ final class SwiftTermHostView: UIView, TerminalViewDelegate, TerminalRenderer {
         }
     }
 
-    private let terminalView: TerminalView
+    private let terminalView: SwiftTerm.TerminalView
 
     @objc override init(frame: CGRect) {
-        terminalView = TerminalView(frame: frame, font: UIFont.monospacedSystemFont(ofSize: 12, weight: .regular))
+        terminalView = SwiftTerm.TerminalView(frame: frame, font: UIFont.monospacedSystemFont(ofSize: 12, weight: .regular))
         super.init(frame: frame)
         commonInit()
     }
 
     @objc required init?(coder: NSCoder) {
-        terminalView = TerminalView(frame: .zero, font: UIFont.monospacedSystemFont(ofSize: 12, weight: .regular))
+        terminalView = SwiftTerm.TerminalView(frame: .zero, font: UIFont.monospacedSystemFont(ofSize: 12, weight: .regular))
         super.init(coder: coder)
         commonInit()
     }
@@ -159,32 +159,32 @@ final class SwiftTermHostView: UIView, TerminalViewDelegate, TerminalRenderer {
         terminal?.setWindowSizeWithColumns(CInt(term.cols), rows: CInt(term.rows))
     }
 
-    func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+    func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
         terminal?.setWindowSizeWithColumns(CInt(newCols), rows: CInt(newRows))
     }
 
-    func setTerminalTitle(source: TerminalView, title: String) {}
-    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+    func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {}
+    func hostCurrentDirectoryUpdate(source: SwiftTerm.TerminalView, directory: String?) {}
 
-    func send(source: TerminalView, data: ArraySlice<UInt8>) {
+    func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
         terminal?.sendInput(Data(data))
     }
 
-    func scrolled(source: TerminalView, position: Double) {}
+    func scrolled(source: SwiftTerm.TerminalView, position: Double) {}
 
-    func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+    func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String: String]) {
         guard let url = URL(string: link) else { return }
         UIApplication.shared.open(url)
     }
 
-    func bell(source: TerminalView) {}
+    func bell(source: SwiftTerm.TerminalView) {}
 
-    func clipboardCopy(source: TerminalView, content: Data) {
+    func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {
         UIPasteboard.general.string = String(data: content, encoding: .utf8)
     }
 
-    func iTermContent(source: TerminalView, content: ArraySlice<UInt8>) {}
-    func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+    func iTermContent(source: SwiftTerm.TerminalView, content: ArraySlice<UInt8>) {}
+    func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
 }
 
 private extension UIColor {

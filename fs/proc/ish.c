@@ -1,6 +1,8 @@
 #include "fs/proc.h"
 #include "fs/proc/ish.h"
 #include "kernel/errno.h"
+#include "util/perf_counters.h"
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,10 +162,22 @@ static int proc_ish_show_version(struct proc_entry *UNUSED(entry), struct proc_d
     return 0;
 }
 
+static int proc_ish_show_perf(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
+#ifdef PERF_COUNTERS
+    for (unsigned i = 0; i < PERF_COUNTER_COUNT; i++)
+        proc_printf(buf, "%s %"PRIu64"\n", perf_counter_name((enum perf_counter_id) i),
+                    perf_counter_get((enum perf_counter_id) i));
+#else
+    proc_printf(buf, "perf_counters disabled\n");
+#endif
+    return 0;
+}
+
 struct proc_children proc_ish_children = PROC_CHILDREN({
     {"colors", .show = proc_ish_show_colors},
     {".defaults", S_IFDIR, .readdir = proc_ish_underlying_defaults_readdir},
     {"defaults", S_IFDIR, .readdir = proc_ish_defaults_readdir},
     {"documents", .show = proc_ish_show_documents},
+    {"perf", .show = proc_ish_show_perf},
     {"version", .show = proc_ish_show_version},
 });

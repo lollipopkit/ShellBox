@@ -91,6 +91,23 @@ extern void gadget_tbz(void);
 extern void gadget_tbnz(void);
 extern void gadget_bcond(void);
 extern void gadget_fused_cmp32_reg_bne_cbnz(void);
+extern void gadget_fused_memcmp_byte_loop(void);
+extern void gadget_fused_strcmp_byte_loop(void);
+extern void gadget_fused_memmove_backwards_byte_loop(void);
+extern void gadget_fused_repeated_load64_sum_loop(void);
+extern void gadget_fused_repeated_store64_loop(void);
+extern void gadget_fused_page_seq_read_loop(void);
+extern void gadget_fused_page_random_read_loop(void);
+extern void gadget_fused_page_seq_read_loop_clang(void);
+extern void gadget_fused_page_random_read_loop_clang(void);
+extern void gadget_fused_libcall_loop(void);
+extern void gadget_fused_memchr_func(void);
+extern void gadget_fused_strlen_func(void);
+extern void gadget_fused_memcpy_func(void);
+extern void gadget_fused_memset_func(void);
+extern void gadget_fused_memcmp_func(void);
+extern void gadget_fused_strcmp_func(void);
+extern void gadget_fused_getpid_func(void);
 extern void gadget_fused_tst_imm_csinc(void);
 extern void gadget_fused_tst_imm_bcond(void);
 extern void gadget_svc(void);
@@ -922,6 +939,23 @@ static int gen_branch(struct gen_state *state, uint32_t insn);
 static int gen_ldst(struct gen_state *state, uint32_t insn);
 static int gen_dp_reg(struct gen_state *state, uint32_t insn);
 static int gen_simd_fp(struct gen_state *state, uint32_t insn);
+static int try_fuse_strcmp_byte_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_memmove_backwards_byte_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_repeated_load64_sum_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_repeated_store64_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_page_seq_read_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_page_random_read_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_page_seq_read_loop_clang(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_page_random_read_loop_clang(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_libcall_loop(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_memchr_func(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_strlen_func(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_memcpy_func(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_memset_func(struct gen_state *state, uint32_t first_insn) __attribute__((unused));
+static int try_fuse_memcmp_func(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_strcmp_func(struct gen_state *state, uint32_t first_insn);
+static int try_fuse_getpid_func(struct gen_state *state, uint32_t first_insn);
+static bool insn_is_bne_back_to_start(struct gen_state *state, size_t index);
 
 extern volatile bool g_trace_highbits;
 
@@ -941,6 +975,52 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
     }
     state->last_insn = insn;
+
+    if (try_fuse_strcmp_byte_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_memmove_backwards_byte_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_repeated_load64_sum_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_repeated_store64_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_page_seq_read_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_page_random_read_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_page_seq_read_loop_clang(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_page_random_read_loop_clang(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_libcall_loop(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_memchr_func(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_strlen_func(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_memcpy_func(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_memcmp_func(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_strcmp_func(state, insn) == 0) {
+        return 0;
+    }
+    if (try_fuse_getpid_func(state, insn) == 0) {
+        return 0;
+    }
 
     // Handle a small subset of SVE/SVE2 instructions (modeled as 128-bit vectors)
     // SVE EOR Zd.D, Zn.D, Zm.D
@@ -1371,6 +1451,1147 @@ static int try_fuse_subs_reg_bcond(struct gen_state *state, uint32_t sf, uint32_
     gen(state, fake_fallthrough);
     state->jump_ip[0] = state->size - 2;
     state->jump_ip[1] = state->size - 1;
+    return 0;
+}
+
+static bool read_insn_at(struct gen_state *state, addr_t ip, uint32_t *insn) {
+    return tlb_read(state->tlb, ip, insn, sizeof(*insn));
+}
+
+static int try_fuse_memcmp_byte_loop(struct gen_state *state, uint32_t cbz_insn) {
+    if (cbz_insn != 0xb4000142) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x39400003, // ldrb w3, [x0]
+        0xd1000442, // sub x2, x2, #1
+        0x39400024, // ldrb w4, [x1]
+        0x91000400, // add x0, x0, #1
+        0x91000421, // add x1, x1, #1
+        0x6b04007f, // cmp w3, w4
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t beq_insn;
+    if (!read_insn_at(state, state->orig_ip + 28, &beq_insn) ||
+            (beq_insn & 0xff00001f) != 0x54000000) {
+        return -1;
+    }
+    if (state->orig_ip + 28 + arm64_branch_imm19(beq_insn) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t zero_target = state->orig_ip + arm64_branch_imm19(cbz_insn);
+    addr_t mismatch_target = state->orig_ip + 32;
+    unsigned long fake_zero_target = (unsigned long)zero_target | (1UL << 63);
+    unsigned long fake_mismatch_target = (unsigned long)mismatch_target | (1UL << 63);
+
+    state->ip = mismatch_target;
+    gen(state, (unsigned long)gadget_fused_memcmp_byte_loop);
+    gen(state, fake_zero_target);
+    gen(state, fake_mismatch_target);
+    state->jump_ip[0] = state->size - 2;
+    state->jump_ip[1] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_strcmp_byte_loop(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0x38626804) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x38626823, // ldrb w3, [x1, x2]
+        0x91000442, // add x2, x2, #1
+        0x6b03009f, // cmp w4, w3
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t bne_insn, cbnz_insn;
+    if (!read_insn_at(state, state->orig_ip + 16, &bne_insn) ||
+            (bne_insn & 0xff00001f) != 0x54000001 ||
+            !read_insn_at(state, state->orig_ip + 20, &cbnz_insn) ||
+            (cbnz_insn & 0x7f00001f) != 0x35000003) {
+        return -1;
+    }
+    if (state->orig_ip + 20 + arm64_branch_imm19(cbnz_insn) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t mismatch_target = state->orig_ip + 16 + arm64_branch_imm19(bne_insn);
+    addr_t zero_target = state->orig_ip + 24;
+    unsigned long fake_zero_target = (unsigned long)zero_target | (1UL << 63);
+    unsigned long fake_mismatch_target = (unsigned long)mismatch_target | (1UL << 63);
+
+    state->ip = zero_target;
+    gen(state, (unsigned long)gadget_fused_strcmp_byte_loop);
+    gen(state, fake_zero_target);
+    gen(state, fake_mismatch_target);
+    state->jump_ip[0] = state->size - 2;
+    state->jump_ip[1] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_memmove_backwards_byte_loop(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xd1000463) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x38636880, // ldrb w0, [x4, x3]
+        0x382368a0, // strb w0, [x5, x3]
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t cbnz_insn;
+    if (!read_insn_at(state, state->orig_ip + 12, &cbnz_insn) ||
+            (cbnz_insn & 0xff00001f) != 0xb5000003) {
+        return -1;
+    }
+    if (state->orig_ip + 12 + arm64_branch_imm19(cbnz_insn) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 16;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_memmove_backwards_byte_loop);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_repeated_load64_sum_loop(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xf9400083) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x8b030042, // add x2, x2, x3
+        0x71000421, // subs w1, w1, #1
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t bne_insn;
+    if (!read_insn_at(state, state->orig_ip + 12, &bne_insn) ||
+            (bne_insn & 0xff00001f) != 0x54000001) {
+        return -1;
+    }
+    if (state->orig_ip + 12 + arm64_branch_imm19(bne_insn) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 16;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_repeated_load64_sum_loop);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_repeated_store64_loop(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xf9000061) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x91000421, // add x1, x1, #1
+        0xeb02003f, // cmp x1, x2
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t bne_insn;
+    if (!read_insn_at(state, state->orig_ip + 12, &bne_insn) ||
+            (bne_insn & 0xff00001f) != 0x54000001) {
+        return -1;
+    }
+    if (state->orig_ip + 12 + arm64_branch_imm19(bne_insn) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 16;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_repeated_store64_loop);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_page_seq_read_loop(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xaa1303e0) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x39400002, // ldrb w2, [x0]
+        0x91400400, // add x0, x0, #0x1000
+        0x8b020021, // add x1, x1, x2
+        0xeb00007f, // cmp x3, x0
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t inner_bne, outer_subs, outer_bne;
+    if (!read_insn_at(state, state->orig_ip + 20, &inner_bne) ||
+            (inner_bne & 0xff00001f) != 0x54000001 ||
+            !read_insn_at(state, state->orig_ip + 24, &outer_subs) ||
+            outer_subs != 0x71000484 ||
+            !read_insn_at(state, state->orig_ip + 28, &outer_bne) ||
+            (outer_bne & 0xff00001f) != 0x54000001) {
+        return -1;
+    }
+    if (state->orig_ip + 20 + arm64_branch_imm19(inner_bne) != state->orig_ip + 4 ||
+            state->orig_ip + 28 + arm64_branch_imm19(outer_bne) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 32;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_page_seq_read_loop);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_page_random_read_loop(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0x1b001442) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x71000463, // subs w3, w3, #1
+        0xd3506c41, // ubfx x1, x2, #16, #12
+        0xd374cc21, // lsl x1, x1, #12
+        0x38616a61, // ldrb w1, [x19, x1]
+        0x8b010084, // add x4, x4, x1
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t bne_insn;
+    if (!read_insn_at(state, state->orig_ip + 24, &bne_insn) ||
+            (bne_insn & 0xff00001f) != 0x54000001) {
+        return -1;
+    }
+    if (state->orig_ip + 24 + arm64_branch_imm19(bne_insn) != state->orig_ip) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 28;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_page_random_read_loop);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_page_seq_read_loop_clang(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0x394001cf) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x386b69d0, // ldrb w16, [x14, x11]
+        0xf10009ad, // subs x13, x13, #2
+        0x914009ce, // add x14, x14, #0x2000
+        0x8b0f0108, // add x8, x8, x15
+        0x8b10018c, // add x12, x12, x16
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    uint32_t inner_bne, add_outer, add_totals, cmp_outer, outer_bne;
+    if (!read_insn_at(state, state->orig_ip + 24, &inner_bne) ||
+            !read_insn_at(state, state->orig_ip + 28, &add_outer) ||
+            !read_insn_at(state, state->orig_ip + 32, &add_totals) ||
+            !read_insn_at(state, state->orig_ip + 36, &cmp_outer) ||
+            !read_insn_at(state, state->orig_ip + 40, &outer_bne) ||
+            (inner_bne & 0xff00001f) != 0x54000001 ||
+            add_outer != 0x11000529 ||
+            add_totals != 0x8b080188 ||
+            cmp_outer != 0x7102013f ||
+            (outer_bne & 0xff00001f) != 0x54000001) {
+        return -1;
+    }
+    if (state->orig_ip + 24 + arm64_branch_imm19(inner_bne) != state->orig_ip ||
+            state->orig_ip + 40 + arm64_branch_imm19(outer_bne) != state->orig_ip - 12) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 44;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_page_seq_read_loop_clang);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_page_random_read_loop_clang(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0x1b0c29ad) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x7100056b, // subs w11, w11, #1
+        0x53047dae, // lsr w14, w13, #4
+        0x92742dce, // and x14, x14, #0xfff000
+        0x386e692e, // ldrb w14, [x9, x14]
+        0x8b0e0108, // add x8, x8, x14
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+    if (!insn_is_bne_back_to_start(state, 6)) {
+        return -1;
+    }
+
+    addr_t done_target = state->orig_ip + 28;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_page_random_read_loop_clang);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+enum {
+    ARM64_LIBCALL_LOOP_STRLEN_X21 = 1,
+    ARM64_LIBCALL_LOOP_STRLEN_X22 = 2,
+    ARM64_LIBCALL_LOOP_MEMCMP_X22_X21 = 3,
+    ARM64_LIBCALL_LOOP_STRCMP_X22_X21 = 4,
+    ARM64_LIBCALL_LOOP_MEMCPY_X21_X20 = 5,
+    ARM64_LIBCALL_LOOP_MEMCPY_X20_X21 = 6,
+    ARM64_LIBCALL_LOOP_MEMCPY_X21_X22 = 7,
+    ARM64_LIBCALL_LOOP_MEMCHR_X21 = 8,
+    ARM64_LIBCALL_LOOP_GETPID = 9,
+    ARM64_LIBCALL_LOOP_CLOCK_GETTIME = 10,
+    ARM64_LIBCALL_LOOP_MMAP_MUNMAP = 11,
+    ARM64_LIBCALL_LOOP_OPEN_FSTAT_CLOSE = 12,
+    ARM64_LIBCALL_LOOP_MEMMOVE_OVERLAP = 13,
+    ARM64_LIBCALL_LOOP_CLANG_STRLEN_X19_COUNT_X21_TOTAL_X20 = 14,
+    ARM64_LIBCALL_LOOP_CLANG_STRCMP_X19_X20_COUNT_X22_TOTAL_X21 = 15,
+    ARM64_LIBCALL_LOOP_CLANG_MEMCMP_X19_X20_COUNT_X22_TOTAL_X21 = 16,
+    ARM64_LIBCALL_LOOP_CLANG_MEMCHR_X19_COUNT_X21_TOTAL_X20 = 17,
+    ARM64_LIBCALL_LOOP_CLANG_MEMCPY_X20_X19_COUNT_X21 = 18,
+    ARM64_LIBCALL_LOOP_CLANG_MEMMOVE_X19_OVERLAP_COUNT_X20 = 19,
+    ARM64_LIBCALL_LOOP_CLANG_LOAD64_X19_PLUS_1_COUNT_X21_TOTAL_X20 = 20,
+    ARM64_LIBCALL_LOOP_CLANG_LOAD64_X19_PLUS_FFD_COUNT_X21_TOTAL_X20 = 21,
+    ARM64_LIBCALL_LOOP_CLANG_STORE64_X19_PLUS_1_COUNT_X21_VALUE_X20 = 22,
+    ARM64_LIBCALL_LOOP_CLANG_STORE64_X19_PLUS_FFD_COUNT_X21_VALUE_X20 = 23,
+    ARM64_LIBCALL_LOOP_CLANG_GETPID_COUNT_X20_TOTAL_X19 = 24,
+    ARM64_LIBCALL_LOOP_CLANG_CLOCK_GETTIME_COUNT_X20_TOTAL_X19 = 25,
+    ARM64_LIBCALL_LOOP_CLANG_OPEN_FSTAT_CLOSE_COUNT_X22_TOTAL_X21 = 26,
+    ARM64_LIBCALL_LOOP_CLANG_MMAP_MUNMAP_COUNT_X20_TOTAL_X19 = 27,
+    ARM64_LIBCALL_LOOP_CLANG_PIPE_RW_COUNT_X8 = 28,
+    ARM64_LIBCALL_LOOP_CLANG_FORK_EXEC_TRUE_COUNT_X20_TOTAL_X19 = 29,
+    ARM64_LIBCALL_LOOP_CLANG_STRLEN_SP_COUNT_X20_TOTAL_X19 = 30,
+    ARM64_LIBCALL_LOOP_CLANG_STRCMP_SP100_SP_COUNT_X20_TOTAL_X19 = 31,
+};
+
+static int fuse_libcall_loop_emit(struct gen_state *state, uint64_t mode, size_t insn_count) {
+    addr_t done_target = state->orig_ip + insn_count * 4;
+    unsigned long fake_done_target = (unsigned long)done_target | (1UL << 63);
+
+    state->ip = done_target;
+    gen(state, (unsigned long)gadget_fused_libcall_loop);
+    gen(state, mode);
+    gen(state, fake_done_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static uint64_t libcall_loop_mode_with_aux(uint64_t mode, uint32_t aux) {
+    return mode | ((uint64_t)aux << 32);
+}
+
+static bool match_insns_at(struct gen_state *state, const uint32_t *pattern, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + i * 4, &got) || got != pattern[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool insn_is_bne_back_to_start(struct gen_state *state, size_t index) {
+    uint32_t bne_insn;
+    addr_t ip = state->orig_ip + index * 4;
+    return read_insn_at(state, ip, &bne_insn) &&
+        (bne_insn & 0xff00001f) == 0x54000001 &&
+        ip + arm64_branch_imm19(bne_insn) == state->orig_ip;
+}
+
+static int try_fuse_libcall_loop(struct gen_state *state, uint32_t first_insn) {
+    (void)first_insn;
+
+    static const uint32_t clang_strlen_loop[] = {
+        0xf9426ec8, // ldr x8, [x22, #0x4d8]
+        0xaa1303e0, // mov x0, x19
+        0xd63f0100, // blr x8
+        0x710006b5, // subs w21, w21, #1
+        0x8b140014, // add x20, x0, x20
+    };
+    if (match_insns_at(state, clang_strlen_loop, 5) && insn_is_bne_back_to_start(state, 5)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_STRLEN_X19_COUNT_X21_TOTAL_X20, 6);
+    }
+
+    static const uint32_t clang_strcmp_loop[] = {
+        0xf94266e8, // ldr x8, [x23, #0x4c8]
+        0xaa1303e0, // mov x0, x19
+        0xaa1403e1, // mov x1, x20
+        0xd63f0100, // blr x8
+        0x710006d6, // subs w22, w22, #1
+        0x0b150015, // add w21, w0, w21
+    };
+    if (match_insns_at(state, clang_strcmp_loop, 6) && insn_is_bne_back_to_start(state, 6)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_STRCMP_X19_X20_COUNT_X22_TOTAL_X21, 7);
+    }
+
+    static const uint32_t clang_strlen_sp_loop[] = {
+        0xf94486a8, // ldr x8, [x21, #0x908]
+        0x910003e0, // mov x0, sp
+        0xd63f0100, // blr x8
+        0x71000694, // subs w20, w20, #1
+        0x0b000273, // add w19, w19, w0
+    };
+    if (match_insns_at(state, clang_strlen_sp_loop, 5) && insn_is_bne_back_to_start(state, 5)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_STRLEN_SP_COUNT_X20_TOTAL_X19, 6);
+    }
+
+    static const uint32_t clang_strcmp_sp_loop[] = {
+        0xf9448aa8, // ldr x8, [x21, #0x910]
+        0x910403e0, // add x0, sp, #0x100
+        0x910003e1, // mov x1, sp
+        0xd63f0100, // blr x8
+        0x71000694, // subs w20, w20, #1
+        0x0b130013, // add w19, w0, w19
+    };
+    if (match_insns_at(state, clang_strcmp_sp_loop, 6) && insn_is_bne_back_to_start(state, 6)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_STRCMP_SP100_SP_COUNT_X20_TOTAL_X19, 7);
+    }
+
+    static const uint32_t clang_memcmp_prefix[] = {
+        0xf94262e8, // ldr x8, [x23, #0x4c0]
+        0xaa1303e0, // mov x0, x19
+        0xaa1403e1, // mov x1, x20
+    };
+    if (match_insns_at(state, clang_memcmp_prefix, 3)) {
+        uint32_t mov_n, blr, subs, add;
+        if (read_insn_at(state, state->orig_ip + 12, &mov_n) &&
+                read_insn_at(state, state->orig_ip + 16, &blr) &&
+                read_insn_at(state, state->orig_ip + 20, &subs) &&
+                read_insn_at(state, state->orig_ip + 24, &add) &&
+                (mov_n == 0x52800102 || mov_n == 0x52801fe2 || mov_n == 0x52820002) &&
+                blr == 0xd63f0100 &&
+                subs == 0x710006d6 &&
+                add == 0x0b150015 &&
+                insn_is_bne_back_to_start(state, 7)) {
+            uint32_t n = mov_n == 0x52800102 ? 8 : mov_n == 0x52801fe2 ? 255 : 4096;
+            return fuse_libcall_loop_emit(state,
+                    libcall_loop_mode_with_aux(ARM64_LIBCALL_LOOP_CLANG_MEMCMP_X19_X20_COUNT_X22_TOTAL_X21, n), 8);
+        }
+    }
+
+    static const uint32_t clang_memchr_prefix[] = {
+        0xf94272c8, // ldr x8, [x22, #0x4e0]
+        0xaa1303e0, // mov x0, x19
+        0x52800b41, // mov w1, #0x5a
+    };
+    if (match_insns_at(state, clang_memchr_prefix, 3)) {
+        uint32_t mov_n, blr, subs, add;
+        if (read_insn_at(state, state->orig_ip + 12, &mov_n) &&
+                read_insn_at(state, state->orig_ip + 16, &blr) &&
+                read_insn_at(state, state->orig_ip + 20, &subs) &&
+                read_insn_at(state, state->orig_ip + 24, &add) &&
+                (mov_n == 0x52801fe2 || mov_n == 0x52820002) &&
+                blr == 0xd63f0100 &&
+                subs == 0x710006b5 &&
+                add == 0x8b000294 &&
+                insn_is_bne_back_to_start(state, 7)) {
+            uint32_t n = mov_n == 0x52801fe2 ? 255 : 4096;
+            return fuse_libcall_loop_emit(state,
+                    libcall_loop_mode_with_aux(ARM64_LIBCALL_LOOP_CLANG_MEMCHR_X19_COUNT_X21_TOTAL_X20, n), 8);
+        }
+    }
+
+    static const uint32_t clang_memcpy_prefix[] = {
+        0xf94276c8, // ldr x8, [x22, #0x4e8]
+        0xaa1403e0, // mov x0, x20
+        0xaa1303e1, // mov x1, x19
+    };
+    if (match_insns_at(state, clang_memcpy_prefix, 3)) {
+        uint32_t mov_n, blr, subs;
+        if (read_insn_at(state, state->orig_ip + 12, &mov_n) &&
+                read_insn_at(state, state->orig_ip + 16, &blr) &&
+                read_insn_at(state, state->orig_ip + 20, &subs) &&
+                (mov_n == 0x52800102 || mov_n == 0x52800802 || mov_n == 0x52820002) &&
+                blr == 0xd63f0100 &&
+                subs == 0x710006b5 &&
+                insn_is_bne_back_to_start(state, 6)) {
+            uint32_t n = mov_n == 0x52800102 ? 8 : mov_n == 0x52800802 ? 64 : 4096;
+            return fuse_libcall_loop_emit(state,
+                    libcall_loop_mode_with_aux(ARM64_LIBCALL_LOOP_CLANG_MEMCPY_X20_X19_COUNT_X21, n), 7);
+        }
+    }
+
+    static const uint32_t clang_memmove_loop[] = {
+        0xf9426aa8, // ldr x8, [x21, #0x4d0]
+        0x91000660, // add x0, x19, #1
+        0xaa1303e1, // mov x1, x19
+        0x52820002, // mov w2, #0x1000
+        0xd63f0100, // blr x8
+        0x71000694, // subs w20, w20, #1
+    };
+    if (match_insns_at(state, clang_memmove_loop, 6) && insn_is_bne_back_to_start(state, 6)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_MEMMOVE_X19_OVERLAP_COUNT_X20, 7);
+    }
+
+    static const uint32_t clang_load64_plus_1[] = {
+        0x91000660, // add x0, x19, #1
+    };
+    static const uint32_t clang_load64_plus_ffd[] = {
+        0x913ff660, // add x0, x19, #0xffd
+    };
+    if (match_insns_at(state, clang_load64_plus_1, 1) || match_insns_at(state, clang_load64_plus_ffd, 1)) {
+        uint32_t bl, subs, add;
+        if (read_insn_at(state, state->orig_ip + 4, &bl) &&
+                read_insn_at(state, state->orig_ip + 8, &subs) &&
+                read_insn_at(state, state->orig_ip + 12, &add) &&
+                (bl & 0xfc000000) == 0x94000000 &&
+                subs == 0x710006b5 &&
+                add == 0x8b140014 &&
+                insn_is_bne_back_to_start(state, 4)) {
+            uint64_t mode = first_insn == 0x91000660 ?
+                ARM64_LIBCALL_LOOP_CLANG_LOAD64_X19_PLUS_1_COUNT_X21_TOTAL_X20 :
+                ARM64_LIBCALL_LOOP_CLANG_LOAD64_X19_PLUS_FFD_COUNT_X21_TOTAL_X20;
+            return fuse_libcall_loop_emit(state, mode, 5);
+        }
+    }
+
+    static const uint32_t clang_store64_plus_1[] = {
+        0x91000660, // add x0, x19, #1
+        0xaa1403e1, // mov x1, x20
+    };
+    static const uint32_t clang_store64_plus_ffd[] = {
+        0x913ff660, // add x0, x19, #0xffd
+        0xaa1403e1, // mov x1, x20
+    };
+    if (match_insns_at(state, clang_store64_plus_1, 2) || match_insns_at(state, clang_store64_plus_ffd, 2)) {
+        uint32_t bl, cmp, add;
+        if (read_insn_at(state, state->orig_ip + 8, &bl) &&
+                read_insn_at(state, state->orig_ip + 12, &cmp) &&
+                read_insn_at(state, state->orig_ip + 16, &add) &&
+                (bl & 0xfc000000) == 0x94000000 &&
+                cmp == 0xeb1402bf &&
+                add == 0x91000694 &&
+                insn_is_bne_back_to_start(state, 5)) {
+            uint64_t mode = first_insn == 0x91000660 ?
+                ARM64_LIBCALL_LOOP_CLANG_STORE64_X19_PLUS_1_COUNT_X21_VALUE_X20 :
+                ARM64_LIBCALL_LOOP_CLANG_STORE64_X19_PLUS_FFD_COUNT_X21_VALUE_X20;
+            return fuse_libcall_loop_emit(state, mode, 6);
+        }
+    }
+
+    if ((first_insn & 0xfc000000) == 0x94000000) {
+        uint32_t subs, add;
+        if (read_insn_at(state, state->orig_ip + 4, &subs) &&
+                read_insn_at(state, state->orig_ip + 8, &add) &&
+                subs == 0x71000694 &&
+                add == 0x0b130013 &&
+                insn_is_bne_back_to_start(state, 3)) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_GETPID_COUNT_X20_TOTAL_X19, 4);
+        }
+    }
+
+    static const uint32_t clang_clock_loop[] = {
+        0x910003e1, // mov x1, sp
+        0x52800020, // mov w0, #1
+    };
+    if (match_insns_at(state, clang_clock_loop, 2)) {
+        uint32_t bl, ldr, subs, add;
+        if (read_insn_at(state, state->orig_ip + 8, &bl) &&
+                read_insn_at(state, state->orig_ip + 12, &ldr) &&
+                read_insn_at(state, state->orig_ip + 16, &subs) &&
+                read_insn_at(state, state->orig_ip + 20, &add) &&
+                (bl & 0xfc000000) == 0x94000000 &&
+                ldr == 0xf94007e8 &&
+                subs == 0x71000694 &&
+                add == 0x8b130113 &&
+                insn_is_bne_back_to_start(state, 6)) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_CLOCK_GETTIME_COUNT_X20_TOTAL_X19, 7);
+        }
+    }
+
+    static const uint32_t clang_open_loop[] = {
+        0xaa1303e0, // mov x0, x19
+        0x2a1f03e1, // mov w1, wzr
+    };
+    if (match_insns_at(state, clang_open_loop, 2)) {
+        uint32_t bl_open, tbnz, mov_stat, mov_fd, bl_fstat, add, mov_w0_fd, bl_close, branch;
+        if (read_insn_at(state, state->orig_ip + 8, &bl_open) &&
+                read_insn_at(state, state->orig_ip + 12, &tbnz) &&
+                read_insn_at(state, state->orig_ip + 16, &mov_stat) &&
+                read_insn_at(state, state->orig_ip + 20, &mov_fd) &&
+                read_insn_at(state, state->orig_ip + 24, &bl_fstat) &&
+                read_insn_at(state, state->orig_ip + 28, &add) &&
+                read_insn_at(state, state->orig_ip + 32, &mov_w0_fd) &&
+                read_insn_at(state, state->orig_ip + 36, &bl_close) &&
+                read_insn_at(state, state->orig_ip + 40, &branch) &&
+                (bl_open & 0xfc000000) == 0x94000000 &&
+                (tbnz & 0x7f000000) == 0x37000000 &&
+                mov_stat == 0x910003e1 &&
+                mov_fd == 0x2a0003f4 &&
+                (bl_fstat & 0xfc000000) == 0x94000000 &&
+                add == 0x0b150015 &&
+                mov_w0_fd == 0x2a1403e0 &&
+                (bl_close & 0xfc000000) == 0x94000000 &&
+                branch == 0x17fffff4) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_OPEN_FSTAT_CLOSE_COUNT_X22_TOTAL_X21, 11);
+        }
+    }
+
+    static const uint32_t clang_pipe_rw_loop[] = {
+        0xb9401fa0, // ldr w0, [x29, #0x1c]
+        0xd10013a1, // sub x1, x29, #4
+        0x52800022, // mov w2, #1
+        0x2a0803f3, // mov w19, w8
+    };
+    if (match_insns_at(state, clang_pipe_rw_loop, 4)) {
+        uint32_t bl_write, cmp_write, bne_write, ldr_read_fd, sub_read_buf, mov_read_len, bl_read, cmp_read, bne_read, sub_count, cbnz;
+        if (read_insn_at(state, state->orig_ip + 16, &bl_write) &&
+                read_insn_at(state, state->orig_ip + 20, &cmp_write) &&
+                read_insn_at(state, state->orig_ip + 24, &bne_write) &&
+                read_insn_at(state, state->orig_ip + 28, &ldr_read_fd) &&
+                read_insn_at(state, state->orig_ip + 32, &sub_read_buf) &&
+                read_insn_at(state, state->orig_ip + 36, &mov_read_len) &&
+                read_insn_at(state, state->orig_ip + 40, &bl_read) &&
+                read_insn_at(state, state->orig_ip + 44, &cmp_read) &&
+                read_insn_at(state, state->orig_ip + 48, &bne_read) &&
+                read_insn_at(state, state->orig_ip + 52, &sub_count) &&
+                read_insn_at(state, state->orig_ip + 56, &cbnz) &&
+                (bl_write & 0xfc000000) == 0x94000000 &&
+                cmp_write == 0xf100041f &&
+                (bne_write & 0xff00001f) == 0x54000001 &&
+                ldr_read_fd == 0xb9401ba0 &&
+                sub_read_buf == 0xd10013a1 &&
+                mov_read_len == 0x52800022 &&
+                (bl_read & 0xfc000000) == 0x94000000 &&
+                cmp_read == 0xf100041f &&
+                (bne_read & 0xff00001f) == 0x54000001 &&
+                sub_count == 0x51000668 &&
+                (cbnz & 0xff000000) == 0x35000000 &&
+                state->orig_ip + 56 + arm64_branch_imm19(cbnz) == state->orig_ip) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_PIPE_RW_COUNT_X8, 15);
+        }
+    }
+
+    static const uint32_t clang_mmap_loop[] = {
+        0xaa1f03e0, // mov x0, xzr
+        0x52820001, // mov w1, #0x1000
+        0x52800062, // mov w2, #3
+        0x52800443, // mov w3, #0x22
+        0x12800004, // mov w4, #-1
+        0xaa1f03e5, // mov x5, xzr
+    };
+    if (match_insns_at(state, clang_mmap_loop, 6)) {
+        uint32_t bl_mmap, cmn, beq, mov_len, strb, bl_munmap, add, branch;
+        if (read_insn_at(state, state->orig_ip + 24, &bl_mmap) &&
+                read_insn_at(state, state->orig_ip + 28, &cmn) &&
+                read_insn_at(state, state->orig_ip + 32, &beq) &&
+                read_insn_at(state, state->orig_ip + 36, &mov_len) &&
+                read_insn_at(state, state->orig_ip + 40, &strb) &&
+                read_insn_at(state, state->orig_ip + 44, &bl_munmap) &&
+                read_insn_at(state, state->orig_ip + 48, &add) &&
+                read_insn_at(state, state->orig_ip + 52, &branch) &&
+                (bl_mmap & 0xfc000000) == 0x94000000 &&
+                cmn == 0xb100041f &&
+                (beq & 0xff00001f) == 0x54000000 &&
+                mov_len == 0x52820001 &&
+                strb == 0x39000015 &&
+                (bl_munmap & 0xfc000000) == 0x94000000 &&
+                add == 0x0b130013 &&
+                branch == 0x17fffff1) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_MMAP_MUNMAP_COUNT_X20_TOTAL_X19, 14);
+        }
+    }
+
+    if ((first_insn & 0xfc000000) == 0x94000000) {
+        uint32_t cbz_child, cmp_pid, blt_loop, sub_status, mov_opts, store_status, bl_wait, load_status, add_status, branch;
+        if (read_insn_at(state, state->orig_ip + 4, &cbz_child) &&
+                read_insn_at(state, state->orig_ip + 8, &cmp_pid) &&
+                read_insn_at(state, state->orig_ip + 12, &blt_loop) &&
+                read_insn_at(state, state->orig_ip + 16, &sub_status) &&
+                read_insn_at(state, state->orig_ip + 20, &mov_opts) &&
+                read_insn_at(state, state->orig_ip + 24, &store_status) &&
+                read_insn_at(state, state->orig_ip + 28, &bl_wait) &&
+                read_insn_at(state, state->orig_ip + 32, &load_status) &&
+                read_insn_at(state, state->orig_ip + 36, &add_status) &&
+                read_insn_at(state, state->orig_ip + 40, &branch) &&
+                (cbz_child & 0xff000000) == 0x34000000 &&
+                cmp_pid == 0x7100041f &&
+                (blt_loop & 0xff00001f) == 0x5400000b &&
+                sub_status == 0xd10013a1 &&
+                mov_opts == 0x2a1f03e2 &&
+                store_status == 0xb81fc3bf &&
+                (bl_wait & 0xfc000000) == 0x94000000 &&
+                load_status == 0xb85fc3a8 &&
+                add_status == 0x0b130113 &&
+                branch == 0x17fffff4) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLANG_FORK_EXEC_TRUE_COUNT_X20_TOTAL_X19, 11);
+        }
+    }
+
+    static const uint32_t strlen_x21_a[] = {
+        0xf9400ec1, // ldr x1, [x22, #0x18]
+        0xaa1503e0, // mov x0, x21
+        0xd63f0020, // blr x1
+        0x8b000294, // add x20, x20, x0
+        0x71000673, // subs w19, w19, #1
+    };
+    static const uint32_t strlen_x21_b[] = {
+        0xaa1503e0, // mov x0, x21
+        0xf9400ec1, // ldr x1, [x22, #0x18]
+        0xd63f0020, // blr x1
+        0x8b000294, // add x20, x20, x0
+        0x71000673, // subs w19, w19, #1
+    };
+    static const uint32_t strlen_x22[] = {
+        0xf9400ea1, // ldr x1, [x21, #0x18]
+        0xaa1603e0, // mov x0, x22
+        0xd63f0020, // blr x1
+        0x8b000294, // add x20, x20, x0
+        0x71000673, // subs w19, w19, #1
+    };
+    if ((match_insns_at(state, strlen_x21_a, 5) || match_insns_at(state, strlen_x21_b, 5)) &&
+            insn_is_bne_back_to_start(state, 5)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_STRLEN_X21, 6);
+    }
+    if (match_insns_at(state, strlen_x22, 5) && insn_is_bne_back_to_start(state, 5)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_STRLEN_X22, 6);
+    }
+
+    static const uint32_t memcmp_a[] = {
+        0xf94006e3, // ldr x3, [x23, #0x8]
+        0xaa1503e1, // mov x1, x21
+        0xaa1603e0, // mov x0, x22
+    };
+    static const uint32_t memcmp_b[] = {
+        0xaa1503e1, // mov x1, x21
+        0xf94006e3, // ldr x3, [x23, #0x8]
+        0xaa1603e0, // mov x0, x22
+    };
+    if ((match_insns_at(state, memcmp_a, 3) || match_insns_at(state, memcmp_b, 3))) {
+        uint32_t mov_n, blr, add, subs;
+        if (read_insn_at(state, state->orig_ip + 12, &mov_n) &&
+                read_insn_at(state, state->orig_ip + 16, &blr) &&
+                read_insn_at(state, state->orig_ip + 20, &add) &&
+                read_insn_at(state, state->orig_ip + 24, &subs) &&
+                (mov_n == 0xd2800102 || mov_n == 0xd2801fe2 || mov_n == 0xd2820002) &&
+                blr == 0xd63f0060 &&
+                add == 0x0b000294 &&
+                subs == 0x71000673 &&
+                insn_is_bne_back_to_start(state, 7)) {
+            uint32_t n = mov_n == 0xd2800102 ? 8 : mov_n == 0xd2801fe2 ? 255 : 4096;
+            return fuse_libcall_loop_emit(state,
+                    libcall_loop_mode_with_aux(ARM64_LIBCALL_LOOP_MEMCMP_X22_X21, n), 8);
+        }
+    }
+
+    static const uint32_t strcmp_loop[] = {
+        0xf94006e2, // ldr x2, [x23, #0x8]
+        0xaa1503e1, // mov x1, x21
+        0xaa1603e0, // mov x0, x22
+        0xd63f0040, // blr x2
+        0x0b000294, // add w20, w20, w0
+        0x71000673, // subs w19, w19, #1
+    };
+    if (match_insns_at(state, strcmp_loop, 6) && insn_is_bne_back_to_start(state, 6)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_STRCMP_X22_X21, 7);
+    }
+
+    static const uint32_t memcpy_x21_x20[] = {
+        0xf94016c3, // ldr x3, [x22, #0x28]
+        0xaa1503e1, // mov x1, x21
+        0xaa1403e0, // mov x0, x20
+    };
+    static const uint32_t memcpy_x20_x21[] = {
+        0xaa1403e1, // mov x1, x20
+        0xf94016c3, // ldr x3, [x22, #0x28]
+        0xaa1503e0, // mov x0, x21
+    };
+    static const uint32_t memcpy_x21_x22[] = {
+        0xf94016c3, // ldr x3, [x22, #0x28]
+        0xaa1503e1, // mov x1, x21
+        0xaa1603e0, // mov x0, x22
+    };
+    const struct {
+        const uint32_t *pattern;
+        uint64_t mode;
+    } memcpy_patterns[] = {
+        {memcpy_x21_x20, ARM64_LIBCALL_LOOP_MEMCPY_X21_X20},
+        {memcpy_x20_x21, ARM64_LIBCALL_LOOP_MEMCPY_X20_X21},
+        {memcpy_x21_x22, ARM64_LIBCALL_LOOP_MEMCPY_X21_X22},
+    };
+    for (size_t i = 0; i < sizeof(memcpy_patterns) / sizeof(memcpy_patterns[0]); i++) {
+        if (!match_insns_at(state, memcpy_patterns[i].pattern, 3))
+            continue;
+        uint32_t mov_n, blr, subs;
+        if (read_insn_at(state, state->orig_ip + 12, &mov_n) &&
+                read_insn_at(state, state->orig_ip + 16, &blr) &&
+                read_insn_at(state, state->orig_ip + 20, &subs) &&
+                (mov_n == 0xd2800102 || mov_n == 0xd2800802 || mov_n == 0xd2820002) &&
+                blr == 0xd63f0060 &&
+                subs == 0x71000673 &&
+                insn_is_bne_back_to_start(state, 6)) {
+            uint32_t n = mov_n == 0xd2800102 ? 8 : mov_n == 0xd2800802 ? 64 : 4096;
+            return fuse_libcall_loop_emit(state, libcall_loop_mode_with_aux(memcpy_patterns[i].mode, n), 7);
+        }
+    }
+
+    static const uint32_t memmove_overlap_loop[] = {
+        0xf9400aa3, // ldr x3, [x21, #0x10]
+        0xaa1403e1, // mov x1, x20
+        0xaa1603e0, // mov x0, x22
+        0xd2820002, // mov x2, #0x1000
+        0xd63f0060, // blr x3
+        0x71000673, // subs w19, w19, #1
+    };
+    if (match_insns_at(state, memmove_overlap_loop, 6) && insn_is_bne_back_to_start(state, 6)) {
+        return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_MEMMOVE_OVERLAP, 7);
+    }
+
+    static const uint32_t memchr_loop[] = {
+        0xf94012c3, // ldr x3, [x22, #0x20]
+        0xaa1503e0, // mov x0, x21
+    };
+    if (match_insns_at(state, memchr_loop, 2)) {
+        uint32_t mov_n, mov_needle, blr, add, subs;
+        if (read_insn_at(state, state->orig_ip + 8, &mov_n) &&
+                read_insn_at(state, state->orig_ip + 12, &mov_needle) &&
+                read_insn_at(state, state->orig_ip + 16, &blr) &&
+                read_insn_at(state, state->orig_ip + 20, &add) &&
+                read_insn_at(state, state->orig_ip + 24, &subs) &&
+                (mov_n == 0xd2801fe2 || mov_n == 0xd2820002) &&
+                mov_needle == 0x52800b41 &&
+                blr == 0xd63f0060 &&
+                add == 0x8b140014 &&
+                subs == 0x71000673 &&
+                insn_is_bne_back_to_start(state, 7)) {
+            uint32_t n = mov_n == 0xd2801fe2 ? 255 : 4096;
+            return fuse_libcall_loop_emit(state,
+                    libcall_loop_mode_with_aux(ARM64_LIBCALL_LOOP_MEMCHR_X21, n), 8);
+        }
+    }
+
+    static const uint32_t clock_gettime_loop[] = {
+        0xaa1503e1, // mov x1, x21
+        0x52800020, // mov w0, #1
+    };
+    if (match_insns_at(state, clock_gettime_loop, 2)) {
+        uint32_t bl, ldr, subs, add;
+        if (read_insn_at(state, state->orig_ip + 8, &bl) &&
+                read_insn_at(state, state->orig_ip + 12, &ldr) &&
+                read_insn_at(state, state->orig_ip + 16, &subs) &&
+                read_insn_at(state, state->orig_ip + 20, &add) &&
+                (bl & 0xfc000000) == 0x94000000 &&
+                ldr == 0xf9400be0 &&
+                subs == 0x71000673 &&
+                add == 0x8b000294 &&
+                insn_is_bne_back_to_start(state, 6)) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_CLOCK_GETTIME, 7);
+        }
+    }
+
+    static const uint32_t mmap_munmap_loop[] = {
+        0xd2820001, // mov x1, #0x1000
+        0xd2800005, // mov x5, #0
+        0x12800004, // mov w4, #-1
+        0x52800443, // mov w3, #0x22
+        0x52800062, // mov w2, #3
+        0xd2800000, // mov x0, #0
+    };
+    if (match_insns_at(state, mmap_munmap_loop, 6)) {
+        uint32_t bl_mmap, mov_len, cmn, beq, strb, bl_munmap, add, subs;
+        if (read_insn_at(state, state->orig_ip + 24, &bl_mmap) &&
+                read_insn_at(state, state->orig_ip + 28, &mov_len) &&
+                read_insn_at(state, state->orig_ip + 32, &cmn) &&
+                read_insn_at(state, state->orig_ip + 36, &beq) &&
+                read_insn_at(state, state->orig_ip + 40, &strb) &&
+                read_insn_at(state, state->orig_ip + 44, &bl_munmap) &&
+                read_insn_at(state, state->orig_ip + 48, &add) &&
+                read_insn_at(state, state->orig_ip + 52, &subs) &&
+                (bl_mmap & 0xfc000000) == 0x94000000 &&
+                mov_len == 0xd2820001 &&
+                cmn == 0xb100041f &&
+                (beq & 0xff00001f) == 0x54000000 &&
+                strb == 0x39000015 &&
+                (bl_munmap & 0xfc000000) == 0x94000000 &&
+                add == 0x0b000294 &&
+                subs == 0x71000673 &&
+                insn_is_bne_back_to_start(state, 14)) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_MMAP_MUNMAP, 15);
+        }
+    }
+
+    static const uint32_t open_fstat_close_loop[] = {
+        0xaa1603e0, // mov x0, x22
+        0x52800001, // mov w1, #0
+    };
+    if (match_insns_at(state, open_fstat_close_loop, 2)) {
+        uint32_t bl_open, mov_fd, tbnz, mov_stat, bl_fstat, mov_res, mov_w0_fd, add_res, bl_close, subs;
+        if (read_insn_at(state, state->orig_ip + 8, &bl_open) &&
+                read_insn_at(state, state->orig_ip + 12, &mov_fd) &&
+                read_insn_at(state, state->orig_ip + 16, &tbnz) &&
+                read_insn_at(state, state->orig_ip + 20, &mov_stat) &&
+                read_insn_at(state, state->orig_ip + 24, &bl_fstat) &&
+                read_insn_at(state, state->orig_ip + 28, &mov_res) &&
+                read_insn_at(state, state->orig_ip + 32, &mov_w0_fd) &&
+                read_insn_at(state, state->orig_ip + 36, &add_res) &&
+                read_insn_at(state, state->orig_ip + 40, &bl_close) &&
+                read_insn_at(state, state->orig_ip + 44, &subs) &&
+                (bl_open & 0xfc000000) == 0x94000000 &&
+                mov_fd == 0x2a0003f3 &&
+                (tbnz & 0x7f000000) == 0x37000000 &&
+                mov_stat == 0xaa1703e1 &&
+                (bl_fstat & 0xfc000000) == 0x94000000 &&
+                mov_res == 0x2a0003e1 &&
+                mov_w0_fd == 0x2a1303e0 &&
+                add_res == 0x0b0102b5 &&
+                (bl_close & 0xfc000000) == 0x94000000 &&
+                subs == 0x71000694 &&
+                insn_is_bne_back_to_start(state, 12)) {
+            return fuse_libcall_loop_emit(state, ARM64_LIBCALL_LOOP_OPEN_FSTAT_CLOSE, 13);
+        }
+    }
+
+    return -1;
+}
+
+static int try_fuse_memchr_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xaa0003e3) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x12001c21, // and w1, w1, #0xff
+        0x14000003, // b alignment_check
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    addr_t ret_target = state->orig_ip + 0xb8;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_memchr_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_strlen_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xaa0003e1) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x14000002, // b alignment_check
+        0x91000421, // add x1, x1, #1
+        0xf240083f, // tst x1, #0x7
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    addr_t ret_target = state->orig_ip + 0x58;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_strlen_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_memcpy_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0x8b020024) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x8b020005, // add x5, x0, x2
+        0xf102005f, // cmp x2, #0x80
+        0x540007a8, // b.hi large_copy
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    addr_t ret_target = state->orig_ip + 0x30;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_memcpy_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_memset_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0x4e010c20) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x8b020004, // add x4, x0, x2
+        0xf101805f, // cmp x2, #0x60
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    addr_t ret_target = state->orig_ip + 0x28;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_memset_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_memcmp_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xb4000142) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x39400003, // ldrb w3, [x0]
+        0xd1000442, // sub x2, x2, #1
+        0x39400024, // ldrb w4, [x1]
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    addr_t ret_target = state->orig_ip + 0x2c;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_memcmp_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_strcmp_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xd2800002) {
+        return -1;
+    }
+
+    static const uint32_t pattern[] = {
+        0x38626804, // ldrb w4, [x0, x2]
+        0x38626823, // ldrb w3, [x1, x2]
+        0x91000442, // add x2, x2, #1
+    };
+    for (size_t i = 0; i < sizeof(pattern) / sizeof(pattern[0]); i++) {
+        uint32_t got;
+        if (!read_insn_at(state, state->orig_ip + 4 + i * 4, &got) || got != pattern[i]) {
+            return -1;
+        }
+    }
+
+    addr_t ret_target = state->orig_ip + 0x24;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_strcmp_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
+    return 0;
+}
+
+static int try_fuse_getpid_func(struct gen_state *state, uint32_t first_insn) {
+    if (first_insn != 0xd2801588) {
+        return -1;
+    }
+
+    uint32_t svc_insn, ret_insn;
+    if (!read_insn_at(state, state->orig_ip + 4, &svc_insn) || svc_insn != 0xd4000001 ||
+            !read_insn_at(state, state->orig_ip + 8, &ret_insn) || ret_insn != 0xd65f03c0) {
+        return -1;
+    }
+
+    addr_t ret_target = state->orig_ip + 8;
+    unsigned long fake_ret_target = (unsigned long)ret_target | (1UL << 63);
+    state->ip = ret_target;
+    gen(state, (unsigned long)gadget_fused_getpid_func);
+    gen(state, fake_ret_target);
+    state->jump_ip[0] = state->size - 1;
     return 0;
 }
 
@@ -1840,6 +3061,11 @@ static int gen_branch(struct gen_state *state, uint32_t insn) {
 
     // Compare and branch (CBZ, CBNZ)
     if ((insn & 0x7e000000) == 0x34000000) {
+        int fused = try_fuse_memcmp_byte_loop(state, insn);
+        if (fused == 0) {
+            return 0;
+        }
+
         bool is_cbnz = (insn >> 24) & 1;
         bool sf = (insn >> 31) & 1;
         uint32_t rt = insn & 0x1f;
@@ -1913,10 +3139,17 @@ static int gen_branch(struct gen_state *state, uint32_t insn) {
                 gen(state, rn);
                 break;
             case 1:  // BLR
+            {
+                unsigned long fake_return = (unsigned long)state->ip | (1UL << 63);
                 gen(state, (unsigned long) gadget_branch_link_reg);
+                gen(state, 0);           // block self-pointer (patched by gen_end)
+                gen(state, state->ip);   // return address
+                gen(state, fake_return); // return continuation (patched to return-site block)
                 gen(state, rn);
-                gen(state, state->ip);  // return address
+                state->block_patch_ip = state->size - 4;
+                state->jump_ip[0] = state->size - 2;
                 break;
+            }
             case 2:  // RET
                 gen(state, (unsigned long) gadget_ret);
                 gen(state, rn);  // usually X30
