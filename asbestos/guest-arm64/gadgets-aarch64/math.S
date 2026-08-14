@@ -16205,3 +16205,125 @@ make_widening_accum umlsl, umlsl
     str d0, [x14]
     str xzr, [x14, #8]
     gret
+
+// ---------------------------------------------------------------------------
+// AdvSIMD vector floating-point lane narrow/widen conversions.
+//
+// FCVTN/FCVTN2, FCVTL/FCVTL2, FCVTXN/FCVTXN2 are mandatory ARMv8.0-A Advanced
+// SIMD instructions and iSH advertises `asimd`, but they had no gadget, so any
+// guest executing one was killed (numpy's float64<->float32 .astype() hits
+// them). The host is AArch64 and has these instructions natively, so each
+// gadget is the host instruction plus the lane placement the encoding asks for.
+//
+// Operand word laid out by gen.c: rd | rn<<8 | sz<<16 | Q<<24
+//   sz: for N/XN the source precision, for L the destination precision
+//       (0 = half<->single, 1 = single<->double)
+//   Q:  the "2" variant. FCVTN2/FCVTXN2 write the high 64 bits and preserve
+//       the low ones; FCVTL2 reads the high 64 bits of the source.
+// ---------------------------------------------------------------------------
+
+// FCVTN Vd.<Tb>, Vn.<Ta>  /  FCVTN2 Vd.<Tb>, Vn.<Ta>
+//   sz=0: 4S -> 4H,  sz=1: 2D -> 2S
+.gadget fcvtn_vec
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f       // rd
+    ubfx x10, x8, #8, #5    // rn
+    ubfx x11, x8, #16, #1   // sz
+    ubfx x17, x8, #24, #1   // Q ("2" variant)
+
+    add x13, _cpu, #CPU_fp
+    lsl x14, x9, #4
+    add x14, x13, x14       // &Vd
+    lsl x15, x10, #4
+    add x15, x13, x15       // &Vn
+
+    ldr q0, [x15]
+    cbnz x17, .Lfcvtn_high
+    // Q=0: result in the low 64 bits, upper half zeroed.
+    cbnz x11, .Lfcvtn_low_d
+    fcvtn v0.4h, v0.4s
+    b .Lfcvtn_low_store
+.Lfcvtn_low_d:
+    fcvtn v0.2s, v0.2d
+.Lfcvtn_low_store:
+    str d0, [x14]
+    str xzr, [x14, #8]
+    gret
+.Lfcvtn_high:
+    // Q=1: narrow into the high 64 bits, low half of Vd preserved. Load Vd
+    // first so the host FCVTN2 keeps exactly the bits the guest expects.
+    ldr q1, [x14]
+    cbnz x11, .Lfcvtn_high_d
+    fcvtn2 v1.8h, v0.4s
+    b .Lfcvtn_high_store
+.Lfcvtn_high_d:
+    fcvtn2 v1.4s, v0.2d
+.Lfcvtn_high_store:
+    str q1, [x14]
+    gret
+
+// FCVTL Vd.<Ta>, Vn.<Tb>  /  FCVTL2 Vd.<Ta>, Vn.<Tb>
+//   sz=0: 4H -> 4S,  sz=1: 2S -> 2D
+.gadget fcvtl_vec
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f
+    ubfx x10, x8, #8, #5
+    ubfx x11, x8, #16, #1   // sz
+    ubfx x17, x8, #24, #1   // Q ("2" variant: read the high half)
+
+    add x13, _cpu, #CPU_fp
+    lsl x14, x9, #4
+    add x14, x13, x14
+    lsl x15, x10, #4
+    add x15, x13, x15
+
+    ldr q0, [x15]
+    cbnz x17, .Lfcvtl_high
+    // Q=0: widen the low 64 bits.
+    cbnz x11, .Lfcvtl_low_d
+    fcvtl v0.4s, v0.4h
+    b .Lfcvtl_store
+.Lfcvtl_low_d:
+    fcvtl v0.2d, v0.2s
+    b .Lfcvtl_store
+.Lfcvtl_high:
+    // Q=1: widen the high 64 bits.
+    cbnz x11, .Lfcvtl_high_d
+    fcvtl2 v0.4s, v0.8h
+    b .Lfcvtl_store
+.Lfcvtl_high_d:
+    fcvtl2 v0.2d, v0.4s
+.Lfcvtl_store:
+    // The result is always a full 128-bit vector.
+    str q0, [x14]
+    gret
+
+// FCVTXN Vd.2s, Vn.2d  /  FCVTXN2 Vd.4s, Vn.2d
+//   Narrow double->single using round-to-odd. Only sz=1 is defined; gen.c
+//   rejects sz=0 before reaching here.
+.gadget fcvtxn_vec
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f
+    ubfx x10, x8, #8, #5
+    ubfx x17, x8, #24, #1   // Q ("2" variant)
+
+    add x13, _cpu, #CPU_fp
+    lsl x14, x9, #4
+    add x14, x13, x14
+    lsl x15, x10, #4
+    add x15, x13, x15
+
+    ldr q0, [x15]
+    cbnz x17, .Lfcvtxn_high
+    fcvtxn v0.2s, v0.2d
+    str d0, [x14]
+    str xzr, [x14, #8]
+    gret
+.Lfcvtxn_high:
+    ldr q1, [x14]
+    fcvtxn2 v1.4s, v0.2d
+    str q1, [x14]
+    gret
