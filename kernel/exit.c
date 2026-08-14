@@ -611,6 +611,9 @@ retry:
                     continue;
                 no_children = false;
                 info->child.pid = task->pid;
+                // Must be read before reap_if_needed: reaping runs
+                // task_destroy, which memsets the task struct.
+                info->child.uid = task->uid;
                 if (reap_if_needed(task, info, rusage, options))
                     goto found_something;
             }
@@ -627,13 +630,16 @@ retry:
             goto error;
         task = task->group->leader;
         info->child.pid = id;
+        info->child.uid = task->uid;
         if (reap_if_needed(task, info, rusage, options))
             goto found_something;
     }
 
     // WNOHANG leaves the info in an implementation-defined state. set the pid
-    // to 0 so wait4 can pass that along correctly.
+    // to 0 so wait4 can pass that along correctly. Clear uid alongside it so a
+    // "no child ready" result doesn't report the uid of a candidate we scanned.
     info->child.pid = 0;
+    info->child.uid = 0;
     if (options & WNOHANG_) {
         info->sig = SIGCHLD_;
         goto found_something;
