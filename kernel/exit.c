@@ -649,10 +649,16 @@ retry:
     current->blocking = true;
     {
         struct timespec waitpid_timeout = {.tv_sec = 1, .tv_nsec = 0};
-        if (wait_for(&current->group->child_exit, &pids_lock, &waitpid_timeout)) {
-            // Signal received during wait
+        // wait_for returns _EINTR (signal), _ETIMEDOUT (deadline expired), or
+        // 0 (child_exit was signalled). Only a real signal may set got_signal:
+        // treating _ETIMEDOUT as one made every wait for a child that ran
+        // longer than the timeout fail with EINTR, which broke gcc (cc1 easily
+        // exceeds 1s under emulation) and every other fork+wait caller.
+        // On _ETIMEDOUT and 0 alike we just fall through to retry, which
+        // rescans for a zombie and reaps it if the child has since exited.
+        int wait_err = wait_for(&current->group->child_exit, &pids_lock, &waitpid_timeout);
+        if (wait_err == _EINTR)
             got_signal = true;
-        }
     }
     current->blocking = false;
     {
