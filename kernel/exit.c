@@ -684,12 +684,50 @@ error:
     return err;
 }
 
+// Convert the raw wait(2) status word that do_wait produces into the
+// (si_code, si_status) pair waitid(2) is specified to return. The encodings
+// come from the places that write child.status:
+//   sys_exit/sys_exit_group  do_exit(status << 8)   -> low byte 0
+//   deliver SIGNAL_KILL      do_exit_group(sig)     -> low byte is the signal
+//   deliver SIGNAL_STOP      sig << 8 | 0x7f
+//   ptrace stop              signal << 8 | 0x7f
+// Nothing in iSH sets the 0x80 core-dump bit today, so CLD_DUMPED is
+// unreachable in practice; it is handled anyway so this stays correct if
+// core dumps are ever implemented.
+static void waitid_decode_status(struct siginfo_ *info) {
+    dword_t status = info->child.status;
+    info->sig = SIGCHLD_;
+    if ((status & 0xff) == 0x7f) {
+        // stopped: WIFSTOPPED, signal in the high byte
+        info->code = CLD_STOPPED_;
+        info->child.status = (status >> 8) & 0xff;
+    } else if (status == 0xffff) {
+        // continued: WIFCONTINUED. Nothing produces this yet (SIGCONT does not
+        // set group_exit_code), but decode it so the case is not silently
+        // misreported as an exit if WCONTINUED support lands.
+        info->code = CLD_CONTINUED_;
+        info->child.status = SIGCONT_;
+    } else if ((status & 0x7f) != 0) {
+        // terminated by a signal: WIFSIGNALED, signal in the low 7 bits
+        info->code = (status & 0x80) ? CLD_DUMPED_ : CLD_KILLED_;
+        info->child.status = status & 0x7f;
+    } else {
+        // normal exit: WIFEXITED, exit code in the high byte
+        info->code = CLD_EXITED_;
+        info->child.status = (status >> 8) & 0xff;
+    }
+}
+
 dword_t sys_waitid(int_t idtype, pid_t_ id, addr_t info_addr, int_t options) {
     STRACE("waitid(%d, %d, %#x, %#x)", idtype, id, info_addr, options);
     struct siginfo_ info = {};
     int_t res = do_wait(idtype, id, &info, NULL, options);
     if (res < 0 || (res == 0 && info.child.pid == 0))
         return res;
+    // do_wait hands back the raw wait(2)-encoded status, which is what wait4
+    // wants but not what waitid does: waitid must report the decoded value in
+    // si_status and say which kind of event it was in si_code.
+    waitid_decode_status(&info);
     if (info_addr != 0 && user_put(info_addr, info))
         return _EFAULT;
     return 0;
