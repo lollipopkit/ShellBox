@@ -70,9 +70,11 @@ struct mem_usage get_mem_usage() {
 }
 
 struct uptime_info get_uptime() {
-    uint64_t kern_boottime[2];
-    size_t size = sizeof(kern_boottime);
-    sysctlbyname("kern.boottime", &kern_boottime, &size, NULL, 0);
+    // A `struct timeval`, and read as one: the seconds and the microseconds are
+    // not the same width, so two `uint64_t` put the padding where tv_usec is.
+    struct timeval boottime;
+    size_t size = sizeof(boottime);
+    sysctlbyname("kern.boottime", &boottime, &size, NULL, 0);
     struct timeval now;
     gettimeofday(&now, NULL);
 
@@ -91,8 +93,14 @@ struct uptime_info get_uptime() {
             vm_loadavg.ldavg[i] >>= FSHIFT - 16;
     }
 
+    // Hundredths, which is what `uptime_ticks` says and what every reader of it
+    // does with it. Whole seconds here made /proc/uptime advance by 0.01 per
+    // second, so anything in the guest timing itself against it read zero.
+    int64_t sec = (int64_t) now.tv_sec - (int64_t) boottime.tv_sec;
+    int64_t usec = (int64_t) now.tv_usec - (int64_t) boottime.tv_usec;
+
     struct uptime_info uptime = {
-        .uptime_ticks = now.tv_sec - kern_boottime[0],
+        .uptime_ticks = (uint64_t) (sec * 100 + usec / 10000),
         .load_1m = vm_loadavg.ldavg[0],
         .load_5m = vm_loadavg.ldavg[1],
         .load_15m = vm_loadavg.ldavg[2],
