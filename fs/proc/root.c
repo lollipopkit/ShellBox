@@ -89,7 +89,11 @@ static int proc_show_meminfo(struct proc_entry *UNUSED(entry), struct proc_data 
 static int proc_show_uptime(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
     struct uptime_info uptime_info = get_uptime();
     unsigned long uptime = uptime_info.uptime_ticks;
-    proc_printf(buf, "%lu.%lu %lu.%lu\n", uptime / 100, uptime % 100, uptime / 100, uptime % 100);
+    // `%02lu`, because /proc/uptime is two decimal places and a reader parses
+    // the fraction as hundredths. Unpadded, `.07` leaves as `.7` and is read as
+    // `.70` — a 0.63s jump forward, and the next honest read then looks like
+    // time running backwards. One value in ten.
+    proc_printf(buf, "%lu.%02lu %lu.%02lu\n", uptime / 100, uptime % 100, uptime / 100, uptime % 100);
     return 0;
 }
 
