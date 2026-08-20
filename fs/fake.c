@@ -126,6 +126,13 @@ struct mount *g_fakefs_mount = NULL;
  * could read a slot with its guest path already replaced and its host path
  * not, and fakefs_mount's memset of the whole table ran against live readers. */
 static lock_t g_bind_lock = LOCK_INITIALIZER;
+/* Serializes whole registrations against whole unmounts. g_bind_lock cannot
+ * do it — the symlink and meta.db work has to happen outside that one, and in
+ * the gap fakefs_bind_unmount marked a slot free, another registration took
+ * it and installed its route, and then the first call's restore put the old
+ * tree back over the new mount. No reader takes this, so it cannot deadlock
+ * against the database lock the way g_bind_lock would. */
+static lock_t g_bind_change_lock = LOCK_INITIALIZER;
 
 /* Optional host-provided override hooks for guest↔host path translation.
  * NULL unless host registers via fakefs_set_path_*_hook(). Defined here
@@ -1274,8 +1281,17 @@ static void bind_meta_stash(struct fakefs_db *fs, const char *linux_path) {
     char saved[MAX_PATH];
     snprintf(saved, sizeof(saved), "%s%s", linux_path, BIND_SAVED_SUFFIX);
     db_begin_write(fs);
-    path_delete_tree(fs, saved); /* an unrestored stash from before */
-    path_rename(fs, linux_path, saved);
+    if (path_get_inode(fs, saved) != 0) {
+        /* A stash is already there, from the registration this one replaces.
+         * It describes the tree the guest had before any bind, which is what
+         * the eventual restore has to put back — so the rows being displaced
+         * now are the outgoing bind's, and they go rather than overwrite it.
+         * Deleting the stash first meant a replaced mount restored the *old
+         * target's* metadata onto the original tree. */
+        path_delete_tree(fs, linux_path);
+    } else {
+        path_rename(fs, linux_path, saved);
+    }
     db_commit(fs);
 }
 
@@ -1357,6 +1373,19 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
         return _EINVAL;
     }
 
+    /* Stored normalized, because that is the form every lookup compares
+     * against: a route registered as "/mnt/./sub" was matched against
+     * "/mnt/sub" and never found. Normalizing rejects anything too long for
+     * the buffer, which a route must not be either. */
+    char normalized_path[MAX_PATH];
+    if (!bind_mount_normalize(linux_path, normalized_path, sizeof(normalized_path))) {
+        fprintf(stderr, "fakefs_bind_mount: FAIL linux_path does not normalize\n");
+        return _ENAMETOOLONG;
+    }
+    linux_path = normalized_path;
+
+    lock(&g_bind_change_lock);
+
     const char *fixed = fix_path(linux_path);
     fprintf(stderr, "fakefs_bind_mount: fix_path(\"%s\") => \"%s\" (len=%zu)\n",
             linux_path, fixed, strlen(fixed));
@@ -1377,11 +1406,13 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
     struct stat st;
     if (stat(host_path, &st) < 0) {
         fprintf(stderr, "fakefs_bind_mount: FAIL host_path does not exist\n");
+        unlock(&g_bind_change_lock);
         return _ENOENT;
     }
     bool is_file_mount = S_ISREG(st.st_mode);
     if (!S_ISDIR(st.st_mode) && !is_file_mount) {
         fprintf(stderr, "fakefs_bind_mount: FAIL host_path is neither a dir nor a regular file\n");
+        unlock(&g_bind_change_lock);
         return _ENOENT;
     }
 
@@ -1405,6 +1436,7 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
     lock(&g_bind_lock);
     if (g_fakefs_mount == NULL) {
         unlock(&g_bind_lock);
+        unlock(&g_bind_change_lock);
         return _ENODEV;
     }
     int root_fd = g_fakefs_mount->root_fd;
@@ -1428,6 +1460,7 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
     }
     if (slot < 0) {
         unlock(&g_bind_lock);
+        unlock(&g_bind_change_lock);
         fprintf(stderr, "fakefs_bind_mount: FAIL no free slots (max=%d)\n", FAKEFS_MAX_BIND_MOUNTS);
         return _ENOMEM;
     }
@@ -1459,6 +1492,7 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
             g_bind_mounts[slot].active = false;
             unlock(&g_bind_lock);
             bind_mount_restore(root_fd, host_link);
+            unlock(&g_bind_change_lock);
             return err;
         }
     }
@@ -1493,13 +1527,21 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
         db_commit(fs);
     }
 
+    unlock(&g_bind_change_lock);
     return 0;
 }
 
 int fakefs_bind_unmount(const char *linux_path) {
+    char normalized_path[MAX_PATH];
+    if (!bind_mount_normalize(linux_path, normalized_path, sizeof(normalized_path)))
+        return _ENAMETOOLONG;
+    linux_path = normalized_path;
+
+    lock(&g_bind_change_lock);
     lock(&g_bind_lock);
     if (g_fakefs_mount == NULL) {
         unlock(&g_bind_lock);
+        unlock(&g_bind_change_lock);
         return _ENODEV;
     }
     int root_fd = g_fakefs_mount->root_fd;
@@ -1514,8 +1556,10 @@ int fakefs_bind_unmount(const char *linux_path) {
         }
     }
     unlock(&g_bind_lock);
-    if (slot < 0)
+    if (slot < 0) {
+        unlock(&g_bind_change_lock);
         return _ENOENT;
+    }
 
     /* Take the symlink away and put back whatever the mount point held
      * before it, which fakefs_bind_mount moved aside rather than deleting. */
@@ -1524,6 +1568,7 @@ int fakefs_bind_unmount(const char *linux_path) {
      * Leaving the bind's meant a later mount at the same guest path reused
      * its inode numbers, types and permissions for different files. */
     bind_meta_restore(fs, linux_path);
+    unlock(&g_bind_change_lock);
     return 0;
 }
 

@@ -183,9 +183,14 @@ static bool syscall_ref_hold(struct fd *fd) {
 void syscall_refs_release(struct task *task) {
     if (task == NULL)
         return;
-    for (unsigned i = 0; i < task->syscall_refs_n; i++)
-        fd_close(task->syscall_refs[i]);
+    // The count is cleared before anything is closed. The group-exit safety
+    // valve calls this for a task that is not the caller, and leaving the
+    // entries visible while closing them would let that task's own drain
+    // close them a second time.
+    unsigned n = task->syscall_refs_n;
     task->syscall_refs_n = 0;
+    for (unsigned i = 0; i < n; i++)
+        fd_close(task->syscall_refs[i]);
 }
 
 void syscall_refs_drain(void) {
@@ -220,11 +225,11 @@ struct fd *f_get(fd_t f) {
     lock(&current->files->lock);
     struct fd *fd = fdtable_get(current->files, f);
     if (fd != NULL && !syscall_ref_hold(fd)) {
-        // Out of memory growing the list. The pointer is no worse than it was
-        // before any of this, and failing the syscall outright would be a new
-        // way for an ordinary read to fail.
-        unlock(&current->files->lock);
-        return fd;
+        // Out of memory growing the list. Handing the pointer back unretained
+        // would be the very use-after-free this function exists to close, so
+        // the lookup fails instead — callers turn that into EBADF, which is
+        // wrong about the reason but right about not proceeding.
+        fd = NULL;
     }
     unlock(&current->files->lock);
     return fd;

@@ -1118,6 +1118,10 @@ static void free_iovecs(struct iovec *iov, size_t n) {
 
 int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     int err;
+    // Declared before the first `goto out_free_iov` below, which the cleanup
+    // reads them at.
+    struct scm *scm = NULL;
+    struct fd *scm_peer = NULL; // the peer scm was queued onto, if it was
     STRACE("sendmsg(%d, %#x, %d)", sock_fd, msghdr_addr, flags);
     struct fd *sock = sock_getfd(sock_fd);
     if (sock == NULL)
@@ -1216,8 +1220,6 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     msg.msg_control = NULL;
     msg.msg_controllen = 0;
 
-    struct scm *scm = NULL;
-    struct fd *scm_peer = NULL; // the peer scm was queued onto, if it was
     char real_msg_control[CMSG_SPACE(sizeof(int))]; // only used if actually sending an fd
     if (sock->socket.domain == AF_LOCAL_ && msg_control != NULL && msg_fake.msg_controllen >= sizeof(struct cmsghdr_)) {
         // figure out how many file descriptors we're sending
@@ -1509,6 +1511,13 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         int dummy_fd = ((int *) CMSG_DATA(cmsg))[0];
         close(dummy_fd);
 
+        // MSG_PEEK leaves the message — placeholder and all — in the socket,
+        // so consuming the queued scm here would hand its descriptors over
+        // and leave the next read of that same message with nothing to find.
+        // Linux does not deliver ancillary data on a peek either.
+        // dummy_fd is already closed just above; only the queue is left alone.
+        if (real_flags & MSG_PEEK)
+            goto skip_scm;
         lock(&sock->lock);
         // The peer sends the placeholder descriptor and queues the scm
         // separately, so an empty queue here means the two disagree. That is
@@ -1555,6 +1564,7 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
             msg_fake.msg_controllen = write_len;
         }
     }
+skip_scm:
 
     // by now the iovecs and scm have been freed so we can return
     if (res < 0)
@@ -1599,10 +1609,11 @@ struct mmsghdr64_ {
 #endif
 
 int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, addr_t timeout_addr) {
-    // Linux caps vlen at UIO_MAXIOV, and nothing capped it here — the loop
-    // below runs a full recvmsg per entry, on a count the guest chooses.
+    // Linux answers EINVAL for a vlen past UIO_MAXIOV rather than doing part
+    // of the work, and nothing bounded it here at all — the loop below runs a
+    // full recvmsg per entry, on a count the guest chooses.
     if (vec_len > UIO_MAXIOV_)
-        vec_len = UIO_MAXIOV_;
+        return _EINVAL;
     STRACE("recvmmsg(%d, %#x, %d, %d)", sock_fd, msg_vec, vec_len, flags);
     int num_recv = 0;
 #ifdef GUEST_ARM64
@@ -1633,6 +1644,10 @@ int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, ad
 }
 
 int_t sys_sendmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags) {
+    // As for recvmmsg: Linux bounds vlen at UIO_MAXIOV, and this loop calls a
+    // full sendmsg per entry.
+    if (vec_len > UIO_MAXIOV_)
+        return _EINVAL;
     int num_sent = 0;
 #ifdef GUEST_ARM64
     size_t mmsghdr_size = sizeof(struct mmsghdr64_);

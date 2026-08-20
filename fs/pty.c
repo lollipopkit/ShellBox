@@ -109,6 +109,8 @@ static int pty_return_eio(struct tty *UNUSED(tty)) {
 }
 
 #define MAX_PTYS (1 << 12)
+// See devpts_pty_exists: a number taken but not yet filled in.
+#define PTY_RESERVED ((struct tty *) 1)
 
 const struct tty_driver_ops pty_master_ops = {
     .init = pty_master_init,
@@ -138,7 +140,7 @@ DEFINE_TTY_DRIVER(pty_slave, &pty_slave_ops, TTY_PSEUDO_SLAVE_MAJOR, MAX_PTYS);
 // enough of them exhausted the table.
 static void pty_release_reservation(int pty_num) {
     lock(&ttys_lock);
-    if (pty_slave.ttys[pty_num] == (void *) 1)
+    if (pty_slave.ttys[pty_num] == PTY_RESERVED)
         pty_slave.ttys[pty_num] = NULL;
     unlock(&ttys_lock);
 }
@@ -148,7 +150,7 @@ static int pty_reserve_next(void) {
     lock(&ttys_lock);
     for (pty_num = 0; pty_num < MAX_PTYS; pty_num++) {
         if (pty_slave.ttys[pty_num] == NULL) {
-            pty_slave.ttys[pty_num] = (void *) 1; // anything non-null to reserve it
+            pty_slave.ttys[pty_num] = PTY_RESERVED;
             break;
         }
     }
@@ -194,11 +196,15 @@ static bool isdigits(const char *str) {
 
 static const struct fd_ops devpts_fdops;
 
+// The reservation sentinel is not a tty: it means a number is spoken for,
+// between pty_reserve_next taking it and tty_get filling it in. Reported as
+// existing, /dev/pts listed it and devpts_stat_num dereferenced it.
 static bool devpts_pty_exists(int pty_num) {
     if (pty_num < 0 || pty_num >= MAX_PTYS)
         return false;
     lock(&ttys_lock);
-    bool exists = pty_slave.ttys[pty_num] != NULL;
+    struct tty *tty = pty_slave.ttys[pty_num];
+    bool exists = tty != NULL && tty != PTY_RESERVED;
     unlock(&ttys_lock);
     return exists;
 }
