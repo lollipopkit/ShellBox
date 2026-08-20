@@ -55,8 +55,12 @@ static struct rlimit_ init_rlimits[16] = {
 // TODO error propagation
 static struct task *construct_task(struct task *parent) {
     struct task *task = task_create_(parent);
+    if (task == NULL)
+        return ERR_PTR(_ENOMEM);
 
     struct tgroup *group = malloc(sizeof(struct tgroup));
+    if (group == NULL)
+        return ERR_PTR(_ENOMEM);
     *group = (struct tgroup) {};
     list_init(&group->threads);
     lock_init(&group->lock);
@@ -77,20 +81,35 @@ static struct task *construct_task(struct task *parent) {
     task->tgid = task->pid;
     task_setsid(task);
 
-    task_set_mm(task, mm_new());
+    // Each of these allocates, and each result used to be stored without
+    // being looked at: task_set_mm evaluates &task->mm->mem straight away, so
+    // a failed mm_new dereferenced NULL rather than reporting ENOMEM.
+    struct mm *mm = mm_new();
+    if (mm == NULL)
+        return ERR_PTR(_ENOMEM);
+    task_set_mm(task, mm);
     task->sighand = sighand_new();
+    if (task->sighand == NULL)
+        return ERR_PTR(_ENOMEM);
     task->files = fdtable_new(3); // why is there a 3 here
+    if (task->files == NULL)
+        return ERR_PTR(_ENOMEM);
 
     task->fs = fs_info_new();
+    if (task->fs == NULL)
+        return ERR_PTR(_ENOMEM);
     task->fs->umask = 0022;
     // we'll need to have current set to do the open call
     struct task *old_current = current;
     current = task;
     task->fs->root = generic_open("/", O_RDONLY_, 0);
-    if (IS_ERR(task->fs->root))
-        return ERR_PTR(task->fs->root);
-    task->fs->pwd = fd_retain(task->fs->root);
+    // Restored on the way out either way. Returning from here left `current`
+    // pointing at this half-built task, so whatever ran next on this thread
+    // did so as a process with no root and no group.
     current = old_current;
+    if (IS_ERR(task->fs->root))
+        return ERR_PTR(PTR_ERR(task->fs->root));
+    task->fs->pwd = fd_retain(task->fs->root);
 
     return task;
 }

@@ -40,6 +40,11 @@ __attribute__((packed))
 #define EPOLLET_ (1 << 31)
 #define EPOLLONESHOT_ (1 << 30)
 
+// The most events one epoll_wait will return, and so the size of the array it
+// puts on the stack. Well past what any real event loop asks for — Node and
+// libuv use 1024, musl's own wrappers less.
+#define EPOLL_MAX_EVENTS 1024
+
 int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     STRACE("epoll_ctl(%d, %d, %d, %#x)", epoll_f, op, f, event_addr);
     struct fd *epoll = f_get(epoll_f);
@@ -61,6 +66,9 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
 
     if (op == EPOLL_CTL_DEL_)
         return poll_del_fd(epoll->epollfd.poll, fd, f);
+    // Anything that is not ADD, DEL or MOD used to fall through to MOD.
+    if (op != EPOLL_CTL_ADD_ && op != EPOLL_CTL_MOD_)
+        return _EINVAL;
 
     struct epoll_event_ event;
     if (user_get(event_addr, event))
@@ -68,8 +76,10 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     STRACE(" {events: %#x, data: %#x}", event.events, event.data);
 
     if (op == EPOLL_CTL_ADD_) {
-        if (poll_has_fd(epoll->epollfd.poll, fd, f))
-            return _EEXIST;
+        // poll_add_fd answers EEXIST itself, holding the poll lock across the
+        // check and the insertion. Asking poll_has_fd first and then adding
+        // let two threads registering the same descriptor both find it absent
+        // and both add it.
         return poll_add_fd(epoll->epollfd.poll, fd, f, event.events, (union poll_fd_info) event.data);
     } else {
         return poll_mod_fd(epoll->epollfd.poll, fd, f, event.events, (union poll_fd_info) event.data);
@@ -103,6 +113,12 @@ int_t sys_epoll_wait(fd_t epoll_f, addr_t events_addr, int_t max_events, int_t t
         timeout_ts.tv_sec = timeout / 1000;
         timeout_ts.tv_nsec = (timeout % 1000) * 1000000;
     }
+    // Clamped, not rejected: epoll_wait may always return fewer events than
+    // asked for, so a guest that passes a large max_events is answered
+    // correctly with a smaller batch. It sized a stack array before, with
+    // nothing but the guest's word for how big.
+    if (max_events > EPOLL_MAX_EVENTS)
+        max_events = EPOLL_MAX_EVENTS;
     if (max_events <= 0)
         return _EINVAL;
     struct epoll_event_ events[max_events];

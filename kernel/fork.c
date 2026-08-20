@@ -53,6 +53,8 @@ void ish_set_fork_guard(ish_fork_guard_t guard) {
 
 static struct tgroup *tgroup_copy(struct tgroup *old_group) {
     struct tgroup *group = malloc(sizeof(struct tgroup));
+    if (group == NULL)
+        return NULL;
     *group = *old_group;
     list_init(&group->threads);
     list_add(&old_group->pgroup, &group->pgroup);
@@ -78,6 +80,24 @@ static struct tgroup *tgroup_copy(struct tgroup *old_group) {
     return group;
 }
 
+// Undoes tgroup_copy, for the clone failure path only: the group has no
+// threads yet and a leader that is about to be destroyed. Both list_removes
+// touch pid-level lists, so the caller holds pids_lock. The tty reference is
+// the one tgroup_copy took, and the old group still holds its own, so this
+// cannot be the last.
+static void tgroup_free(struct tgroup *group) {
+    list_remove(&group->pgroup);
+    list_remove(&group->session);
+    if (group->tty) {
+        lock(&group->tty->lock);
+        group->tty->refcount--;
+        unlock(&group->tty->lock);
+    }
+    cond_destroy(&group->child_exit);
+    cond_destroy(&group->stopped_cond);
+    free(group);
+}
+
 static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid_addr, addr_t tls_addr, addr_t ctid_addr) {
     task->vfork = NULL;
     if (stack != 0)
@@ -88,7 +108,13 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
     if (flags & CLONE_VM_) {
         mm_retain(mm);
     } else {
-        task_set_mm(task, mm_copy(mm));
+        // task_set_mm evaluates &task->mm->mem immediately, so handing it a
+        // failed mm_copy dereferenced NULL. A fork under host memory pressure
+        // took the emulator down instead of returning ENOMEM.
+        struct mm *new_mm = mm_copy(mm);
+        if (new_mm == NULL)
+            return _ENOMEM;
+        task_set_mm(task, new_mm);
     }
 
     if (flags & CLONE_FILES_) {
@@ -119,12 +145,21 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
     }
 
     struct tgroup *old_group = task->group;
+    bool new_group = false;
     lock(&pids_lock);
     lock(&old_group->lock);
     if (!(flags & CLONE_THREAD_)) {
-        task->group = tgroup_copy(old_group);
+        struct tgroup *group = tgroup_copy(old_group);
+        if (group == NULL) {
+            unlock(&old_group->lock);
+            unlock(&pids_lock);
+            err = _ENOMEM;
+            goto fail_free_sighand;
+        }
+        task->group = group;
         task->group->leader = task;
         task->tgid = task->pid;
+        new_group = true;
     }
     list_add(&task->group->threads, &task->group_links);
     unlock(&old_group->lock);
@@ -138,17 +173,17 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
 #else
         err = task_set_thread_area(task, tls_addr);
         if (err < 0)
-            goto fail_free_sighand;
+            goto fail_unlink_group;
 #endif
     }
 
     err = _EFAULT;
     if (flags & CLONE_CHILD_SETTID_)
         if (user_put_task(task, ctid_addr, task->pid))
-            goto fail_free_sighand;
+            goto fail_unlink_group;
     if (flags & CLONE_PARENT_SETTID_)
         if (user_put(ptid_addr, task->pid))
-            goto fail_free_sighand;
+            goto fail_unlink_group;
     if (flags & CLONE_CHILD_CLEARTID_)
         task->clear_tid = ctid_addr;
     task->exit_signal = flags & CSIGNAL_;
@@ -156,6 +191,20 @@ static int copy_task(struct task *task, dword_t flags, addr_t stack, addr_t ptid
     // remember to do CLONE_SYSVSEM
     return 0;
 
+fail_unlink_group:
+    // The task is in the group's thread list by this point, and sys_clone
+    // destroys it on error — leaving that list pointing at freed memory, and
+    // a newly copied tgroup with nothing in it.
+    lock(&pids_lock);
+    lock(&task->group->lock);
+    list_remove(&task->group_links);
+    unlock(&task->group->lock);
+    if (new_group) {
+        tgroup_free(task->group);
+        task->group = old_group;
+        task->tgid = old_group->leader->tgid;
+    }
+    unlock(&pids_lock);
 fail_free_sighand:
     sighand_release(task->sighand);
 fail_free_fs:

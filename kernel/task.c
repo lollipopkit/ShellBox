@@ -18,7 +18,9 @@ static bool pid_empty(struct pid *pid) {
 }
 
 struct pid *pid_get(dword_t id) {
-    if (id > sizeof(pids)/sizeof(pids[0]))
+    // >=, not >. The array has MAX_PID + 1 entries, so that count is one past
+    // the last valid index and the comparison let it through.
+    if (id >= sizeof(pids)/sizeof(pids[0]))
         return NULL;
     struct pid *pid = &pids[id];
     if (pid_empty(pid))
@@ -54,8 +56,14 @@ struct task *task_create_(struct task *parent) {
     list_init(&pid->pgroup);
 
     struct task *task = malloc(sizeof(struct task));
-    if (task == NULL)
+    if (task == NULL) {
+        // Held since the top of the function. Returning through it left the
+        // lock taken forever, so the next pid lookup or clone — in any thread
+        // — blocked on it and the emulator stopped. The pid slot itself needs
+        // no undoing: pid_empty() is true again once the lists are empty.
+        unlock(&pids_lock);
         return NULL;
+    }
     *task = (struct task) {};
     if (parent != NULL)
         *task = *parent;

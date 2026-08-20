@@ -86,6 +86,12 @@ dword_t sys_old_getrlimit32(dword_t resource, addr_t rlim_addr) {
 }
 
 static int check_setrlimit(int resource, struct rlimit_ new_limit) {
+    // Applies to root as well: a soft limit above the hard one is not a
+    // permission question, it is an incoherent rlimit, and Linux answers
+    // EINVAL. Nothing checked it, so a guest could store one and every later
+    // rlimit() read it back.
+    if (new_limit.cur > new_limit.max)
+        return _EINVAL;
     if (superuser())
         return 0;
     struct rlimit_ old_limit;

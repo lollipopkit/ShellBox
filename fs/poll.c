@@ -48,6 +48,12 @@ static inline void safe_close(int fd) {
         close(fd);
 }
 
+static uint64_t poll_now_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
 // lock order: fd, then poll
 
 struct poll *poll_create(void) {
@@ -116,6 +122,15 @@ int poll_add_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union po
     int err;
     lock(&fd->poll_lock);
     lock(&poll->lock);
+
+    // Checked here, under the lock that the insertion below also holds.
+    // sys_epoll_ctl used to ask poll_has_fd first and then call this, so two
+    // threads adding the same descriptor could both find it absent and both
+    // add it.
+    if (poll_find_fd(poll, fd, fd_no) != NULL) {
+        err = _EEXIST;
+        goto out;
+    }
 
     struct poll_fd *poll_fd;
     if (!list_empty(&poll->pollfd_freelist)) {
@@ -277,6 +292,11 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
     if (poll_->waiters++ == 0) {
         assert(poll_->notify_pipe[0] == -1 && poll_->notify_pipe[1] == -1);
         if (pipe(poll_->notify_pipe) < 0) {
+            // Rolled back. Leaving waiters at one made the next caller take
+            // the "someone else already made the pipe" path and register a
+            // notify_pipe still holding -1, so one transient EMFILE poisoned
+            // the poll object for the rest of its life.
+            poll_->waiters--;
             unlock(&poll_->lock);
             return errno_map();
         }
@@ -285,7 +305,19 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         real_poll_update(&poll_->real, poll_->notify_pipe[0], POLL_READ, NULL);
     }
 
-    // TODO this is pretty broken with regards to timeouts
+    // The guest's timeout as a deadline, fixed once. Each pass below waits at
+    // most a second so signals and group exit stay responsive, and used to
+    // deduct a flat second per *timed-out* pass — which left every other way
+    // of going round the loop free. A wakeup that turned out not to be for us
+    // restarted the whole second, so a stream of unrelated wakeups held a
+    // timed wait open indefinitely. The caller's struct is no longer written
+    // through either.
+    bool timed = timeout != NULL;
+    uint64_t deadline_ns = 0;
+    if (timed)
+        deadline_ns = poll_now_ns() +
+            (uint64_t)timeout->tv_sec * 1000000000ULL + (uint64_t)timeout->tv_nsec;
+
     int res = 0;
     while (true) {
         // check if any fds are ready
@@ -302,8 +334,14 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
                 poll_types &= ~poll_fd->triggered_types;
             }
             if (poll_types) {
-                if (callback(context, poll_types, poll_fd->info) == 1)
-                    res++;
+                // A callback that answers 0 did not take the event — the
+                // epoll batch is full. Everything below marks the event as
+                // delivered, so running it anyway disarmed a EPOLLONESHOT
+                // registration, and consumed an edge, for something the guest
+                // was never told about. Leave it for the next call.
+                if (callback(context, poll_types, poll_fd->info) != 1)
+                    continue;
+                res++;
 
                 // The real poll does not actually get the FDs set as oneshot.
                 // But this loop is done while holding the lock, so only one
@@ -361,14 +399,17 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         // pthread_cond_timedwait_relative_np can block forever under
         // thread contention. Short caps ensure we re-check periodically.
         struct timespec bounded_timeout = {.tv_sec = 1, .tv_nsec = 0};
-        struct timespec *wait_timeout;
-        if (timeout == NULL) {
-            wait_timeout = &bounded_timeout;
-        } else if (timeout->tv_sec >= 1) {
-            wait_timeout = &bounded_timeout; // Cap long timeouts
-        } else {
-            wait_timeout = timeout; // Short/zero timeouts pass through
+        if (timed) {
+            uint64_t now = poll_now_ns();
+            if (now >= deadline_ns)
+                break; // the guest's timeout is up; res stays 0
+            uint64_t remaining = deadline_ns - now;
+            if (remaining < 1000000000ULL) {
+                bounded_timeout.tv_sec = 0;
+                bounded_timeout.tv_nsec = (long)remaining;
+            }
         }
+        struct timespec *wait_timeout = &bounded_timeout;
         current->blocking = true;
         do {
             err = real_poll_wait(&poll_->real, e, sizeof(e)/sizeof(e[0]), wait_timeout);
@@ -387,9 +428,10 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
             atomic_store_explicit(&current->group->last_progress_ns, now,
                                   memory_order_relaxed);
         }
-        // If we timed out from our bounded timeout, loop back to re-check
-        // fd readiness and signal pending.
-        if (err == 0 && wait_timeout == &bounded_timeout) {
+        // Timed out on this pass' slice. Loop back to re-check fd readiness
+        // and pending signals; the deadline check at the top of the wait is
+        // what ends a timed wait.
+        if (err == 0) {
             lock(&poll_->lock);
             list_for_each_entry(&poll_->poll_fds, poll_fd, fds) {
                 sockrestart_end_listen_wait(poll_fd->fd);
@@ -439,14 +481,6 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
                     }
                 }
             }
-            if (timeout != NULL) {
-                // Timed wait: subtract elapsed time
-                timeout->tv_sec -= 1;
-                if (timeout->tv_sec < 0) {
-                    // Original timeout expired
-                    break;
-                }
-            }
             continue;
         }
         lock(&poll_->lock);
@@ -457,10 +491,6 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         if (err < 0) {
             errno = saved_errno;
             res = errno_map();
-            break;
-        }
-        if (err == 0) {
-            // timed out and still nobody is ready
             break;
         }
 
@@ -577,7 +607,29 @@ static int real_poll_update(struct real_poll *real, int fd, int types, void *dat
             e[i].flags |= EV_CLEAR;
     }
 
-    return kevent(real->fd, e, 3, e, 3, NULL);
+    // Receipts land in their own array: the returned events overwrite what
+    // was submitted, so keeping them apart is what lets the check below know
+    // which change each result belongs to.
+    struct kevent receipts[3];
+    int n = kevent(real->fd, e, 3, receipts, 3, NULL);
+    if (n < 0)
+        return -1;
+    // EV_RECEIPT makes every change report its result in `data`, and
+    // returning the raw count called all three applied whatever they said —
+    // so a registration the host refused looked installed and no wakeup ever
+    // arrived. Only the ADDs are worth failing for: EV_DELETE is issued
+    // unconditionally to mean "no longer interested", so ENOENT is its
+    // ordinary answer, and EVFILT_EXCEPT is best-effort on descriptions that
+    // do not support it.
+    for (int i = 0; i < n && i < 3; i++) {
+        if (!(receipts[i].flags & EV_ERROR) || receipts[i].data == 0)
+            continue;
+        if (!(e[i].flags & EV_ADD) || e[i].filter == EVFILT_EXCEPT)
+            continue;
+        errno = (int) receipts[i].data;
+        return -1;
+    }
+    return n;
 }
 
 static int real_poll_wait(struct real_poll *real, struct real_poll_event *events, int max, struct timespec *timeout) {
