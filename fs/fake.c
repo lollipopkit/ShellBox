@@ -4,6 +4,19 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+
+// The same three fields, spelled differently by the two hosts this library is
+// built for. fs/fake.c is compiled on both, so naming Apple's directly meant
+// the file did not compile on Linux at all.
+#if defined(__APPLE__)
+#define HOST_STAT_MTIME(st) ((st).st_mtimespec)
+#define HOST_STAT_ATIME(st) ((st).st_atimespec)
+#define HOST_STAT_CTIME(st) ((st).st_ctimespec)
+#else
+#define HOST_STAT_MTIME(st) ((st).st_mtim)
+#define HOST_STAT_ATIME(st) ((st).st_atim)
+#define HOST_STAT_CTIME(st) ((st).st_ctim)
+#endif
 #include <sys/file.h>
 #include <sqlite3.h>
 #include <unistd.h>
@@ -188,6 +201,12 @@ static bool fakefs_host_path_contains_rootfs(const char *host_path, int host_pat
  * suppression is no-op until fakefs_set_rootfs_data_path() is called by
  * the host. */
 bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t out_size) {
+    /* Longest match wins, as in the forward direction: taking the first
+     * matching host prefix returned the outer mount's guest path for
+     * something that belonged to a nested one. */
+    int best = -1;
+    int best_len = -1;
+    const char *best_rest = NULL;
     for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
         if (!g_bind_mounts[i].active)
             continue;
@@ -213,9 +232,12 @@ bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t
         /* Try matching as-is first */
         if (strncmp(resolved, g_bind_mounts[i].host_path, hlen) == 0 &&
             (resolved[hlen] == '/' || resolved[hlen] == '\0')) {
-            snprintf(out_path, out_size, "%s%s",
-                     g_bind_mounts[i].path, resolved + hlen);
-            return true;
+            if (hlen > best_len) {
+                best_len = hlen;
+                best = i;
+                best_rest = resolved + hlen;
+            }
+            continue;
         }
         /* F_GETPATH resolves /var -> /private/var on iOS.
          * If host_path starts with /var/ but resolved starts with /private/var/,
@@ -225,11 +247,17 @@ bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t
             const char *resolved_no_private = resolved + 8; /* skip "/private" */
             if (strncmp(resolved_no_private, g_bind_mounts[i].host_path, hlen) == 0 &&
                 (resolved_no_private[hlen] == '/' || resolved_no_private[hlen] == '\0')) {
-                snprintf(out_path, out_size, "%s%s",
-                         g_bind_mounts[i].path, resolved_no_private + hlen);
-                return true;
+                if (hlen > best_len) {
+                    best_len = hlen;
+                    best = i;
+                    best_rest = resolved_no_private + hlen;
+                }
             }
         }
+    }
+    if (best >= 0) {
+        snprintf(out_path, out_size, "%s%s", g_bind_mounts[best].path, best_rest);
+        return true;
     }
     /* Static table miss — fall through to the host-provided reverse hook
      * if one is registered. The hook knows about per-context routes that
@@ -239,6 +267,74 @@ bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t
     if (reverse != NULL && reverse(resolved, out_path, out_size))
         return true;
     return false;
+}
+
+/* Canonicalize a guest path for comparison against the bind-mount table:
+ * absolute, with "." and ".." components resolved and duplicate slashes
+ * collapsed. Only a leading slash used to be added, so "/mnt/../etc/passwd"
+ * matched the /mnt mount and was rewritten to "<host>/../etc/passwd" — a path
+ * outside the host directory the mount was supposed to confine it to. ".."
+ * above the root is dropped, as the kernel does. */
+static void bind_mount_normalize(const char *path, char *out, size_t out_size) {
+    size_t len = 0;
+    out[len++] = '/';
+    const char *p = path;
+    while (*p != '\0') {
+        while (*p == '/')
+            p++;
+        const char *start = p;
+        while (*p != '\0' && *p != '/')
+            p++;
+        size_t seg = (size_t)(p - start);
+        if (seg == 0)
+            continue;
+        if (seg == 1 && start[0] == '.')
+            continue;
+        if (seg == 2 && start[0] == '.' && start[1] == '.') {
+            while (len > 1 && out[len - 1] != '/')
+                len--;
+            if (len > 1)
+                len--; /* drop the trailing slash of the parent */
+            if (len == 0)
+                out[len++] = '/';
+            continue;
+        }
+        if (len > 1) {
+            if (len + 1 >= out_size)
+                break;
+            out[len++] = '/';
+        }
+        if (len + seg >= out_size)
+            break;
+        memcpy(out + len, start, seg);
+        len += seg;
+    }
+    out[len] = '\0';
+}
+
+/* The index of the longest matching bind mount, or -1. Matching by table
+ * order meant that with /mnt registered before /mnt/sub, everything under the
+ * nested mount was routed through the outer one and the nested registration
+ * did nothing at all. */
+static int bind_mount_find(const char *cmp_path, bool readonly_only) {
+    int best = -1;
+    int best_len = -1;
+    for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
+        if (!g_bind_mounts[i].active)
+            continue;
+        if (readonly_only && !g_bind_mounts[i].read_only)
+            continue;
+        int len = g_bind_mounts[i].path_len;
+        if (strncmp(g_bind_mounts[i].path, cmp_path, len) != 0)
+            continue;
+        if (cmp_path[len] != '/' && cmp_path[len] != '\0')
+            continue;
+        if (len > best_len) {
+            best_len = len;
+            best = i;
+        }
+    }
+    return best;
 }
 
 /* Translate a Linux path to a host absolute path if under a bind mount.
@@ -255,14 +351,9 @@ bool fakefs_bind_mount_translate_path(const char *path, char *out_path, size_t o
 static bool bind_mount_translate_path_ex(const char *path, char *out_path,
                                          size_t out_size, bool *out_via_hook) {
     if (out_via_hook != NULL) *out_via_hook = false;
-    /* Normalize: if path lacks leading /, prepend it for comparison.
-     * Bind mount table always stores paths with leading /. */
     char normalized[MAX_PATH];
-    const char *cmp_path = path;
-    if (path[0] != '/') {
-        snprintf(normalized, sizeof(normalized), "/%s", path);
-        cmp_path = normalized;
-    }
+    bind_mount_normalize(path, normalized, sizeof(normalized));
+    const char *cmp_path = normalized;
     /* Host-provided hook wins over the static table. The hook sees the
      * normalized (leading-slash) path and the calling task's fs_context. */
     fakefs_path_translate_hook_t hook =
@@ -276,18 +367,12 @@ static bool bind_mount_translate_path_ex(const char *path, char *out_path,
             return true;
         }
     }
-    for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
-        if (!g_bind_mounts[i].active)
-            continue;
-        int len = g_bind_mounts[i].path_len;
-        if (strncmp(g_bind_mounts[i].path, cmp_path, len) == 0 &&
-            (cmp_path[len] == '/' || cmp_path[len] == '\0')) {
-            snprintf(out_path, out_size, "%s%s",
-                     g_bind_mounts[i].host_path, cmp_path + len);
-            return true;
-        }
-    }
-    return false;
+    int i = bind_mount_find(cmp_path, false);
+    if (i < 0)
+        return false;
+    snprintf(out_path, out_size, "%s%s",
+             g_bind_mounts[i].host_path, cmp_path + g_bind_mounts[i].path_len);
+    return true;
 }
 
 static bool bind_mount_translate_path(const char *path, char *out_path, size_t out_size) {
@@ -298,20 +383,8 @@ static bool bind_mount_translate_path(const char *path, char *out_path, size_t o
  * Handles both "/var/minis/..." and "var/minis/..." (without leading /). */
 static bool is_under_bind_mount(const char *path) {
     char normalized[MAX_PATH];
-    const char *cmp_path = path;
-    if (path[0] != '/') {
-        snprintf(normalized, sizeof(normalized), "/%s", path);
-        cmp_path = normalized;
-    }
-    for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
-        if (!g_bind_mounts[i].active)
-            continue;
-        int len = g_bind_mounts[i].path_len;
-        if (strncmp(g_bind_mounts[i].path, cmp_path, len) == 0 &&
-            (cmp_path[len] == '/' || cmp_path[len] == '\0'))
-            return true;
-    }
-    return false;
+    bind_mount_normalize(path, normalized, sizeof(normalized));
+    return bind_mount_find(normalized, false) >= 0;
 }
 
 /* Return true if `path` is at or under a bind mount that was registered
@@ -321,20 +394,8 @@ static bool is_under_bind_mount(const char *path) {
  * it here instead. */
 static bool is_under_readonly_bind_mount(const char *path) {
     char normalized[MAX_PATH];
-    const char *cmp_path = path;
-    if (path[0] != '/') {
-        snprintf(normalized, sizeof(normalized), "/%s", path);
-        cmp_path = normalized;
-    }
-    for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
-        if (!g_bind_mounts[i].active || !g_bind_mounts[i].read_only)
-            continue;
-        int len = g_bind_mounts[i].path_len;
-        if (strncmp(g_bind_mounts[i].path, cmp_path, len) == 0 &&
-            (cmp_path[len] == '/' || cmp_path[len] == '\0'))
-            return true;
-    }
-    return false;
+    bind_mount_normalize(path, normalized, sizeof(normalized));
+    return bind_mount_find(normalized, true) >= 0;
 }
 
 /* Auto-create a meta.db entry for a path under a bind mount.
@@ -351,7 +412,11 @@ static inode_t bind_mount_ensure_inode(struct fakefs_db *fs, struct mount *mount
     struct stat host_stat;
     char host_abs[PATH_MAX];
     if (bind_mount_translate_path(path, host_abs, sizeof(host_abs))) {
-        if (stat(host_abs, &host_stat) < 0)
+        /* lstat, not stat: stat follows the link, so S_ISLNK below was never
+         * true for a bind path and every host symlink was recorded as a
+         * regular file. The non-bind branch has always used
+         * AT_SYMLINK_NOFOLLOW for the same reason. */
+        if (lstat(host_abs, &host_stat) < 0)
             return 0;
     } else if (fstatat(mount->root_fd, fix_path(path), &host_stat, AT_SYMLINK_NOFOLLOW) < 0) {
         if (fstatat(mount->root_fd, fix_path(path), &host_stat, 0) < 0)
@@ -729,12 +794,15 @@ static int fakefs_stat(struct mount *mount, const char *path, struct statbuf *fa
         fake_stat->gid = 0;
         fake_stat->size = host_stat.st_size;
         fake_stat->blocks = host_stat.st_blocks;
-        fake_stat->mtime = host_stat.st_mtimespec.tv_sec;
-        fake_stat->mtime_nsec = host_stat.st_mtimespec.tv_nsec;
-        fake_stat->atime = host_stat.st_atimespec.tv_sec;
-        fake_stat->atime_nsec = host_stat.st_atimespec.tv_nsec;
-        fake_stat->ctime = host_stat.st_ctimespec.tv_sec;
-        fake_stat->ctime_nsec = host_stat.st_ctimespec.tv_nsec;
+        /* st_mtimespec and friends are Apple's spelling; Linux calls them
+         * st_mtim. fs/fake.c is in the library on every platform, so naming
+         * only one of them did not compile on the other. */
+        fake_stat->mtime = HOST_STAT_MTIME(host_stat).tv_sec;
+        fake_stat->mtime_nsec = HOST_STAT_MTIME(host_stat).tv_nsec;
+        fake_stat->atime = HOST_STAT_ATIME(host_stat).tv_sec;
+        fake_stat->atime_nsec = HOST_STAT_ATIME(host_stat).tv_nsec;
+        fake_stat->ctime = HOST_STAT_CTIME(host_stat).tv_sec;
+        fake_stat->ctime_nsec = HOST_STAT_CTIME(host_stat).tv_nsec;
         ISH_SIGNPOST_SCOPE_END(fs, "fakefs_stat", _fs_spid);
         return 0;
     }
@@ -776,9 +844,9 @@ static int fakefs_stat(struct mount *mount, const char *path, struct statbuf *fa
         /* Copy basic fields from real stat */
         fake_stat->size = real_stat.st_size;
         fake_stat->nlink = real_stat.st_nlink;
-        fake_stat->atime = real_stat.st_atimespec.tv_sec;
-        fake_stat->mtime = real_stat.st_mtimespec.tv_sec;
-        fake_stat->ctime = real_stat.st_ctimespec.tv_sec;
+        fake_stat->atime = HOST_STAT_ATIME(real_stat).tv_sec;
+        fake_stat->mtime = HOST_STAT_MTIME(real_stat).tv_sec;
+        fake_stat->ctime = HOST_STAT_CTIME(real_stat).tv_sec;
         err = 0;
     } else {
         err = realfs.stat(mount, path, fake_stat);
@@ -891,7 +959,7 @@ static int fakefs_setattr(struct mount *mount, const char *path, struct attr att
         if (is_under_bind_mount(path)) {
             inode = bind_mount_ensure_inode(fs, mount, path);
             if (inode != 0) {
-                db_begin_read(fs);
+                db_begin_write(fs);
                 path_read_stat(fs, path, &ishstat, &inode);
                 fake_stat_setattr(&ishstat, attr);
                 inode_write_stat(fs, inode, &ishstat);
@@ -901,6 +969,12 @@ static int fakefs_setattr(struct mount *mount, const char *path, struct attr att
         }
         return _ENOENT;
     }
+    /* Upgraded from the read transaction the lookup opened. Writing inside a
+     * read transaction leaves the update to an implicit upgrade that can stay
+     * BUSY against another process' writer, and fakefs_setattr reported
+     * success either way. */
+    db_commit(fs);
+    db_begin_write(fs);
     fake_stat_setattr(&ishstat, attr);
     inode_write_stat(fs, inode, &ishstat);
     db_commit(fs);
@@ -909,6 +983,12 @@ static int fakefs_setattr(struct mount *mount, const char *path, struct attr att
 
 static int fakefs_fsetattr(struct fd *fd, struct attr attr) {
     struct fakefs_db *fs = &fd->mount->fakefs;
+    /* The read-only check belongs here too, not only in fakefs_setattr: this
+     * path took the fd's word for it and handed attr_size straight to
+     * realfs, so an ftruncate through a descriptor opened before the mount
+     * was marked read-only went through. */
+    if (fd->change_path != NULL && is_under_readonly_bind_mount(fd->change_path))
+        return _EROFS;
     if (attr.type == attr_size)
         return realfs.fsetattr(fd, attr);
     /* If this fd was opened on a hook-routed path, its fake_inode is the
@@ -1147,6 +1227,14 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
         return _ENODEV;
     }
 
+    /* The table is compared against normalized, absolute guest paths, so a
+     * relative one registered a route nothing could ever match — the mount
+     * appeared to succeed and then did nothing. */
+    if (linux_path[0] != '/') {
+        fprintf(stderr, "fakefs_bind_mount: FAIL linux_path is not absolute\n");
+        return _EINVAL;
+    }
+
     const char *fixed = fix_path(linux_path);
     fprintf(stderr, "fakefs_bind_mount: fix_path(\"%s\") => \"%s\" (len=%zu)\n",
             linux_path, fixed, strlen(fixed));
@@ -1369,6 +1457,15 @@ static int fakefs_mount(struct mount *mount) {
 }
 
 static int fakefs_umount(struct mount *mount) {
+    /* Drop the bind-mount state before the mount goes. mount_remove frees the
+     * struct straight after this returns, and nothing here used to clear
+     * g_fakefs_mount or deactivate the table — so a later fakefs_bind_unmount
+     * called unlinkat(g_fakefs_mount->root_fd, ...) through a dangling
+     * pointer, and translation kept handing out routes to a closed root. */
+    if (g_fakefs_mount == mount) {
+        memset(g_bind_mounts, 0, sizeof(g_bind_mounts));
+        g_fakefs_mount = NULL;
+    }
     int err = fake_db_deinit(&mount->fakefs);
     if (err != SQLITE_OK) {
         printk("sqlite failed to close: %d\n", err);
@@ -1495,9 +1592,16 @@ void fakefs_install_change_consumer(fakefs_change_handler_t handler) {
     if (handler == NULL)
         return;
     if (g_change_consumer_source != NULL) {
-        /* Replace handler — supported but unusual. */
-        if (g_change_handler) Block_release(g_change_handler);
-        g_change_handler = Block_copy(handler);
+        /* Replace handler — supported but unusual. The swap runs on the
+         * consumer queue, which is the only place the handler is read, so it
+         * cannot land while the old block is being called. Releasing it here
+         * did exactly that: the drain loop below holds no lock, so a block it
+         * was in the middle of invoking could be deallocated under it. */
+        fakefs_change_handler_t copied = Block_copy(handler);
+        dispatch_async(g_change_consumer_queue, ^{
+            if (g_change_handler) Block_release(g_change_handler);
+            g_change_handler = copied;
+        });
         return;
     }
 
