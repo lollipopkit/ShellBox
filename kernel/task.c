@@ -104,6 +104,11 @@ struct task *task_create_(struct task *parent) {
     task->robust_list = 0;
     task->futex_pipe[0] = -1;
     task->futex_pipe[1] = -1;
+    // Not inherited: the parent's list belongs to the syscall the parent is
+    // in, and *task = *parent above copied the pointer.
+    task->syscall_refs = NULL;
+    task->syscall_refs_n = 0;
+    task->syscall_refs_cap = 0;
     task->did_exec = false;
     lock_init(&task->general_lock);
 
@@ -139,6 +144,7 @@ static void flush_deferred_frees(void) {
 }
 
 void task_destroy(struct task *task) {
+    syscall_refs_free(task);
     list_remove(&task->siblings);
     pid_get(task->pid)->task = NULL;
 

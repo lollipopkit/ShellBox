@@ -34,6 +34,12 @@ struct task {
     bool did_exec; // for that one annoying setsid edge case
 
     struct fdtable *files;
+    // References taken by f_get during the syscall now running, released in
+    // one place when it returns. See f_get in fs/fd.c for why they are taken
+    // at all, and syscall_refs_drain in kernel/calls.c for where they go.
+    struct fd **syscall_refs;
+    unsigned syscall_refs_n;
+    unsigned syscall_refs_cap;
     struct fs_info *fs;
 
     // locked by sighand->lock

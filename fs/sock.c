@@ -1586,6 +1586,10 @@ struct mmsghdr64_ {
 #endif
 
 int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, addr_t timeout_addr) {
+    // Linux caps vlen at UIO_MAXIOV, and nothing capped it here — the loop
+    // below runs a full recvmsg per entry, on a count the guest chooses.
+    if (vec_len > UIO_MAXIOV_)
+        vec_len = UIO_MAXIOV_;
     STRACE("recvmmsg(%d, %#x, %d, %d)", sock_fd, msg_vec, vec_len, flags);
     int num_recv = 0;
 #ifdef GUEST_ARM64

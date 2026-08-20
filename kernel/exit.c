@@ -52,6 +52,11 @@ static struct task *find_new_parent(struct task *task) {
 }
 
 noreturn void do_exit(int status) {
+    // This never returns to the syscall dispatcher, so the references f_get
+    // took for the call that led here are released now instead — while
+    // `current` is still this task and no lock is held.
+    syscall_refs_drain();
+
     /* pid 1 dumps to stderr (the original behaviour). With ISH_PC_HIST_DIR set,
      * EVERY exiting process also dumps its own per-pid histogram file, so a
      * fork'd chain (pip wheel-build subprocesses) is captured whole. */

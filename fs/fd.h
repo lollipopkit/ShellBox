@@ -123,6 +123,7 @@ struct fd {
     cond_t cond;
 };
 
+struct task;
 typedef sdword_t fd_t;
 #define AT_FDCWD_ -100
 
@@ -199,6 +200,10 @@ void fdtable_do_cloexec(struct fdtable *table);
 struct fd *fdtable_get(struct fdtable *table, fd_t f);
 
 struct fd *f_get(fd_t f);
+// Releases every reference f_get took during the syscall that just finished.
+// Called from the syscall dispatcher, and nowhere else.
+void syscall_refs_drain(void);
+void syscall_refs_free(struct task *task);
 // steals a reference to the fd, gives it to the table on success and destroys it on error
 // flags is checked for O_CLOEXEC and O_NONBLOCK
 fd_t f_install(struct fd *fd, int flags);

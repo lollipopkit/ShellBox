@@ -154,14 +154,75 @@ struct fd *fdtable_get(struct fdtable *table, fd_t f) {
     return table->files[f];
 }
 
-// TODO: this hands back a pointer with no reference taken, so the descriptor
-// can be closed by another thread between the lookup and the use. Every
-// caller in fs/ and kernel/ is written against that, which is why it has not
-// been changed here: the fix is an f_get that retains and a matching release
-// at each of the ~90 call sites, not a change to this function alone.
+// Records a reference in the calling task's per-syscall list, so it can be
+// released in one place when the syscall returns — see syscall_refs_drain.
+// Returns false only if the list could not grow.
+static bool syscall_ref_hold(struct fd *fd) {
+    struct task *task = current;
+    // One entry per description, however many times the syscall looks it up.
+    // Without this a loop over the guest's own count — sys_recvmmsg calling
+    // sys_recvmsg, sys_poll over a large set — would grow the list by an
+    // entry per iteration; deduplicated, it cannot exceed the number of open
+    // descriptors. n is one in almost every syscall, so the scan is a
+    // comparison.
+    for (unsigned i = 0; i < task->syscall_refs_n; i++)
+        if (task->syscall_refs[i] == fd)
+            return true;
+    if (task->syscall_refs_n == task->syscall_refs_cap) {
+        unsigned cap = task->syscall_refs_cap ? task->syscall_refs_cap * 2 : 8;
+        struct fd **refs = realloc(task->syscall_refs, cap * sizeof(*refs));
+        if (refs == NULL)
+            return false;
+        task->syscall_refs = refs;
+        task->syscall_refs_cap = cap;
+    }
+    task->syscall_refs[task->syscall_refs_n++] = fd_retain(fd);
+    return true;
+}
+
+void syscall_refs_drain(void) {
+    struct task *task = current;
+    if (task == NULL)
+        return;
+    for (unsigned i = 0; i < task->syscall_refs_n; i++)
+        fd_close(task->syscall_refs[i]);
+    task->syscall_refs_n = 0;
+}
+
+// Only the array. The references themselves are gone by now: a syscall that
+// returns is drained by the dispatcher and one that does not — do_exit and
+// what it is reached from — drains on the way in. This runs from task_destroy
+// with pids_lock held, which is no place to be calling ops->close.
+void syscall_refs_free(struct task *task) {
+    free(task->syscall_refs);
+    task->syscall_refs = NULL;
+    task->syscall_refs_n = task->syscall_refs_cap = 0;
+}
+
+// Takes a reference under the same lock fdtable_close clears the slot with,
+// so the description cannot be freed between the lookup and the use. Without
+// it every caller worked on a descriptor another thread was free to close
+// underneath it: the syscall blocks in ops->read or ops->poll, close(2)
+// arrives on the last reference, and the struct fd is freed while in use.
+//
+// The reference is released when the syscall returns rather than by each
+// caller. There are sixty-odd of those, most with several ways out, and one
+// missed release is a descriptor that never closes while one release too many
+// is the use-after-free this exists to prevent. Holding until the syscall
+// ends is also exactly the interval the pointer is live for.
+//
+// A caller that hands the reference on — to f_install, say — takes its own
+// with fd_retain first; the drain still owns this one.
 struct fd *f_get(fd_t f) {
     lock(&current->files->lock);
     struct fd *fd = fdtable_get(current->files, f);
+    if (fd != NULL && !syscall_ref_hold(fd)) {
+        // Out of memory growing the list. The pointer is no worse than it was
+        // before any of this, and failing the syscall outright would be a new
+        // way for an ordinary read to fail.
+        unlock(&current->files->lock);
+        return fd;
+    }
     unlock(&current->files->lock);
     return fd;
 }
@@ -257,7 +318,9 @@ dword_t sys_dup(fd_t f) {
     struct fd *fd = f_get(f);
     if (fd == NULL)
         return _EBADF;
-    fd->refcount++;
+    // f_install consumes a reference, and the one f_get took belongs to the
+    // syscall's drain. This is the table's.
+    fd_retain(fd);
     return f_install(fd, 0);
 }
 
@@ -308,12 +371,12 @@ dword_t sys_fcntl(fd_t f, dword_t cmd, addr_t arg) {
     switch (cmd) {
         case F_DUPFD_:
             STRACE("fcntl(%d, F_DUPFD, %d)", f, arg);
-            fd->refcount++;
+            fd_retain(fd); // see sys_dup
             return f_install_start(fd, arg);
 
         case F_DUPFD_CLOEXEC_:
             STRACE("fcntl(%d, F_DUPFD_CLOEXEC, %d)", f, arg);
-            fd->refcount++;
+            fd_retain(fd); // see sys_dup
             new_f = f_install_start(fd, arg);
             bit_set(new_f, table->cloexec);
             return new_f;

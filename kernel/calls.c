@@ -71,6 +71,7 @@ void handle_interrupt(int interrupt) {
             }
             STRACE("%d call %-3d ", current->pid, syscall_num);
             int result = syscall_table[syscall_num](cpu->ebx, cpu->ecx, cpu->edx, cpu->esi, cpu->edi, cpu->ebp);
+            syscall_refs_drain();
             STRACE(" = 0x%x\n", result);
             cpu->eax = result;
         }
@@ -116,6 +117,8 @@ void handle_interrupt(int interrupt) {
 
         if (fast_path_taken) {
             // Fast path succeeded, return immediately
+            // The fast handlers reach f_get too, so they owe the same drain.
+            syscall_refs_drain();
             // Fast paths return int (small values), safe to use directly
             STRACE("%d call %-3d (fast) = 0x%x\n", current->pid, syscall_num, fast_result);
             int32_t signed_result = (int32_t)fast_result;
@@ -145,6 +148,11 @@ void handle_interrupt(int interrupt) {
                 int64_t result = syscall_table[syscall_num](
                     cpu->regs[0], cpu->regs[1], cpu->regs[2],
                     cpu->regs[3], cpu->regs[4], cpu->regs[5]);
+                // Everything f_get handed out during that call goes back here.
+                // A syscall that leaves by pthread_exit — do_exit and friends
+                // — never reaches this, but the whole task is going away and
+                // task_destroy frees the list.
+                syscall_refs_drain();
                 STRACE(" = 0x%llx\n", (unsigned long long)result);
                 // Single atomic fprintf so multi-thread output does not
                 // interleave the args line with another thread's return value.
