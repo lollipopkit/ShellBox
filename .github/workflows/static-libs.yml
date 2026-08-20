@@ -6,11 +6,16 @@
 # libarchive first — hundreds of megabytes for output that only changes when
 # this repository does.
 #
-# The release is tagged with the commit's own sha. A consumer pins this fork by
-# gitlink and by nothing else, so the sha is the one name both sides already
-# agree on: it can ask for the libraries belonging to the revision it has
-# checked out, with no second version to keep in step. That is also why every
-# commit on the default branch gets one — a gitlink may point at any of them.
+# The release is tagged `libs-<sha>`. A consumer pins this fork by gitlink and
+# by nothing else, so the sha is the one name both sides already agree on: it
+# can ask for the libraries belonging to the revision it has checked out, with
+# no second version to keep in step. That is also why every commit on the
+# default branch gets one — a gitlink may point at any of them.
+#
+# The prefix is not decoration. GitHub refuses a tag of 40 or 64 hex characters
+# outright — it would be indistinguishable from a commit sha — and the refusal
+# arrives from the pre-receive hook after the assets have already uploaded, so
+# the run fails having left a release behind that was never published.
 name: Static libraries
 
 on:
@@ -89,7 +94,7 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
-          tag_name: ${{ github.sha }}
+          tag_name: libs-${{ github.sha }}
           name: ${{ github.sha }}
           # Not the latest of anything: these are build outputs for whichever
           # revision a consumer has pinned, and the newest is only relevant to
