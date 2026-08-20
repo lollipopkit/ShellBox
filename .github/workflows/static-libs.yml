@@ -1,0 +1,111 @@
+# The three static libraries an embedding app links, built and published.
+#
+# ServerBox carries this fork as a submodule and links `libish.a`,
+# `libish_emu.a` and `libfakefs.a` into its iOS app. Building them there means
+# every CI run and every fresh clone installs llvm, lld, meson, ninja and
+# libarchive first — hundreds of megabytes for output that only changes when
+# this repository does.
+#
+# The release is tagged with the commit's own sha. A consumer pins this fork by
+# gitlink and by nothing else, so the sha is the one name both sides already
+# agree on: it can ask for the libraries belonging to the revision it has
+# checked out, with no second version to keep in step. That is also why every
+# commit on the default branch gets one — a gitlink may point at any of them.
+name: Static libraries
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - name: Install build tools
+        run: brew install llvm lld ninja libarchive meson
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Device and simulator are the same architecture as the runner, which
+          # is the point of this fork: the gadgets a phone runs are the ones
+          # built here. Only the SDK and the platform minimum differ.
+          build() {
+            local name="$1" sdk="$2" min="$3"
+            local sysroot
+            sysroot="$(xcrun --sdk "$sdk" --show-sdk-path)"
+
+            cat >"$name.ini" <<EOF
+          [binaries]
+          c = 'clang'
+          cpp = 'clang++'
+          ar = 'ar'
+          strip = 'strip'
+          pkg-config = 'pkg-config'
+
+          [built-in options]
+          c_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '$min']
+          c_link_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '$min']
+          cpp_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '$min']
+          cpp_link_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '$min']
+
+          [host_machine]
+          system = 'darwin'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          EOF
+
+            meson setup "build-$name" . -Dguest_arch=arm64 --buildtype=release \
+              --cross-file "$name.ini"
+            # Named targets, not everything: tools/fakefsify links the host's
+            # libarchive and cannot be built for a phone.
+            ninja -C "build-$name" libish.a libish_emu.a libfakefs.a
+
+            tar czf "ish-$name.tar.gz" -C "build-$name" \
+              libish.a libish_emu.a libfakefs.a
+          }
+
+          build ios-arm64 iphoneos '-miphoneos-version-min=13.0'
+          build iossim-arm64 iphonesimulator '-mios-simulator-version-min=13.0'
+
+          # What a consumer checks before it links anything it downloaded.
+          shasum -a 256 ish-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          tag_name: ${{ github.sha }}
+          name: ${{ github.sha }}
+          # Not the latest of anything: these are build outputs for whichever
+          # revision a consumer has pinned, and the newest is only relevant to
+          # a consumer that has moved its gitlink.
+          make_latest: false
+          body: |
+            Static libraries for `${{ github.sha }}`, built for arm64.
+
+            | file | for |
+            | --- | --- |
+            | `ish-ios-arm64.tar.gz` | iOS device (`iphoneos`) |
+            | `ish-iossim-arm64.tar.gz` | iOS simulator (`iphonesimulator`) |
+
+            Each holds `libish.a`, `libish_emu.a` and `libfakefs.a`. Verify
+            against `SHA256SUMS` before linking.
+          files: |
+            ish-ios-arm64.tar.gz
+            ish-iossim-arm64.tar.gz
+            SHA256SUMS
