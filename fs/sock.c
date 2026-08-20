@@ -172,6 +172,10 @@ struct unix_abstract {
     uint32_t hash;
     uint32_t socket_id;
     struct list links;
+    // The name itself, and not only its hash. Two abstract names that
+    // collide in str_hash are different sockets: keyed by hash alone, the
+    // second bind answered EEXIST and a connect reached the wrong one.
+    char name[];
 };
 #define ABSTRACT_HASH_SIZE 1024
 static struct list abstract_hash[ABSTRACT_HASH_SIZE];
@@ -186,7 +190,8 @@ static int unix_abstract_get(const char *name, struct fd *bind_fd, uint32_t *soc
     if (list_null(bucket))
         list_init(bucket);
     list_for_each_entry(bucket, sock_tmp, links) {
-        if (sock_tmp->hash == hash) {
+        // The hash is the bucket's business; the name decides identity.
+        if (sock_tmp->hash == hash && strcmp(sock_tmp->name, name) == 0) {
             sock = sock_tmp;
             break;
         }
@@ -202,16 +207,27 @@ static int unix_abstract_get(const char *name, struct fd *bind_fd, uint32_t *soc
     }
 
     if (sock == NULL) {
-        sock = malloc(sizeof(struct unix_abstract));
-        sock->refcount = 0;
+        size_t name_len = strlen(name);
+        sock = malloc(sizeof(struct unix_abstract) + name_len + 1);
+        if (sock == NULL) {
+            unlock(&unix_abstract_lock);
+            return _ENOMEM;
+        }
+        // One reference, held by the fd doing the bind. A lookup takes none:
+        // it reads socket_id and is done, and incrementing for it leaked the
+        // name forever, since only the bind case has anywhere to put the
+        // pointer that unix_abstract_release is eventually called with.
+        sock->refcount = 1;
         sock->hash = hash;
         sock->socket_id = unix_socket_next_id();
+        memcpy(sock->name, name, name_len + 1);
         list_add(bucket, &sock->links);
     }
 
-    sock->refcount++;
-    unlock(&unix_abstract_lock);
+    // Read under the lock. Afterwards the entry may already have been
+    // released by whoever else holds it.
     *socket_id = sock->socket_id;
+    unlock(&unix_abstract_lock);
     if (bind_fd != NULL)
         bind_fd->socket.unix_name_abstract = sock;
     return 0;
@@ -434,31 +450,51 @@ int_t sys_accept(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr) {
             return _EFAULT;
     }
 
-    char sockaddr[sockaddr_len];
+    // Sized by what an address can be, not by what the guest asked for. The
+    // guest length is not a promise of anything, and as a VLA it was a
+    // guest-chosen stack allocation with no upper bound — a length of
+    // 0xffffffff is four gigabytes on the thread stack. Truncation to the
+    // guest's buffer happens in sockaddr_write, which is where it belongs.
+    struct sockaddr_max_ sockaddr;
+    socklen_t real_len = sizeof(sockaddr);
     int client;
     do {
         sockrestart_begin_listen_wait(sock);
         errno = 0;
         client = accept(sock->real_fd,
-                sockaddr_addr != 0 ? (void *) sockaddr : NULL,
-                sockaddr_addr != 0 ? &sockaddr_len : NULL);
+                sockaddr_addr != 0 ? (void *) &sockaddr : NULL,
+                sockaddr_addr != 0 ? &real_len : NULL);
         sockrestart_end_listen_wait(sock);
     } while (sockrestart_should_restart_listen_wait() && errno == EINTR);
     if (client < 0)
         return errno_map();
 
     if (sockaddr_addr != 0) {
-        int err = sockaddr_write(sockaddr_addr, sockaddr, sizeof(sockaddr), &sockaddr_len);
-        if (err < 0)
-            return client;
-        if (user_put(sockaddr_len_addr, sockaddr_len))
+        // Reporting the address must not cost the caller the connection: on
+        // failure the accepted host socket is closed and the error returned.
+        // Returning `client` handed a *host* descriptor back as the result of
+        // a guest syscall, and leaked it besides.
+        dword_t out_len = real_len;
+        int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
+        if (err < 0) {
+            close(client);
+            return err;
+        }
+        if (user_put(sockaddr_len_addr, out_len)) {
+            close(client);
             return _EFAULT;
+        }
     }
 
     fd_t client_f = sock_fd_create(client,
             sock->socket.domain, sock->socket.type, sock->socket.protocol);
-    if (client_f < 0)
+    if (client_f < 0) {
+        // Everything below reaches for f_get(client_f). Falling through on a
+        // failed allocation dereferenced NULL, so an accept under memory
+        // pressure crashed the emulator instead of returning the error.
         close(client);
+        return client_f;
+    }
 
     if (sock->socket.domain == AF_LOCAL_) {
         lock(&peer_lock);
@@ -497,17 +533,19 @@ int_t sys_accept4(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr, 
     return client_f;
 }
 
-static void copy_unix_name(char *sockaddr, dword_t *sockaddr_len, struct fd *sock) {
-    struct sockaddr_ *fake_addr = (void *) sockaddr;
+// Fills the kernel's own address buffer and reports how much of it means
+// anything; clamping that to what the guest asked for is sockaddr_write's job.
+// The guest length used to double as the capacity here, which underflowed the
+// memset size to SIZE_MAX for any addrlen below two.
+static void copy_unix_name(struct sockaddr_max_ *fake_addr, dword_t *sockaddr_len, struct fd *sock) {
     fake_addr->family = PF_LOCAL_;
 
-    size_t data_len = *sockaddr_len - offsetof(struct sockaddr_, data);
     size_t name_len = sock->socket.unix_name_len;
-    if (name_len > data_len)
-        name_len = data_len;
-    memset(fake_addr->data, 0, data_len);
+    if (name_len > sizeof(fake_addr->data))
+        name_len = sizeof(fake_addr->data);
+    memset(fake_addr->data, 0, sizeof(fake_addr->data));
     memcpy(fake_addr->data, sock->socket.unix_name, name_len);
-    *sockaddr_len = offsetof(struct sockaddr_, data) + name_len;
+    *sockaddr_len = offsetof(struct sockaddr_max_, data) + name_len;
 }
 
 int_t sys_getsockname(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr) {
@@ -518,26 +556,35 @@ int_t sys_getsockname(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_ad
     dword_t sockaddr_len;
     if (user_get(sockaddr_len_addr, sockaddr_len))
         return _EFAULT;
-    char sockaddr[sockaddr_len];
+    // See sys_accept: sized by what an address can be, not by the unbounded
+    // length the guest supplied.
+    struct sockaddr_max_ sockaddr;
+    dword_t out_len = sizeof(sockaddr);
 
     // if this is a unix socket, return the same string passed to bind
     if (sock->socket.domain == PF_LOCAL_) {
-        copy_unix_name(sockaddr, &sockaddr_len, sock);
-        if (user_write(sockaddr_addr, sockaddr, sizeof(sockaddr)))
+        copy_unix_name(&sockaddr, &out_len, sock);
+        // The address is truncated to the guest's buffer rather than refused,
+        // and the length reported is the untruncated one — same contract as
+        // sockaddr_write, which the unix case does not go through.
+        if (user_write(sockaddr_addr, &sockaddr,
+                       out_len < sockaddr_len ? out_len : sockaddr_len))
             return _EFAULT;
-        if (user_put(sockaddr_len_addr, sockaddr_len))
+        if (user_put(sockaddr_len_addr, out_len))
             return _EFAULT;
         return 0;
     }
 
-    int res = getsockname(sock->real_fd, (void *) sockaddr, &sockaddr_len);
+    socklen_t real_len = sizeof(sockaddr);
+    int res = getsockname(sock->real_fd, (void *) &sockaddr, &real_len);
     if (res < 0)
         return errno_map();
 
-    int err = sockaddr_write(sockaddr_addr, sockaddr, sizeof(sockaddr), &sockaddr_len);
+    out_len = real_len;
+    int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
     if (err < 0)
         return err;
-    if (user_put(sockaddr_len_addr, sockaddr_len))
+    if (user_put(sockaddr_len_addr, out_len))
         return _EFAULT;
     return res;
 }
@@ -554,15 +601,19 @@ int_t sys_getpeername(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_ad
     // TODO if this is a unix socket, return the same string the peer passed to
     // bind once the peer pointer is available
 
-    char sockaddr[sockaddr_len];
-    int res = getpeername(sock->real_fd, (void *) sockaddr, &sockaddr_len);
+    // See sys_accept: sized by what an address can be, not by the unbounded
+    // length the guest supplied.
+    struct sockaddr_max_ sockaddr;
+    socklen_t real_len = sizeof(sockaddr);
+    int res = getpeername(sock->real_fd, (void *) &sockaddr, &real_len);
     if (res < 0)
         return errno_map();
 
-    int err = sockaddr_write(sockaddr_addr, sockaddr, sizeof(sockaddr), &sockaddr_len);
+    dword_t out_len = real_len;
+    int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
     if (err < 0)
         return err;
-    if (user_put(sockaddr_len_addr, sockaddr_len))
+    if (user_put(sockaddr_len_addr, out_len))
         return _EFAULT;
     return res;
 }
@@ -654,7 +705,10 @@ static long sock_get_timeout_ms(int real_fd, int optname) {
     socklen_t len = sizeof(tv);
     if (getsockopt(real_fd, SOL_SOCKET, optname, &tv, &len) < 0)
         return 0;
-    return (long)tv.tv_sec * 1000L + (long)tv.tv_usec / 1000L;
+    // Rounded up, not truncated. Zero is this function's "no timeout set", so
+    // truncation turned any SO_RCVTIMEO below a millisecond into an
+    // indefinite wait — the opposite of what was asked for.
+    return (long)tv.tv_sec * 1000L + ((long)tv.tv_usec + 999L) / 1000L;
 }
 
 static long monotonic_ms(void) {
@@ -739,8 +793,13 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
         if (user_get(sockaddr_len_addr, sockaddr_len))
             return _EFAULT;
 
-    char *buffer = malloc(len);
-    char sockaddr[sockaddr_len];
+    char *buffer = malloc(len ? len : 1);
+    if (buffer == NULL)
+        return _ENOMEM;
+    // See sys_accept: sized by what an address can be, not by the unbounded
+    // length the guest supplied.
+    struct sockaddr_max_ sockaddr;
+    socklen_t real_len = sizeof(sockaddr);
 
     // Determine whether this call should wait for data:
     //   * guest flags MSG_DONTWAIT → never wait (explicit)
@@ -770,15 +829,35 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
                current->pid, current->comm, sock_fd, sock->real_fd,
                (unsigned)len, (unsigned)flags,
                host_flags, sock->flags);
+        // MSG_WAITALL asks for the whole length, and the wait loop forcing
+        // MSG_DONTWAIT took that away: the first partial read satisfied
+        // `res >= 0` and returned. Only stream sockets can be partially
+        // filled, so only they accumulate; on a datagram socket a message
+        // arrives whole and MSG_WAITALL has nothing to add.
+        bool wait_all = (real_flags & MSG_WAITALL) && sock->socket.type == SOCK_STREAM_;
+        size_t got = 0;
         for (;;) {
-            res = recvfrom(sock->real_fd, buffer, len, real_flags | MSG_DONTWAIT,
-                    sockaddr_addr != 0 ? (void *) sockaddr : NULL,
-                    sockaddr_len_addr != 0 ? &sockaddr_len : NULL);
-            if (res >= 0)
-                break;
+            ssize_t n = recvfrom(sock->real_fd, buffer + got, len - got,
+                    real_flags | MSG_DONTWAIT,
+                    // The address belongs to the first message read; later
+                    // reads must not overwrite it.
+                    sockaddr_addr != 0 && got == 0 ? (void *) &sockaddr : NULL,
+                    sockaddr_len_addr != 0 && got == 0 ? &real_len : NULL);
+            if (n > 0) {
+                got += n;
+                if (!wait_all || got == len)
+                    break;
+                continue;
+            }
+            if (n == 0)
+                break; // orderly shutdown; a short result is the right answer
             if (errno == EINTR)
                 continue;
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                // Whatever was already received is the result; the error
+                // belongs to the next call.
+                if (got > 0)
+                    break;
                 free(buffer);
                 return errno_map();
             }
@@ -786,32 +865,39 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
             // guest signal, then retry.
             int wr = sock_wait_readable(sock->real_fd);
             if (wr < 0) {
+                if (got > 0)
+                    break;
                 free(buffer);
                 return wr;
             }
         }
+        res = got;
     } else {
         res = recvfrom(sock->real_fd, buffer, len, real_flags,
-                sockaddr_addr != 0 ? (void *) sockaddr : NULL,
-                sockaddr_len_addr != 0 ? &sockaddr_len : NULL);
+                sockaddr_addr != 0 ? (void *) &sockaddr : NULL,
+                sockaddr_len_addr != 0 ? &real_len : NULL);
         if (res < 0) {
             free(buffer);
             return errno_map();
         }
     }
 
-    if (user_write(buffer_addr, buffer, len)) {
+    // `res` bytes were received, `len` were asked for. Copying `len` back
+    // overwrote whatever the guest had after a short read with the tail of an
+    // uninitialised heap buffer.
+    if (user_write(buffer_addr, buffer, res)) {
         free(buffer);
         return _EFAULT;
     }
     free(buffer);
+    dword_t out_len = real_len;
     if (sockaddr_addr != 0) {
-        int err = sockaddr_write(sockaddr_addr, sockaddr, sizeof(sockaddr), &sockaddr_len);
+        int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
         if (err < 0)
             return err;
     }
     if (sockaddr_len_addr != 0)
-        if (user_put(sockaddr_len_addr, sockaddr_len))
+        if (user_put(sockaddr_len_addr, out_len))
             return _EFAULT;
     return res;
 }
@@ -837,12 +923,21 @@ int_t sys_shutdown(fd_t sock_fd, dword_t how) {
 
 #define DEFAULT_TCP_CONGESTION "cubic"
 
+// A socket option value is small: the largest iSH translates is struct
+// tcp_info_ at about a hundred bytes, and ICMP6_FILTER is thirty-two. The
+// length used to come from the guest and size a VLA, so there was no bound on
+// it at all and a length of 0xffffffff was four gigabytes of thread stack.
+// Linux answers EINVAL for an implausible optlen rather than allocating it.
+#define SOCKOPT_VALUE_MAX 256
+
 int_t sys_setsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_addr, dword_t value_len) {
     STRACE("setsockopt(%d, %d, %d, 0x%x, %d)", sock_fd, level, option, value_addr, value_len);
     struct fd *sock = sock_getfd(sock_fd);
     if (sock == NULL)
         return _EBADF;
-    char value[value_len];
+    if (value_len > SOCKOPT_VALUE_MAX)
+        return _EINVAL;
+    char value[SOCKOPT_VALUE_MAX] = {};
     if (user_read(value_addr, value, value_len))
         return _EFAULT;
 
@@ -887,9 +982,12 @@ int_t sys_getsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
     dword_t value_len;
     if (user_get(len_addr, value_len))
         return _EFAULT;
-    char value[value_len];
-    if (user_read(value_addr, value, value_len))
-        return _EFAULT;
+    if (value_len > SOCKOPT_VALUE_MAX)
+        return _EINVAL;
+    // Not read back from the guest. This is the *output* buffer, and Linux
+    // never reads it — doing so made a write-only or not-yet-faulted-in
+    // optval fail with EFAULT, on top of the unbounded VLA the length sized.
+    char value[SOCKOPT_VALUE_MAX] = {};
 
     if (level == SOL_SOCKET_ && (option == SO_DOMAIN_ || option == SO_TYPE_ || option == SO_PROTOCOL_)) {
         dword_t *value_p = (dword_t *) value;
@@ -923,8 +1021,14 @@ int_t sys_getsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
             return errno_map();
         *(dword_t *) value = real_error == 0 ? 0 : -err_map(real_error);
     } else if (level == IPPROTO_TCP && option == TCP_CONGESTION_) {
-        value_len = strlen(DEFAULT_TCP_CONGESTION);
-        memcpy(value, DEFAULT_TCP_CONGESTION, value_len);
+        // Truncated to what the guest asked for, not expanded to the name's
+        // length: this branch used to overwrite value_len with strlen() and
+        // copy that many bytes into a buffer the guest had sized smaller.
+        size_t name_len = strlen(DEFAULT_TCP_CONGESTION);
+        if (name_len > value_len)
+            name_len = value_len;
+        memcpy(value, DEFAULT_TCP_CONGESTION, name_len);
+        value_len = name_len;
 #if defined(__APPLE__)
     } else if (level == IPPROTO_TCP && option == TCP_INFO_) {
         // This one's fun. On Linux, the struct is not ABI dependent, so no
@@ -980,14 +1084,18 @@ int_t sys_getsockopt(fd_t sock_fd, dword_t level, dword_t option, addr_t value_a
         if (real_level < 0)
             return _EINVAL;
 
-        int err = getsockopt(sock->real_fd, real_level, real_opt, value, &value_len);
+        socklen_t real_len = value_len;
+        int err = getsockopt(sock->real_fd, real_level, real_opt, value, &real_len);
         if (err < 0)
             return errno_map();
+        value_len = real_len;
     }
 
     if (user_put(len_addr, value_len))
         return _EFAULT;
-    if (user_put(value_addr, value))
+    // user_put would write sizeof(value) — the whole fixed buffer — where the
+    // VLA it replaced happened to be exactly value_len long.
+    if (user_write(value_addr, value, value_len))
         return _EFAULT;
     return 0;
 }

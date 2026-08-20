@@ -128,14 +128,20 @@ const struct tty_driver_ops pty_slave_ops = {
 };
 DEFINE_TTY_DRIVER(pty_slave, &pty_slave_ops, TTY_PSEUDO_SLAVE_MAJOR, MAX_PTYS);
 
+// Returns MAX_PTYS when the table is full; callers turn that into ENOSPC.
+// The reservation must not be written in that case: the table has exactly
+// MAX_PTYS slots, so ttys[MAX_PTYS] is one past the end and lands in whatever
+// the linker put next to it — silent corruption of adjacent driver state
+// where the guest asked for, and should have got, ENOSPC.
 static int pty_reserve_next(void) {
     int pty_num;
     lock(&ttys_lock);
     for (pty_num = 0; pty_num < MAX_PTYS; pty_num++) {
-        if (pty_slave.ttys[pty_num] == NULL)
+        if (pty_slave.ttys[pty_num] == NULL) {
+            pty_slave.ttys[pty_num] = (void *) 1; // anything non-null to reserve it
             break;
+        }
     }
-    pty_slave.ttys[pty_num] = (void *) 1; // anything non-null to reserve it
     unlock(&ttys_lock);
     return pty_num;
 }
@@ -175,7 +181,7 @@ static bool isdigits(const char *str) {
 static const struct fd_ops devpts_fdops;
 
 static bool devpts_pty_exists(int pty_num) {
-    if (pty_num < 0 || pty_num > MAX_PTYS)
+    if (pty_num < 0 || pty_num >= MAX_PTYS)
         return false;
     lock(&ttys_lock);
     bool exists = pty_slave.ttys[pty_num] != NULL;
