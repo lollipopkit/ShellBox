@@ -94,16 +94,16 @@ static struct poll_fd *poll_find_fd(struct poll *poll, struct fd *fd, int fd_no)
 // types deletes the host registration. poll->lock must be held.
 static int poll_real_refresh(struct poll *poll, struct fd *fd) {
     int types = 0;
-    struct poll_fd *pf, *first = NULL;
+    struct poll_fd *pf;
     list_for_each_entry(&poll->poll_fds, pf, fds) {
-        if (pf->fd == fd) {
-            if (first == NULL)
-                first = pf;
-            if (!pf->oneshot_fired)
-                types |= pf->types;
-        }
+        if (pf->fd == fd && !pf->oneshot_fired)
+            types |= pf->types;
     }
-    return real_poll_update(&poll->real, fd->real_fd, types, first);
+    // The payload names the *description*, not one of the registrations of
+    // it. One host registration stands for all of them, so there is no first
+    // among them to speak for the rest — and naming one meant only that one
+    // had its edge state cleared when the host reported an event.
+    return real_poll_update(&poll->real, fd->real_fd, types, fd);
 }
 
 // See comment on pollfd_freelist for context
@@ -494,12 +494,21 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
             break;
         }
 
-        // dead with any edge-triggered notifications
+        // deal with any edge-triggered notifications: every registration of
+        // the description the host named, not just the one that happened to
+        // come first in the list. A second EPOLLET registration of the same
+        // descriptor used to keep an edge it had already been told about and
+        // stop reporting readiness for good.
         for (int i = 0; i < err; i++) {
-            struct poll_fd *triggered_poll_fd = rpe_data(&e[i]);
-            if (triggered_poll_fd != NULL && triggered_poll_fd->poll != NULL &&
-                    triggered_poll_fd->types & POLL_EDGETRIGGERED) {
-                triggered_poll_fd->triggered_types &= ~rpe_events(&e[i]);
+            struct fd *triggered_fd = rpe_data(&e[i]);
+            if (triggered_fd == NULL)
+                continue; // the notify pipe, which registers no payload
+            int triggered_events = rpe_events(&e[i]);
+            struct poll_fd *edge_pf;
+            list_for_each_entry(&poll_->poll_fds, edge_pf, fds) {
+                if (edge_pf->fd == triggered_fd &&
+                        (edge_pf->types & POLL_EDGETRIGGERED))
+                    edge_pf->triggered_types &= ~triggered_events;
             }
         }
 
