@@ -48,6 +48,7 @@ int fd_close(struct fd *fd) {
             inode_release(fd->inode);
         if (fd->mount)
             mount_release(fd->mount);
+        free(fd->change_path);
         free(fd);
     }
     return err;

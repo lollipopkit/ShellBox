@@ -109,6 +109,10 @@ struct fd {
     struct mount *mount;
     int real_fd; // seeks on this fd require the lock TODO think about making a special lock just for that
     DIR *dir;
+    // The guest path this was opened at, kept only when the open was
+    // write-capable and only so realfs_write can name the file it changed.
+    // NULL otherwise, and freed by fd_close.
+    char *change_path;
     struct inode_data *inode;
     ino_t fake_inode;
     struct statbuf stat; // for adhoc fs
