@@ -258,6 +258,22 @@ void path_rename(struct fakefs_db *fs, const char *src, const char *dst) {
     db_exec_reset(fs, fs->stmt.path_rename);
 }
 
+void path_delete_tree(struct fakefs_db *fs, const char *path) {
+    // delete from paths where (path >= ? [path plus /] and path < ? [path plus 0])
+    //  or path = ?
+    // The same half-open range path_rename uses: '/' is 0x2f and '0' is 0x30,
+    // so everything between them is exactly the children of `path`.
+    size_t len = strlen(path);
+    char extra[len + 1];
+    memcpy(extra, path, len);
+    extra[len] = '/';
+    sqlite3_bind_blob(fs->stmt.path_delete_tree, 1, extra, len + 1, SQLITE_TRANSIENT);
+    extra[len] = '0';
+    sqlite3_bind_blob(fs->stmt.path_delete_tree, 2, extra, len + 1, SQLITE_TRANSIENT);
+    sqlite3_bind_blob(fs->stmt.path_delete_tree, 3, extra, len, SQLITE_TRANSIENT);
+    db_exec_reset(fs, fs->stmt.path_delete_tree);
+}
+
 #if DEBUG_sql
 static int trace_callback(unsigned UNUSED(why), void *UNUSED(fuck), void *stmt, void *_sql) {
     char *sql = _sql;
@@ -387,6 +403,8 @@ int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
     PREPARE_OR_FAIL(inode_write_stat, "update stats set stat = ? where inode = ?");
     PREPARE_OR_FAIL(path_link, "insert or replace into paths (path, inode) values (?, ?)");
     PREPARE_OR_FAIL(path_unlink, "delete from paths where path = ?");
+    PREPARE_OR_FAIL(path_delete_tree, "delete from paths where "
+            "(path >= ? and path < ?) or path = ?");
     PREPARE_OR_FAIL(path_rename, "update or replace paths set path = change_prefix(path, ?, ?) "
             "where (path >= ? and path < ?) or path = ?");
     PREPARE_OR_FAIL(path_from_inode, "select path from paths where inode = ?");
@@ -421,6 +439,7 @@ int fake_db_deinit(struct fakefs_db *fs) {
         sqlite3_finalize(fs->stmt.path_link);
         sqlite3_finalize(fs->stmt.path_unlink);
         sqlite3_finalize(fs->stmt.path_rename);
+        sqlite3_finalize(fs->stmt.path_delete_tree);
         sqlite3_finalize(fs->stmt.path_from_inode);
         sqlite3_finalize(fs->stmt.try_cleanup_inode);
         return sqlite3_close(fs->db);

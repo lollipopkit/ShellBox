@@ -120,6 +120,12 @@ struct fakefs_bind_mount {
 
 static struct fakefs_bind_mount g_bind_mounts[FAKEFS_MAX_BIND_MOUNTS];
 struct mount *g_fakefs_mount = NULL;
+/* Guards both of the above. The table is written by the host — a session
+ * switch, a settings toggle — while guest threads translate paths through it
+ * on every open, stat and unlink. Nothing synchronized the two, so a lookup
+ * could read a slot with its guest path already replaced and its host path
+ * not, and fakefs_mount's memset of the whole table ran against live readers. */
+static lock_t g_bind_lock = LOCK_INITIALIZER;
 
 /* Optional host-provided override hooks for guest↔host path translation.
  * NULL unless host registers via fakefs_set_path_*_hook(). Defined here
@@ -201,6 +207,7 @@ static bool fakefs_host_path_contains_rootfs(const char *host_path, int host_pat
  * suppression is no-op until fakefs_set_rootfs_data_path() is called by
  * the host. */
 bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t out_size) {
+    lock(&g_bind_lock);
     /* Longest match wins, as in the forward direction: taking the first
      * matching host prefix returned the outer mount's guest path for
      * something that belonged to a nested one. */
@@ -257,8 +264,10 @@ bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t
     }
     if (best >= 0) {
         snprintf(out_path, out_size, "%s%s", g_bind_mounts[best].path, best_rest);
+        unlock(&g_bind_lock);
         return true;
     }
+    unlock(&g_bind_lock);
     /* Static table miss — fall through to the host-provided reverse hook
      * if one is registered. The hook knows about per-context routes that
      * are not in g_bind_mounts[]. */
@@ -312,7 +321,8 @@ static void bind_mount_normalize(const char *path, char *out, size_t out_size) {
     out[len] = '\0';
 }
 
-/* The index of the longest matching bind mount, or -1. Matching by table
+/* The index of the longest matching bind mount, or -1. Callers hold
+ * g_bind_lock, and the index is only meaningful while they keep holding it. Matching by table
  * order meant that with /mnt registered before /mnt/sub, everything under the
  * nested mount was routed through the outer one and the nested registration
  * did nothing at all. */
@@ -367,11 +377,15 @@ static bool bind_mount_translate_path_ex(const char *path, char *out_path,
             return true;
         }
     }
+    lock(&g_bind_lock);
     int i = bind_mount_find(cmp_path, false);
-    if (i < 0)
+    if (i < 0) {
+        unlock(&g_bind_lock);
         return false;
+    }
     snprintf(out_path, out_size, "%s%s",
              g_bind_mounts[i].host_path, cmp_path + g_bind_mounts[i].path_len);
+    unlock(&g_bind_lock);
     return true;
 }
 
@@ -384,7 +398,10 @@ static bool bind_mount_translate_path(const char *path, char *out_path, size_t o
 static bool is_under_bind_mount(const char *path) {
     char normalized[MAX_PATH];
     bind_mount_normalize(path, normalized, sizeof(normalized));
-    return bind_mount_find(normalized, false) >= 0;
+    lock(&g_bind_lock);
+    bool found = bind_mount_find(normalized, false) >= 0;
+    unlock(&g_bind_lock);
+    return found;
 }
 
 /* Return true if `path` is at or under a bind mount that was registered
@@ -395,7 +412,10 @@ static bool is_under_bind_mount(const char *path) {
 static bool is_under_readonly_bind_mount(const char *path) {
     char normalized[MAX_PATH];
     bind_mount_normalize(path, normalized, sizeof(normalized));
-    return bind_mount_find(normalized, true) >= 0;
+    lock(&g_bind_lock);
+    bool found = bind_mount_find(normalized, true) >= 0;
+    unlock(&g_bind_lock);
+    return found;
 }
 
 /* Auto-create a meta.db entry for a path under a bind mount.
@@ -1218,6 +1238,72 @@ static void remove_tree_at(int dir_fd, const char *path) {
     unlinkat(dir_fd, path, AT_REMOVEDIR);
 }
 
+/* Where a mount point's previous contents are kept while a bind is in place.
+ * remove_tree_at() used to unlink every child before the symlink was created,
+ * so binding over a directory that already held guest files destroyed them
+ * for good and fakefs_bind_unmount left an empty directory behind. */
+#define BIND_SAVED_SUFFIX ".ish-bind-saved"
+
+static const char *host_link_of(const char *linux_path) {
+    return fix_path(linux_path);
+}
+
+static void bind_saved_name(const char *host_link, char *out, size_t out_size) {
+    snprintf(out, out_size, "%s%s", host_link, BIND_SAVED_SUFFIX);
+}
+
+/* Move whatever is at the mount point aside. A symlink there is one of ours
+ * from an earlier registration and carries nothing worth keeping. */
+static int bind_mount_stash(int root_fd, const char *host_link) {
+    struct stat st;
+    if (fstatat(root_fd, host_link, &st, AT_SYMLINK_NOFOLLOW) < 0)
+        return 0; /* nothing there */
+    if (S_ISLNK(st.st_mode)) {
+        unlinkat(root_fd, host_link, 0);
+        return 0;
+    }
+    char saved[PATH_MAX];
+    bind_saved_name(host_link, saved, sizeof(saved));
+    struct stat saved_st;
+    if (fstatat(root_fd, saved, &saved_st, AT_SYMLINK_NOFOLLOW) == 0) {
+        /* A stash from an earlier bind that was never restored. That tree is
+         * the guest's original and outranks whatever has appeared at the
+         * mount point since, which can only have come from the bind itself. */
+        remove_tree_at(root_fd, host_link);
+        return 0;
+    }
+    if (renameat(root_fd, host_link, root_fd, saved) < 0)
+        return errno_map();
+    return 0;
+}
+
+static void bind_mount_restore(int root_fd, const char *host_link) {
+    struct stat st;
+    if (fstatat(root_fd, host_link, &st, AT_SYMLINK_NOFOLLOW) == 0 && S_ISLNK(st.st_mode))
+        unlinkat(root_fd, host_link, 0);
+    char saved[PATH_MAX];
+    bind_saved_name(host_link, saved, sizeof(saved));
+    struct stat saved_st;
+    if (fstatat(root_fd, saved, &saved_st, AT_SYMLINK_NOFOLLOW) == 0)
+        renameat(root_fd, saved, root_fd, host_link);
+}
+
+/* Drop every meta.db row below a guest path, leaving the mount point's own.
+ * The rows describe files in a host tree that is being replaced or taken
+ * away; kept, they gave a later mount at the same guest path the previous
+ * one's inode numbers, types and permissions. */
+static void bind_mount_forget_descendants(struct fakefs_db *fs, const char *linux_path) {
+    char prefix[MAX_PATH];
+    size_t n = strlcpy(prefix, linux_path, sizeof(prefix));
+    if (n >= sizeof(prefix) - 1)
+        return;
+    if (n > 0 && prefix[n - 1] == '/')
+        prefix[--n] = '\0';
+    db_begin_write(fs);
+    path_delete_tree(fs, prefix);
+    db_commit(fs);
+}
+
 int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_only) {
     fprintf(stderr, "fakefs_bind_mount: ENTER linux_path=\"%s\" (len=%zu) host_path=\"%s\" (len=%zu) read_only=%d\n",
             linux_path, strlen(linux_path), host_path, strlen(host_path), read_only ? 1 : 0);
@@ -1275,163 +1361,136 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
     uint32_t file_mode = read_only ? 0444 : 0644;
     uint32_t top_mode = is_file_mount ? (S_IFREG | file_mode) : (S_IFDIR | dir_mode);
 
-    /* Check if already mounted at this path — update if host_path or mode changed */
+    /* Everything that touches the table happens under g_bind_lock, and
+     * nothing else does. The symlink work and the meta.db work below both
+     * block, and fakefs_stat translates a path while holding a read
+     * transaction — so taking the database lock with this one held would
+     * invert the order the two are acquired in and deadlock. */
+    lock(&g_bind_lock);
+    if (g_fakefs_mount == NULL) {
+        unlock(&g_bind_lock);
+        return _ENODEV;
+    }
+    int root_fd = g_fakefs_mount->root_fd;
+    int slot = -1;
+    bool host_changed = true;
     for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
         if (g_bind_mounts[i].active &&
             strcmp(g_bind_mounts[i].path, linux_path) == 0) {
-            bool host_changed = strcmp(g_bind_mounts[i].host_path, host_path) != 0;
-            /* Always refresh the read-only flag — the user may have flipped
-             * writability in Settings without changing anything else. */
-            g_bind_mounts[i].read_only = read_only;
-
-            /* Always refresh the meta.db mode — the read-only flag may have
-             * flipped even if host_path is unchanged (e.g. user toggled
-             * writability in Settings). */
-            {
-                struct fakefs_db *fs = &g_fakefs_mount->fakefs;
-                db_begin_write(fs);
-                inode_t existing = path_get_inode(fs, linux_path);
-                if (existing != 0) {
-                    struct ish_stat prev;
-                    if (inode_read_stat_if_exist(fs, existing, &prev)) {
-                        prev.mode = top_mode;
-                        inode_write_stat(fs, existing, &prev);
-                        fprintf(stderr, "fakefs_bind_mount: slot[%d] updated meta.db mode to 0%o\n",
-                                i, top_mode & 07777);
-                    }
-                } else {
-                    struct ish_stat ishstat = {
-                        .mode = top_mode, .uid = 0, .gid = 0, .rdev = 0
-                    };
-                    path_create(fs, linux_path, &ishstat);
-                    fprintf(stderr, "fakefs_bind_mount: slot[%d] created meta.db entry with mode 0%o\n",
-                            i, top_mode & 07777);
-                }
-                db_commit(fs);
+            slot = i;
+            host_changed = strcmp(g_bind_mounts[i].host_path, host_path) != 0;
+            break;
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
+            if (!g_bind_mounts[i].active) {
+                slot = i;
+                break;
             }
+        }
+    }
+    if (slot < 0) {
+        unlock(&g_bind_lock);
+        fprintf(stderr, "fakefs_bind_mount: FAIL no free slots (max=%d)\n", FAKEFS_MAX_BIND_MOUNTS);
+        return _ENOMEM;
+    }
+    /* `active` goes false first and true last, so a concurrent lookup either
+     * sees the slot as it was or as it will be, never with one path replaced
+     * and the other not. */
+    g_bind_mounts[slot].active = false;
+    strlcpy(g_bind_mounts[slot].path, linux_path, sizeof(g_bind_mounts[slot].path));
+    g_bind_mounts[slot].path_len = strlen(linux_path);
+    strlcpy(g_bind_mounts[slot].host_path, host_path, sizeof(g_bind_mounts[slot].host_path));
+    g_bind_mounts[slot].host_path_len = strlen(host_path);
+    g_bind_mounts[slot].read_only = read_only;
+    g_bind_mounts[slot].active = true;
+    unlock(&g_bind_lock);
 
-            if (!host_changed) {
-                fprintf(stderr, "fakefs_bind_mount: slot[%d] already mounted with same host_path, mode refreshed\n", i);
-                return 0;
-            }
-            /* host_path changed (e.g. session switch) — update slot and symlink */
-            fprintf(stderr, "fakefs_bind_mount: slot[%d] host_path changed from \"%s\" to \"%s\"\n",
-                    i, g_bind_mounts[i].host_path, host_path);
-            strlcpy(g_bind_mounts[i].host_path, host_path,
-                    sizeof(g_bind_mounts[i].host_path));
-            g_bind_mounts[i].host_path_len = strlen(host_path);
+    fprintf(stderr, "fakefs_bind_mount: slot[%d] \"%s\" -> \"%s\" (root_fd=%d, host_changed=%d)\n",
+            slot, linux_path, host_path, root_fd, host_changed ? 1 : 0);
 
-            char host_link[PATH_MAX];
-            snprintf(host_link, sizeof(host_link), "%s", fix_path(linux_path));
-            fprintf(stderr, "fakefs_bind_mount: slot[%d] UPDATE symlink: host_link=\"%s\" -> host_path=\"%s\" (root_fd=%d)\n",
-                    i, host_link, host_path, g_fakefs_mount->root_fd);
-            /* Remove whatever is at the path (file, symlink, or directory tree) */
-            remove_tree_at(g_fakefs_mount->root_fd, host_link);
-            int err = create_relative_symlink(g_fakefs_mount->root_fd, host_link, host_path);
-            fprintf(stderr, "fakefs_bind_mount: slot[%d] symlinkat returned %d (errno=%d)\n", i, err, err < 0 ? errno : 0);
-            if (err < 0) {
-                g_bind_mounts[i].active = false;
-                return _EINVAL;
-            }
-            return 0;
+    char host_link[PATH_MAX];
+    snprintf(host_link, sizeof(host_link), "%s", fix_path(linux_path));
+
+    if (host_changed) {
+        int err = bind_mount_stash(root_fd, host_link);
+        if (err == 0 && create_relative_symlink(root_fd, host_link, host_path) < 0)
+            err = errno_map();
+        if (err < 0) {
+            fprintf(stderr, "fakefs_bind_mount: slot[%d] symlink failed (err=%d)\n", slot, err);
+            lock(&g_bind_lock);
+            g_bind_mounts[slot].active = false;
+            unlock(&g_bind_lock);
+            bind_mount_restore(root_fd, host_link);
+            return err;
         }
     }
 
-    /* Find a free slot */
-    for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
-        if (!g_bind_mounts[i].active) {
-            fprintf(stderr, "fakefs_bind_mount: using free slot[%d]\n", i);
-            strlcpy(g_bind_mounts[i].path, linux_path,
-                    sizeof(g_bind_mounts[i].path));
-            g_bind_mounts[i].path_len = strlen(linux_path);
-            strlcpy(g_bind_mounts[i].host_path, host_path,
-                    sizeof(g_bind_mounts[i].host_path));
-            g_bind_mounts[i].host_path_len = strlen(host_path);
-            g_bind_mounts[i].active = true;
-            g_bind_mounts[i].read_only = read_only;
-
-            /* Create symlink on host: data/<linux_path> -> <host_path>
-             * First remove any existing file/dir at the path (may be non-empty) */
-            char host_link[PATH_MAX];
-            snprintf(host_link, sizeof(host_link), "%s", fix_path(linux_path));
-
-            fprintf(stderr, "fakefs_bind_mount: slot[%d] NEW symlink: host_link=\"%s\" -> host_path=\"%s\" (root_fd=%d)\n",
-                    i, host_link, host_path, g_fakefs_mount->root_fd);
-
-            /* Remove whatever is at the path (file, symlink, or directory tree) */
-            remove_tree_at(g_fakefs_mount->root_fd, host_link);
-
-            /* Create the symlink (relative path to avoid iOS sandbox issues) */
-            int err = create_relative_symlink(g_fakefs_mount->root_fd, host_link, host_path);
-            fprintf(stderr, "fakefs_bind_mount: slot[%d] symlinkat returned %d (errno=%d)\n", i, err, err < 0 ? errno : 0);
-            if (err < 0) {
-                g_bind_mounts[i].active = false;
-                return _EINVAL;
+    /* Ensure the mount point exists in meta.db with the mode the read_only
+     * flag calls for, and drop any rows describing the tree that used to be
+     * there. Those rows outlived both the unmount and a change of host_path,
+     * so a stat of a path under the new target answered with the old one's
+     * type and inode. */
+    struct fakefs_db *fs = NULL;
+    lock(&g_bind_lock);
+    if (g_fakefs_mount != NULL)
+        fs = &g_fakefs_mount->fakefs;
+    unlock(&g_bind_lock);
+    if (fs != NULL) {
+        if (host_changed)
+            bind_mount_forget_descendants(fs, linux_path);
+        db_begin_write(fs);
+        inode_t ino = path_get_inode(fs, linux_path);
+        if (ino == 0) {
+            struct ish_stat ishstat = {
+                .mode = top_mode, .uid = 0, .gid = 0, .rdev = 0
+            };
+            path_create(fs, linux_path, &ishstat);
+        } else {
+            struct ish_stat prev;
+            if (inode_read_stat_if_exist(fs, ino, &prev)) {
+                prev.mode = top_mode;
+                inode_write_stat(fs, ino, &prev);
             }
-
-            /* Verify the symlink was created correctly */
-            char readbuf[PATH_MAX];
-            ssize_t rlen = readlinkat(g_fakefs_mount->root_fd, host_link, readbuf, sizeof(readbuf) - 1);
-            if (rlen > 0) {
-                readbuf[rlen] = '\0';
-                fprintf(stderr, "fakefs_bind_mount: slot[%d] VERIFY readlinkat(\"%s\") => \"%s\"\n", i, host_link, readbuf);
-            } else {
-                fprintf(stderr, "fakefs_bind_mount: slot[%d] VERIFY readlinkat(\"%s\") FAILED (errno=%d)\n", i, host_link, errno);
-            }
-
-            /* Ensure the mount point exists in meta.db (dir or file), with the
-             * correct mode based on the read_only flag. If an entry already
-             * exists from a previous run we rewrite the mode so the read-only
-             * state always matches what Settings says. */
-            struct fakefs_db *fs = &g_fakefs_mount->fakefs;
-            db_begin_write(fs);
-            inode_t ino = path_get_inode(fs, linux_path);
-            if (ino == 0) {
-                struct ish_stat ishstat = {
-                    .mode = top_mode, .uid = 0, .gid = 0, .rdev = 0
-                };
-                path_create(fs, linux_path, &ishstat);
-                fprintf(stderr, "fakefs_bind_mount: slot[%d] created meta.db entry for \"%s\" mode=0%o\n",
-                        i, linux_path, top_mode & 07777);
-            } else {
-                struct ish_stat prev;
-                if (inode_read_stat_if_exist(fs, ino, &prev)) {
-                    prev.mode = top_mode;
-                    inode_write_stat(fs, ino, &prev);
-                }
-                fprintf(stderr, "fakefs_bind_mount: slot[%d] meta.db entry refreshed for \"%s\" (inode=%lld) mode=0%o\n",
-                        i, linux_path, (long long)ino, top_mode & 07777);
-            }
-            db_commit(fs);
-
-            return 0;
         }
+        db_commit(fs);
     }
 
-    fprintf(stderr, "fakefs_bind_mount: FAIL no free slots (max=%d)\n", FAKEFS_MAX_BIND_MOUNTS);
-    return _ENOMEM; /* no free slots */
+    return 0;
 }
 
 int fakefs_bind_unmount(const char *linux_path) {
-    if (g_fakefs_mount == NULL)
+    lock(&g_bind_lock);
+    if (g_fakefs_mount == NULL) {
+        unlock(&g_bind_lock);
         return _ENODEV;
-
+    }
+    int root_fd = g_fakefs_mount->root_fd;
+    struct fakefs_db *fs = &g_fakefs_mount->fakefs;
+    int slot = -1;
     for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
         if (g_bind_mounts[i].active &&
             strcmp(g_bind_mounts[i].path, linux_path) == 0) {
             g_bind_mounts[i].active = false;
-
-            /* Remove the symlink */
-            char host_link[PATH_MAX];
-            snprintf(host_link, sizeof(host_link), "%s", fix_path(linux_path));
-            unlinkat(g_fakefs_mount->root_fd, host_link, 0);
-
-            return 0;
+            slot = i;
+            break;
         }
     }
+    unlock(&g_bind_lock);
+    if (slot < 0)
+        return _ENOENT;
 
-    return _ENOENT;
+    /* Take the symlink away and put back whatever the mount point held
+     * before it, which fakefs_bind_mount moved aside rather than deleting. */
+    bind_mount_restore(root_fd, host_link_of(linux_path));
+    /* The metadata described the host tree that is no longer there. Leaving
+     * it meant a later mount at the same guest path reused the old inode
+     * numbers, types and permissions for entirely different files. */
+    bind_mount_forget_descendants(fs, linux_path);
+    return 0;
 }
+
 
 static int fakefs_mount(struct mount *mount) {
     char db_path[PATH_MAX];
@@ -1450,8 +1509,10 @@ static int fakefs_mount(struct mount *mount) {
         return err;
 
     /* Store global reference for bind mount API */
+    lock(&g_bind_lock);
     g_fakefs_mount = mount;
     memset(g_bind_mounts, 0, sizeof(g_bind_mounts));
+    unlock(&g_bind_lock);
 
     return 0;
 }
@@ -1462,10 +1523,12 @@ static int fakefs_umount(struct mount *mount) {
      * g_fakefs_mount or deactivate the table — so a later fakefs_bind_unmount
      * called unlinkat(g_fakefs_mount->root_fd, ...) through a dangling
      * pointer, and translation kept handing out routes to a closed root. */
+    lock(&g_bind_lock);
     if (g_fakefs_mount == mount) {
         memset(g_bind_mounts, 0, sizeof(g_bind_mounts));
         g_fakefs_mount = NULL;
     }
+    unlock(&g_bind_lock);
     int err = fake_db_deinit(&mount->fakefs);
     if (err != SQLITE_OK) {
         printk("sqlite failed to close: %d\n", err);
