@@ -521,8 +521,13 @@ bool f80_eq(float80 a, float80 b) {
 bool f80_lte(float80 a, float80 b) {
     return f80_lt(a, b) || f80_eq(a, b);
 }
+// Not !f80_lte: f80_lt and f80_eq both reject NaN, so negating their
+// disjunction called every unordered pair "greater". x87 comparisons are
+// ordered — an unordered operand answers no to lt, eq and gt alike. It is
+// f80_log2's `while (f80_gt(x, two))` that this was costing, which looped on
+// a NaN rather than falling through.
 bool f80_gt(float80 a, float80 b) {
-    return !f80_lte(a, b);
+    return f80_lt(b, a);
 }
 
 float80 f80_log2(float80 x) {

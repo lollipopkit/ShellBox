@@ -145,11 +145,20 @@ static int fdtable_expand(struct fdtable *table, fd_t max) {
 }
 
 struct fd *fdtable_get(struct fdtable *table, fd_t f) {
-    if (f < 0 || (unsigned) f >= current->files->size)
+    // `table`, not current->files. Callers pass a table that is not the
+    // current task's — fdtable_copy and the /proc/pid/fd readers do — and
+    // bounding the index by the wrong table's size read past the end of the
+    // one actually indexed.
+    if (f < 0 || (unsigned) f >= table->size)
         return NULL;
     return table->files[f];
 }
 
+// TODO: this hands back a pointer with no reference taken, so the descriptor
+// can be closed by another thread between the lookup and the use. Every
+// caller in fs/ and kernel/ is written against that, which is why it has not
+// been changed here: the fix is an f_get that retains and a matching release
+// at each of the ~90 call sites, not a change to this function alone.
 struct fd *f_get(fd_t f) {
     lock(&current->files->lock);
     struct fd *fd = fdtable_get(current->files, f);
