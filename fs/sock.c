@@ -1106,6 +1106,14 @@ static void scm_free(struct scm *scm) {
     free(scm);
 }
 
+// Every iov_base in one call. The recvmsg paths bail out from several places
+// with the whole array already allocated, and used to return from the middle
+// of it, leaking each remaining buffer.
+static void free_iovecs(struct iovec *iov, size_t n) {
+    for (size_t i = 0; i < n; i++)
+        free(iov[i].iov_base);
+}
+
 int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     int err;
     STRACE("sendmsg(%d, %#x, %d)", sock_fd, msghdr_addr, flags);
@@ -1145,6 +1153,11 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     }
 
     // msg_iovec
+    // Both the descriptor array and the host iovec below are stack arrays
+    // sized by a guest-supplied count. Linux bounds it at UIO_MAXIOV and
+    // answers EMSGSIZE past that.
+    if (msg_fake.msg_iovlen > UIO_MAXIOV_)
+        return _EMSGSIZE;
 #ifdef GUEST_ARM64
     struct iovec64_ msg_iov_fake64[msg_fake.msg_iovlen];
     if (user_read(msg_fake.msg_iov, msg_iov_fake64, sizeof(msg_iov_fake64)))
@@ -1155,7 +1168,11 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     msg.msg_iovlen = msg_fake.msg_iovlen;
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
         msg_iov[i].iov_len = (size_t)msg_iov_fake64[i].len;
-        msg_iov[i].iov_base = malloc(msg_iov[i].iov_len);
+        msg_iov[i].iov_base = malloc(msg_iov[i].iov_len ? msg_iov[i].iov_len : 1);
+        if (msg_iov[i].iov_base == NULL) {
+            err = _ENOMEM;
+            goto out_free_iov;
+        }
         err = _EFAULT;
         if (user_read((addr_t)msg_iov_fake64[i].base, msg_iov[i].iov_base, msg_iov[i].iov_len))
             goto out_free_iov;
@@ -1170,7 +1187,11 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     msg.msg_iovlen = sizeof(msg_iov) / sizeof(msg_iov[0]);
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
         msg_iov[i].iov_len = msg_iov_fake[i].len;
-        msg_iov[i].iov_base = malloc(msg_iov_fake[i].len);
+        msg_iov[i].iov_base = malloc(msg_iov_fake[i].len ? msg_iov_fake[i].len : 1);
+        if (msg_iov[i].iov_base == NULL) {
+            err = _ENOMEM;
+            goto out_free_iov;
+        }
         err = _EFAULT;
         if (user_read(msg_iov_fake[i].base, msg_iov[i].iov_base, msg_iov_fake[i].len))
             goto out_free_iov;
@@ -1194,6 +1215,7 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     msg.msg_controllen = 0;
 
     struct scm *scm = NULL;
+    struct fd *scm_peer = NULL; // the peer scm was queued onto, if it was
     char real_msg_control[CMSG_SPACE(sizeof(int))]; // only used if actually sending an fd
     if (sock->socket.domain == AF_LOCAL_ && msg_control != NULL && msg_fake.msg_controllen >= sizeof(struct cmsghdr_)) {
         // figure out how many file descriptors we're sending
@@ -1227,8 +1249,12 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
             memcpy(CMSG_DATA(real_cmsg), &real_fd, sizeof(real_fd));
 
             scm = malloc(sizeof(struct scm) + num_fds * sizeof(struct fd *));
+            if (scm == NULL) {
+                err = _ENOMEM;
+                goto out_free_iov;
+            }
             list_init(&scm->queue);
-            scm->num_fds = num_fds;
+            scm->num_fds = 0;
             unsigned fd_i = 0;
             for (cmsg = (void *) msg_control; cmsg != NULL; cmsg = CMSG_NXTHDR_(cmsg, mhdr_end)) {
                 if (cmsg->level != SOL_SOCKET_)
@@ -1236,7 +1262,18 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
                 fd_t *fds = (void *) cmsg->data;
                 for (unsigned i = 0; i < (cmsg->len - sizeof(struct cmsghdr_)) / sizeof(fd_t); i++) {
                     STRACE(" sending fd %d", fds[i]);
-                    scm->fds[fd_i++] = fd_retain(f_get(fds[i]));
+                    struct fd *sent = f_get(fds[i]);
+                    if (sent == NULL) {
+                        // fd_retain dereferences what it is given, so an
+                        // invalid descriptor in SCM_RIGHTS crashed the
+                        // emulator where it should answer EBADF. num_fds is
+                        // raised as they are taken, so scm_free releases
+                        // exactly the ones already retained.
+                        err = _EBADF;
+                        goto out_free_scm;
+                    }
+                    scm->fds[fd_i++] = fd_retain(sent);
+                    scm->num_fds = fd_i;
                 }
             }
             lock(&peer_lock);
@@ -1249,6 +1286,12 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
             lock(&peer->lock);
             list_add_tail(&peer->socket.unix_scm, &scm->queue);
             unlock(&peer->lock);
+            // Remembered so the cleanup path unlinks from the peer it was
+            // queued onto. Reading sock->socket.unix_peer again at cleanup
+            // time took the wrong lock if the peer had changed, and skipped
+            // the unlink entirely if it had gone away — freeing a node that
+            // was still in that peer's list.
+            scm_peer = peer;
             unlock(&peer_lock);
         }
     }
@@ -1270,14 +1313,11 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
 
 out_free_scm:
     if (scm != NULL) {
-        lock(&peer_lock);
-        struct fd *peer = sock->socket.unix_peer;
-        if (peer != NULL) {
-            lock(&peer->lock);
+        if (scm_peer != NULL) {
+            lock(&scm_peer->lock);
             list_remove_safe(&scm->queue);
-            unlock(&peer->lock);
+            unlock(&scm_peer->lock);
         }
-        unlock(&peer_lock);
         scm_free(scm);
     }
 out_free_iov:
@@ -1337,29 +1377,42 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         return _EINVAL;
 
     // msg_iovec (no initial content)
+    // See sys_sendmsg: the arrays below are sized by the guest's count.
+    if (msg_fake.msg_iovlen > UIO_MAXIOV_)
+        return _EMSGSIZE;
 #ifdef GUEST_ARM64
     struct iovec64_ msg_iov_fake64[msg_fake.msg_iovlen];
     if (user_read(msg_fake.msg_iov, msg_iov_fake64, sizeof(msg_iov_fake64)))
         return _EFAULT;
     struct iovec msg_iov[msg_fake.msg_iovlen];
+    memset(msg_iov, 0, sizeof(msg_iov));
     msg.msg_iov = msg_iov;
     msg.msg_iovlen = msg_fake.msg_iovlen;
     addr_t msg_iov_bases[msg_fake.msg_iovlen]; // save guest base addrs for writeback
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
         msg_iov_bases[i] = (addr_t)msg_iov_fake64[i].base;
         msg_iov[i].iov_len = (size_t)msg_iov_fake64[i].len;
-        msg_iov[i].iov_base = malloc(msg_iov[i].iov_len);
+        msg_iov[i].iov_base = malloc(msg_iov[i].iov_len ? msg_iov[i].iov_len : 1);
+        if (msg_iov[i].iov_base == NULL) {
+            free_iovecs(msg_iov, msg.msg_iovlen);
+            return _ENOMEM;
+        }
     }
 #else
     struct iovec_ msg_iov_fake[msg_fake.msg_iovlen];
     if (user_get(msg_fake.msg_iov, msg_iov_fake))
         return _EFAULT;
     struct iovec msg_iov[msg_fake.msg_iovlen];
+    memset(msg_iov, 0, sizeof(msg_iov));
     msg.msg_iov = msg_iov;
     msg.msg_iovlen = sizeof(msg_iov) / sizeof(msg_iov[0]);
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
         msg_iov[i].iov_len = msg_iov_fake[i].len;
-        msg_iov[i].iov_base = malloc(msg_iov_fake[i].len);
+        msg_iov[i].iov_base = malloc(msg_iov_fake[i].len ? msg_iov_fake[i].len : 1);
+        if (msg_iov[i].iov_base == NULL) {
+            free_iovecs(msg_iov, msg.msg_iovlen);
+            return _ENOMEM;
+        }
     }
 #endif
 
@@ -1421,13 +1474,21 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
 #else
             if (user_write(msg_iov_fake[i].base, msg_iov[i].iov_base, chunk_size))
 #endif
+            {
+                // This one and every one after it are still allocated.
+                free_iovecs(msg_iov + i, (size_t) msg.msg_iovlen - i);
                 return _EFAULT;
+            }
         }
         n -= chunk_size;
         free(msg_iov[i].iov_base);
+        msg_iov[i].iov_base = NULL;
     }
 
     // msg_control (changed)
+    // What the guest's control buffer can hold. msg_fake.msg_controllen is
+    // about to become the answer, so the question has to be kept.
+    uint_t guest_controllen = msg_fake.msg_controllen;
     msg_fake.msg_controllen = 0;
     struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
     if (sock->socket.domain == AF_LOCAL_ && cmsg != NULL &&
@@ -1436,29 +1497,50 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         close(dummy_fd);
 
         lock(&sock->lock);
-        assert(!list_empty(&sock->socket.unix_scm));
-        struct scm *scm = list_first_entry(&sock->socket.unix_scm, struct scm, queue);
-        list_remove(&scm->queue);
+        // The peer sends the placeholder descriptor and queues the scm
+        // separately, so an empty queue here means the two disagree. That is
+        // a bug, but not one worth aborting the emulator over: drop the
+        // control message and let the data through.
+        struct scm *scm = NULL;
+        if (!list_empty(&sock->socket.unix_scm)) {
+            scm = list_first_entry(&sock->socket.unix_scm, struct scm, queue);
+            list_remove(&scm->queue);
+        }
         unlock(&sock->lock);
 
         if (res < 0) {
-            scm_free(scm);
+            if (scm != NULL)
+                scm_free(scm);
             return err;
         }
 
-        uint8_t msg_control[sizeof(struct cmsghdr_) + scm->num_fds * sizeof(fd_t)];
-        struct cmsghdr_ *cmsg = (void *) msg_control;
-        cmsg->len = sizeof(msg_control);
-        cmsg->level = SOL_SOCKET_;
-        cmsg->type = SCM_RIGHTS_;
-        fd_t *fds = (void *) cmsg->data;
-        for (unsigned i = 0; i < scm->num_fds; i++) {
-            fds[i] = f_install(scm->fds[i], 0);
-            STRACE(" receiving fd %d", fds[i]);
+        if (scm != NULL) {
+            uint8_t msg_control[sizeof(struct cmsghdr_) + scm->num_fds * sizeof(fd_t)];
+            struct cmsghdr_ *cmsg = (void *) msg_control;
+            cmsg->len = sizeof(msg_control);
+            cmsg->level = SOL_SOCKET_;
+            cmsg->type = SCM_RIGHTS_;
+            fd_t *fds = (void *) cmsg->data;
+            for (unsigned i = 0; i < scm->num_fds; i++) {
+                fds[i] = f_install(scm->fds[i], 0);
+                STRACE(" receiving fd %d", fds[i]);
+            }
+            // f_install took the references; scm_free would close them.
+            free(scm);
+
+            // Truncated to the guest's buffer, and flagged as truncated —
+            // this used to write cmsg->len bytes regardless of what the guest
+            // had room for, and then report the size of the host's own
+            // scratch buffer as the amount written.
+            size_t write_len = cmsg->len;
+            if (write_len > guest_controllen) {
+                write_len = guest_controllen;
+                msg_fake.msg_flags |= MSG_CTRUNC_;
+            }
+            if (write_len > 0 && user_write(msg_fake.msg_control, cmsg, write_len))
+                return _EFAULT;
+            msg_fake.msg_controllen = write_len;
         }
-        if (user_write(msg_fake.msg_control, cmsg, cmsg->len))
-            return _EFAULT;
-        msg_fake.msg_controllen = msg.msg_controllen;
     }
 
     // by now the iovecs and scm have been freed so we can return

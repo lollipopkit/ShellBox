@@ -31,6 +31,9 @@ int_t sys_sendmmsg(fd_t sock_fd, addr_t msgvec_addr, uint_t msgvec_len, int_t fl
 int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, addr_t timeout_addr);
 
 #define SOCKADDR_DATA_MAX 108
+// Linux's UIO_MAXIOV. sendmsg/recvmsg size stack arrays from msg_iovlen, so
+// the guest's count needs the same ceiling Linux puts on it.
+#define UIO_MAXIOV_ 1024
 
 struct sockaddr_ {
     uint16_t family;
