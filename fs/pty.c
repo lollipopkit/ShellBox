@@ -133,6 +133,16 @@ DEFINE_TTY_DRIVER(pty_slave, &pty_slave_ops, TTY_PSEUDO_SLAVE_MAJOR, MAX_PTYS);
 // MAX_PTYS slots, so ttys[MAX_PTYS] is one past the end and lands in whatever
 // the linker put next to it — silent corruption of adjacent driver state
 // where the guest asked for, and should have got, ENOSPC.
+// Gives back a slot pty_reserve_next took but nothing was put in. Without it
+// a failed tty_get left the number reserved for the life of the process, and
+// enough of them exhausted the table.
+static void pty_release_reservation(int pty_num) {
+    lock(&ttys_lock);
+    if (pty_slave.ttys[pty_num] == (void *) 1)
+        pty_slave.ttys[pty_num] = NULL;
+    unlock(&ttys_lock);
+}
+
 static int pty_reserve_next(void) {
     int pty_num;
     lock(&ttys_lock);
@@ -151,8 +161,10 @@ int ptmx_open(struct fd *fd) {
     if (pty_num == MAX_PTYS)
         return _ENOSPC;
     struct tty *master = tty_get(&pty_master, TTY_PSEUDO_MASTER_MAJOR, pty_num);
-    if (IS_ERR(master))
+    if (IS_ERR(master)) {
+        pty_release_reservation(pty_num);
         return PTR_ERR(master);
+    }
     return tty_open(master, fd);
 }
 
@@ -165,8 +177,10 @@ struct tty *pty_open_fake(struct tty_driver *driver) {
     driver->limit = pty_slave.limit;
     driver->major = TTY_PSEUDO_SLAVE_MAJOR;
     struct tty *tty = tty_get(driver, TTY_PSEUDO_SLAVE_MAJOR, pty_num);
-    if (IS_ERR(tty))
+    if (IS_ERR(tty)) {
+        pty_release_reservation(pty_num);
         return tty;
+    }
     pty_slave_init_inode(tty);
     return tty;
 }

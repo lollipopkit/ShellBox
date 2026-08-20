@@ -284,7 +284,7 @@ bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t
  * matched the /mnt mount and was rewritten to "<host>/../etc/passwd" — a path
  * outside the host directory the mount was supposed to confine it to. ".."
  * above the root is dropped, as the kernel does. */
-static void bind_mount_normalize(const char *path, char *out, size_t out_size) {
+static bool bind_mount_normalize(const char *path, char *out, size_t out_size) {
     size_t len = 0;
     out[len++] = '/';
     const char *p = path;
@@ -308,17 +308,21 @@ static void bind_mount_normalize(const char *path, char *out, size_t out_size) {
                 out[len++] = '/';
             continue;
         }
+        // Truncation is reported rather than absorbed: a path cut short can
+        // match a mount prefix the whole path does not, and the caller would
+        // then translate it as if it belonged there.
         if (len > 1) {
             if (len + 1 >= out_size)
-                break;
+                return false;
             out[len++] = '/';
         }
         if (len + seg >= out_size)
-            break;
+            return false;
         memcpy(out + len, start, seg);
         len += seg;
     }
     out[len] = '\0';
+    return true;
 }
 
 /* The index of the longest matching bind mount, or -1. Callers hold
@@ -362,7 +366,8 @@ static bool bind_mount_translate_path_ex(const char *path, char *out_path,
                                          size_t out_size, bool *out_via_hook) {
     if (out_via_hook != NULL) *out_via_hook = false;
     char normalized[MAX_PATH];
-    bind_mount_normalize(path, normalized, sizeof(normalized));
+    if (!bind_mount_normalize(path, normalized, sizeof(normalized)))
+        return false;
     const char *cmp_path = normalized;
     /* Host-provided hook wins over the static table. The hook sees the
      * normalized (leading-slash) path and the calling task's fs_context. */
@@ -397,7 +402,8 @@ static bool bind_mount_translate_path(const char *path, char *out_path, size_t o
  * Handles both "/var/minis/..." and "var/minis/..." (without leading /). */
 static bool is_under_bind_mount(const char *path) {
     char normalized[MAX_PATH];
-    bind_mount_normalize(path, normalized, sizeof(normalized));
+    if (!bind_mount_normalize(path, normalized, sizeof(normalized)))
+        return false;
     lock(&g_bind_lock);
     bool found = bind_mount_find(normalized, false) >= 0;
     unlock(&g_bind_lock);
@@ -411,7 +417,8 @@ static bool is_under_bind_mount(const char *path) {
  * it here instead. */
 static bool is_under_readonly_bind_mount(const char *path) {
     char normalized[MAX_PATH];
-    bind_mount_normalize(path, normalized, sizeof(normalized));
+    if (!bind_mount_normalize(path, normalized, sizeof(normalized)))
+        return false;
     lock(&g_bind_lock);
     bool found = bind_mount_find(normalized, true) >= 0;
     unlock(&g_bind_lock);
@@ -504,6 +511,12 @@ static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, 
         fd = fd_create(&realfs_fdops);
         fd->real_fd = fd_no;
         fd->dir = NULL;
+        // The same path realfs_open records, for the same reason: this fd
+        // carries realfs_fdops, so realfs_write reports through it, and
+        // without this the bind-mount fast path was the one way to open a
+        // file whose later writes produced no change events.
+        if (flags & (O_CREAT_ | O_TRUNC_ | O_WRONLY_ | O_RDWR_ | O_APPEND_))
+            fd->change_path = strdup(path);
     } else {
         fd = realfs.open(mount, path, flags, 0666);
         if (IS_ERR(fd))
@@ -1252,6 +1265,29 @@ static void bind_saved_name(const char *host_link, char *out, size_t out_size) {
     snprintf(out, out_size, "%s%s", host_link, BIND_SAVED_SUFFIX);
 }
 
+/* The metadata moves with the tree it describes. Stashing the files and not
+ * their meta.db rows meant the rows were deleted as the bind's own on the way
+ * out, and the restored tree came back with no modes, types or inode numbers
+ * of its own. path_rename moves a whole subtree by prefix, which is exactly
+ * the shape of this. */
+static void bind_meta_stash(struct fakefs_db *fs, const char *linux_path) {
+    char saved[MAX_PATH];
+    snprintf(saved, sizeof(saved), "%s%s", linux_path, BIND_SAVED_SUFFIX);
+    db_begin_write(fs);
+    path_delete_tree(fs, saved); /* an unrestored stash from before */
+    path_rename(fs, linux_path, saved);
+    db_commit(fs);
+}
+
+static void bind_meta_restore(struct fakefs_db *fs, const char *linux_path) {
+    char saved[MAX_PATH];
+    snprintf(saved, sizeof(saved), "%s%s", linux_path, BIND_SAVED_SUFFIX);
+    db_begin_write(fs);
+    path_delete_tree(fs, linux_path); /* the bind's own rows */
+    path_rename(fs, saved, linux_path);
+    db_commit(fs);
+}
+
 /* Move whatever is at the mount point aside. A symlink there is one of ours
  * from an earlier registration and carries nothing worth keeping. */
 static int bind_mount_stash(int root_fd, const char *host_link) {
@@ -1288,10 +1324,10 @@ static void bind_mount_restore(int root_fd, const char *host_link) {
         renameat(root_fd, saved, root_fd, host_link);
 }
 
-/* Drop every meta.db row below a guest path, leaving the mount point's own.
- * The rows describe files in a host tree that is being replaced or taken
- * away; kept, they gave a later mount at the same guest path the previous
- * one's inode numbers, types and permissions. */
+/* Drop the meta.db rows for a guest path and everything below it. They
+ * describe files in a host tree that is being replaced or taken away; kept,
+ * they gave a later mount at the same guest path the previous one's inode
+ * numbers, types and permissions. */
 static void bind_mount_forget_descendants(struct fakefs_db *fs, const char *linux_path) {
     char prefix[MAX_PATH];
     size_t n = strlcpy(prefix, linux_path, sizeof(prefix));
@@ -1439,7 +1475,7 @@ int fakefs_bind_mount(const char *linux_path, const char *host_path, bool read_o
     unlock(&g_bind_lock);
     if (fs != NULL) {
         if (host_changed)
-            bind_mount_forget_descendants(fs, linux_path);
+            bind_meta_stash(fs, linux_path);
         db_begin_write(fs);
         inode_t ino = path_get_inode(fs, linux_path);
         if (ino == 0) {
@@ -1484,10 +1520,10 @@ int fakefs_bind_unmount(const char *linux_path) {
     /* Take the symlink away and put back whatever the mount point held
      * before it, which fakefs_bind_mount moved aside rather than deleting. */
     bind_mount_restore(root_fd, host_link_of(linux_path));
-    /* The metadata described the host tree that is no longer there. Leaving
-     * it meant a later mount at the same guest path reused the old inode
-     * numbers, types and permissions for entirely different files. */
-    bind_mount_forget_descendants(fs, linux_path);
+    /* And its metadata: the bind's own rows go, the stashed tree's come back.
+     * Leaving the bind's meant a later mount at the same guest path reused
+     * its inode numbers, types and permissions for different files. */
+    bind_meta_restore(fs, linux_path);
     return 0;
 }
 

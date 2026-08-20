@@ -383,6 +383,21 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
             break;
         }
 
+        // Checked here, not after the unlock below: every other way out of
+        // this loop leaves with poll_->lock held and with no outstanding
+        // sockrestart_begin_listen_wait, and the code after it expects both.
+        struct timespec slice = {.tv_sec = 1, .tv_nsec = 0};
+        if (timed) {
+            uint64_t now = poll_now_ns();
+            if (now >= deadline_ns)
+                break; // the guest's timeout is up; res stays 0
+            uint64_t remaining = deadline_ns - now;
+            if (remaining < 1000000000ULL) {
+                slice.tv_sec = 0;
+                slice.tv_nsec = (long)remaining;
+            }
+        }
+
         // wait for a ready notification
         list_for_each_entry(&poll_->poll_fds, poll_fd, fds) {
             sockrestart_begin_listen_wait(poll_fd->fd);
@@ -398,18 +413,7 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         // Cap all waits to 1 second to avoid macOS condvar issues.
         // pthread_cond_timedwait_relative_np can block forever under
         // thread contention. Short caps ensure we re-check periodically.
-        struct timespec bounded_timeout = {.tv_sec = 1, .tv_nsec = 0};
-        if (timed) {
-            uint64_t now = poll_now_ns();
-            if (now >= deadline_ns)
-                break; // the guest's timeout is up; res stays 0
-            uint64_t remaining = deadline_ns - now;
-            if (remaining < 1000000000ULL) {
-                bounded_timeout.tv_sec = 0;
-                bounded_timeout.tv_nsec = (long)remaining;
-            }
-        }
-        struct timespec *wait_timeout = &bounded_timeout;
+        struct timespec *wait_timeout = &slice;
         current->blocking = true;
         do {
             err = real_poll_wait(&poll_->real, e, sizeof(e)/sizeof(e[0]), wait_timeout);

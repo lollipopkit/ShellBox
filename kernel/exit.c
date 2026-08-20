@@ -360,6 +360,11 @@ noreturn void do_exit_group(int status) {
                     // unblocks and re-enters do_exit(), that mm_release()s and
                     // clears the flag, so cleanup won't double-free.
                     task->mm_release_deferred = true;
+                    // Before the table, and for the same reason: this thread
+                    // is never coming back to the dispatcher, so the
+                    // references its last f_get took are released here or not
+                    // at all — and each one holds a description open.
+                    syscall_refs_release(task);
                     if (task->files != NULL) {
                         fdtable_release(task->files);
                         task->files = NULL;

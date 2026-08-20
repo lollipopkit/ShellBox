@@ -180,13 +180,16 @@ static bool syscall_ref_hold(struct fd *fd) {
     return true;
 }
 
-void syscall_refs_drain(void) {
-    struct task *task = current;
+void syscall_refs_release(struct task *task) {
     if (task == NULL)
         return;
     for (unsigned i = 0; i < task->syscall_refs_n; i++)
         fd_close(task->syscall_refs[i]);
     task->syscall_refs_n = 0;
+}
+
+void syscall_refs_drain(void) {
+    syscall_refs_release(current);
 }
 
 // Only the array. The references themselves are gone by now: a syscall that

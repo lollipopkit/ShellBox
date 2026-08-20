@@ -30,8 +30,10 @@
 // actually gone wrong.
 static int getpath(int fd, char *buf) {
 #if defined(__linux__)
-    char proc_fd[20];
-    sprintf(proc_fd, "/proc/self/fd/%d", fd);
+    // "/proc/self/fd/" is fourteen characters and an int is up to eleven, so
+    // twenty was never enough and sprintf had nowhere to say so.
+    char proc_fd[32];
+    snprintf(proc_fd, sizeof(proc_fd), "/proc/self/fd/%d", fd);
     ssize_t size = readlink(proc_fd, buf, MAX_PATH - 1);
     if (size < 0)
         return errno_map();
@@ -538,7 +540,11 @@ int realfs_symlink(struct mount *mount, const char *target, const char *link) {
 int realfs_mknod(struct mount *mount, const char *path, mode_t_ mode, dev_t_ UNUSED(dev)) {
     int err;
     if (S_ISFIFO(mode)) {
-        lock_fchdir(mount->root_fd);
+        // mkfifo takes a path and not a directory fd, which is the only
+        // reason for the cwd dance. If it cannot be undone, don't do it:
+        // the path would otherwise resolve against whatever the cwd is.
+        if (lock_fchdir(mount->root_fd) < 0)
+            return errno_map();
         err = mkfifo(fix_path(path), mode & ~S_IFMT);
         unlock_fchdir();
     } else if (S_ISREG(mode)) {

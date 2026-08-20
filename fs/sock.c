@@ -890,15 +890,17 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
         return _EFAULT;
     }
     free(buffer);
-    dword_t out_len = real_len;
-    if (sockaddr_addr != 0) {
+    // Both pointers or neither: the host was only asked to fill `sockaddr`
+    // when sockaddr_len_addr was given, so writing it out on the strength of
+    // sockaddr_addr alone handed the guest an uninitialised buffer.
+    if (sockaddr_addr != 0 && sockaddr_len_addr != 0) {
+        dword_t out_len = real_len;
         int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
         if (err < 0)
             return err;
-    }
-    if (sockaddr_len_addr != 0)
         if (user_put(sockaddr_len_addr, out_len))
             return _EFAULT;
+    }
     return res;
 }
 
@@ -1291,7 +1293,10 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
             // time took the wrong lock if the peer had changed, and skipped
             // the unlink entirely if it had gone away — freeing a node that
             // was still in that peer's list.
-            scm_peer = peer;
+            // Held, not just remembered: the cleanup path below locks
+            // scm_peer->lock long after peer_lock is dropped, and nothing
+            // else was keeping that fd alive until then.
+            scm_peer = fd_retain(peer);
             unlock(&peer_lock);
         }
     }
@@ -1321,6 +1326,10 @@ out_free_scm:
         scm_free(scm);
     }
 out_free_iov:
+    // Reached from the success path too, which is where the reference taken
+    // alongside scm_peer would otherwise be left held.
+    if (scm_peer != NULL)
+        fd_close(scm_peer);
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++)
         free(msg_iov[i].iov_base);
     return err;
@@ -1353,9 +1362,13 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     struct msghdr msg;
 
     // msg_name
-    char msg_name[msg_fake.msg_namelen];
+    // See sys_accept: an address buffer is sized by what an address can be.
+    // This was a VLA from msg_namelen, straight out of the guest's msghdr.
+    struct sockaddr_max_ msg_name;
+    if (msg_fake.msg_namelen > sizeof(msg_name))
+        msg_fake.msg_namelen = sizeof(msg_name);
     if (msg_fake.msg_name != 0) {
-        msg.msg_name = msg_name;
+        msg.msg_name = &msg_name;
         msg.msg_namelen = sizeof(msg_name);
     } else {
         msg.msg_name = NULL;
