@@ -103,7 +103,14 @@ void notify_once(cond_t *cond) {
 __thread sigjmp_buf unwind_buf;
 __thread bool should_unwind = false;
 
-void sigusr1_handler() {
+// `(int)`, not `(void)`: this is installed as a `sa_handler` — see
+// `establish_signal_handlers` in kernel/init.c, which declares it that way and
+// assigns it — so it is called with the signal number. Upstream's warning
+// sweep gave it `(void)`, and the two sites are in different translation units,
+// so nothing at compile or link time objects; the call is simply made through
+// the wrong prototype. SIGUSR1 is how a guest thread is interrupted at all,
+// which makes this a bad place to leave undefined behaviour.
+void sigusr1_handler(int UNUSED(sig)) {
     if (should_unwind) {
         should_unwind = false;
         siglongjmp(unwind_buf, 1);

@@ -286,11 +286,11 @@ dword_t sys_clone3(addr_t args_addr, dword_t size) {
                      (addr_t)args.tls, (addr_t)args.child_tid);
 }
 
-dword_t sys_fork() {
+dword_t sys_fork(void) {
     return sys_clone(SIGCHLD_, 0, 0, 0, 0);
 }
 
-dword_t sys_vfork() {
+dword_t sys_vfork(void) {
     return sys_clone(CLONE_VFORK_ | CLONE_VM_ | SIGCHLD_, 0, 0, 0, 0);
 }
 

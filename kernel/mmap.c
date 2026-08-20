@@ -13,7 +13,7 @@
 _Atomic long anon_page_count;
 #endif
 
-struct mm *mm_new() {
+struct mm *mm_new(void) {
     struct mm *mm = malloc(sizeof(struct mm));
     if (mm == NULL)
         return NULL;

@@ -15,7 +15,7 @@ static host_t cached_host_self(void) {
     return host;
 }
 
-struct cpu_usage get_cpu_usage() {
+struct cpu_usage get_cpu_usage(void) {
     host_cpu_load_info_data_t load;
     mach_msg_type_number_t fuck = HOST_CPU_LOAD_INFO_COUNT;
     struct cpu_usage usage = {};
@@ -28,7 +28,7 @@ struct cpu_usage get_cpu_usage() {
     return usage;
 }
 
-struct mem_usage get_mem_usage() {
+struct mem_usage get_mem_usage(void) {
     // Last successful reading; served as a fallback so a transient (or
     // OS-beta-induced) host_info failure degrades /proc/meminfo instead of
     // aborting the whole app. Benign data race: stale/torn stats are fine here.
@@ -69,7 +69,7 @@ struct mem_usage get_mem_usage() {
     return usage;
 }
 
-struct uptime_info get_uptime() {
+struct uptime_info get_uptime(void) {
     // A `struct timeval`, and read as one: the seconds and the microseconds are
     // not the same width, so two `uint64_t` put the padding where tv_usec is.
     struct timeval boottime;
