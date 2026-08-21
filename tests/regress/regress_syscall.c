@@ -442,6 +442,64 @@ static void test_waitid_siginfo(void) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// A parent that says it will never wait does not get zombies.
+//
+// POSIX gives two ways to say it — SIGCHLD set to SIG_IGN, or SA_NOCLDWAIT —
+// and both mean a child is released as it exits rather than kept for a wait
+// that is not coming. Neither was implemented: do_exit marked every child a
+// zombie without ever consulting the parent's disposition, and the only path
+// that released one ran inside wait(2). `signal(SIGCHLD, SIG_IGN); fork();` —
+// the ordinary shape of a forking server that does not collect its children —
+// therefore held a task, a tgroup and a pid per child for the parent's life.
+//
+// The probe is waitpid, not /proc: this procfs answers for live tasks only, so
+// a zombie is already invisible there and the obvious test passes against the
+// bug.
+static void test_no_zombies_when_parent_will_not_wait(void) {
+    section("SIGCHLD ignored / SA_NOCLDWAIT release children");
+
+    struct sigaction sa;
+
+    // The control. A parent that has not said anything keeps its zombie, and
+    // must: it is still entitled to wait for it.
+    pid_t child = fork();
+    if (child == 0)
+        _exit(0);
+    nap(0.3);
+    int status = 0;
+    check(waitpid(-1, &status, WNOHANG) == child,
+          "default disposition still keeps the zombie");
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_IGN;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "sigaction(SIGCHLD, SIG_IGN)");
+    child = fork();
+    if (child == 0)
+        _exit(0);
+    nap(0.3);
+    errno = 0;
+    check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
+          "SIG_IGN releases the child (wait answers ECHILD)");
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    sa.sa_flags = SA_NOCLDWAIT;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "sigaction(SIGCHLD, SA_NOCLDWAIT)");
+    child = fork();
+    if (child == 0)
+        _exit(0);
+    nap(0.3);
+    errno = 0;
+    check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
+          "SA_NOCLDWAIT releases the child (wait answers ECHILD)");
+
+    // Put it back: every case after this one forks and waits.
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    sigaction(SIGCHLD, &sa, NULL);
+}
+
 int main(int argc, char **argv) {
     // Optional extra path to check stat/fstat on, e.g. a fakefs mount point.
     const char *extra_path = argc > 1 ? argv[1] : NULL;
@@ -473,6 +531,7 @@ int main(int argc, char **argv) {
     test_waitpid_across_timeout();
     test_signal_still_interrupts();
     test_waitid_siginfo();
+    test_no_zombies_when_parent_will_not_wait();
 
     printf("\n================ RESULT ================\n");
     printf("  PASS: %d    FAIL: %d\n", pass, fail);

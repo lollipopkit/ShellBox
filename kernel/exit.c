@@ -162,6 +162,7 @@ noreturn void do_exit(int status) {
         list_add(&new_parent->children, &child->siblings);
     }
 
+    bool auto_reap = false;
     if (exit_tgroup(current)) {
         // If already marked zombie by do_exit_group force path, skip
         if (leader->zombie)
@@ -191,6 +192,26 @@ noreturn void do_exit(int status) {
                 exit_hook(current, status);
             halt_system();
         } else {
+            // POSIX: a parent that ignores SIGCHLD, or that asked for
+            // SA_NOCLDWAIT, has said it will never wait. Its children are
+            // released as they exit rather than kept as zombies for a wait
+            // that is not coming. Neither was implemented, so
+            // `signal(SIGCHLD, SIG_IGN); fork();` — the ordinary way to write
+            // a forking server that does not collect its children — left one
+            // task, one tgroup and one pid behind per child, for the parent's
+            // lifetime.
+            //
+            // Read once, here, while the parent is known to be alive: this is
+            // under pids_lock, and the release below happens after the parent
+            // pointer is no longer used.
+            if (leader->exit_signal == SIGCHLD_) {
+                lock(&parent->sighand->lock);
+                struct sigaction_ action = parent->sighand->action[SIGCHLD_];
+                unlock(&parent->sighand->lock);
+                if (action.handler == SIG_IGN_ || action.flags & SA_NOCLDWAIT_)
+                    auto_reap = true;
+            }
+
             leader->zombie = true;
             notify(&parent->group->child_exit);
             // Wake any pidfd poller waiting on this pid.
@@ -216,6 +237,21 @@ noreturn void do_exit(int status) {
     if (current != leader) {
         struct task *self = current;
         current = NULL;  // Clear before destroy to prevent dangling access
+        task_destroy(self);
+    } else if (auto_reap) {
+        // What reap_if_zombie does, done here because there is no reaper
+        // coming. It cannot be called: it reads `current` for the rusage it
+        // credits to the waiter, and the task being released *is* current.
+        //
+        // Safe on this thread for the same reason the branch above is: the
+        // group is dead (exit_tgroup said so), pids_lock is held, and nothing
+        // below touches `current` before pthread_exit.
+        struct task *self = current;
+        current = NULL;
+        cond_destroy(&self->group->child_exit);
+        task_leave_session(self);
+        list_remove(&self->group->pgroup);
+        free(self->group);
         task_destroy(self);
     }
     unlock(&pids_lock);
