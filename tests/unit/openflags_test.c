@@ -24,6 +24,7 @@
 #include "tests/unit/unit.h"
 
 #include <fcntl.h>
+#include <stdlib.h>
 #include <limits.h>
 #include <stdio.h>
 #include <sys/stat.h>

@@ -84,6 +84,26 @@ TEST(stopped) {
     CHECK_EQ_INT(info.child.status, SIGTRAP_);
 }
 
+// A ptrace stop and a group stop pack into the same status word. do_wait is
+// the only place that knows which one it read, so it marks the ptrace one and
+// the decode has to leave that mark alone — Linux reports CLD_TRAPPED there,
+// not CLD_STOPPED. Driving a real tracee is out of reach from a unit test; what
+// is testable, and what the decode is responsible for, is not overwriting it.
+TEST(a_marked_ptrace_stop_stays_trapped) {
+    struct siginfo_ info = {};
+    info.child.status = SIGTRAP_ << 8 | 0x7f;
+    info.code = CLD_TRAPPED_;
+    waitid_decode_status(&info);
+    CHECK_EQ_INT(info.code, CLD_TRAPPED_);
+    // The status still decodes: the mark says which stop it was, not what to
+    // do with the word.
+    CHECK_EQ_INT(info.child.status, SIGTRAP_);
+    CHECK_EQ_INT(info.sig, SIGCHLD_);
+
+    // And an unmarked stop is still an ordinary one.
+    CHECK_EQ_INT(decode(SIGTRAP_ << 8 | 0x7f).code, CLD_STOPPED_);
+}
+
 TEST(continued) {
     struct siginfo_ info = decode(0xffff);
     CHECK_EQ_INT(info.code, CLD_CONTINUED_);
@@ -112,6 +132,7 @@ int main(void) {
     RUN(killed_by_a_signal);
     RUN(dumped_is_distinguished_from_killed);
     RUN(stopped);
+    RUN(a_marked_ptrace_stop_stays_trapped);
     RUN(continued);
     RUN(overlapping_encodings_resolve_to_the_right_case);
     return UNIT_REPORT();

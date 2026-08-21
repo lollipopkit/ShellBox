@@ -1,7 +1,11 @@
 name: CI
 
 on:
+  # Only main. A branch with an open pull request would otherwise run every job
+  # twice — once for the push, once for the pull_request — against the same
+  # commit, which is what the unfiltered `push:` inherited from upstream did.
   push:
+      branches: [main]
   pull_request:
       branches: [main]
 

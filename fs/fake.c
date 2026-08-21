@@ -888,9 +888,19 @@ static int fakefs_stat(struct mount *mount, const char *path, struct statbuf *fa
             db_commit(fs);
             return errno_map();
         }
-        /* Copy basic fields from real stat */
+        /* Copy basic fields from real stat. dev, blksize and blocks are here
+         * for the same reason they are on the hook-routed path above: this is
+         * the answer fakefs_fstat gets from realfs.fstat/copy_stat for the same
+         * file, and coreutils compares the two — psame_inode(stat, fstat) on a
+         * dev that one call fills and the other leaves alone reports "the file
+         * was replaced while being copied". The fields below that are
+         * overwritten from meta.db (inode, mode, uid, gid, rdev) are the ones
+         * fakefs is entitled to disagree with the host about. */
+        fake_stat->dev = dev_fake_from_real(real_stat.st_dev);
         fake_stat->size = real_stat.st_size;
         fake_stat->nlink = real_stat.st_nlink;
+        fake_stat->blksize = real_stat.st_blksize;
+        fake_stat->blocks = real_stat.st_blocks;
         fake_stat->atime = HOST_STAT_ATIME(real_stat).tv_sec;
         fake_stat->mtime = HOST_STAT_MTIME(real_stat).tv_sec;
         fake_stat->ctime = HOST_STAT_CTIME(real_stat).tv_sec;

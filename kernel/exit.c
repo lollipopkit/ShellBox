@@ -578,6 +578,12 @@ static bool reap_if_needed(struct task *task, struct siginfo_ *info_out, struct 
         // making GDB think we support events (we don't). I can't remember what
         // it fixed but until then commenting it out for now.
         info_out->child.status = /* task->ptrace.trap_event << 16 |*/ task->ptrace.signal << 8 | 0x7f;
+        // A ptrace stop and an ordinary group stop pack into the same status
+        // word, and only this branch knows which one this is. waitid reports
+        // them differently — CLD_TRAPPED against CLD_STOPPED — so say so here,
+        // while the tracee is still around to ask; waitid_decode_status keeps
+        // the answer. wait4 ignores si_code and is unaffected.
+        info_out->code = CLD_TRAPPED_;
         task->ptrace.signal = 0;
         unlock(&task->ptrace.lock);
         return true;
@@ -707,8 +713,11 @@ void waitid_decode_status(struct siginfo_ *info) {
     dword_t status = info->child.status;
     info->sig = SIGCHLD_;
     if ((status & 0xff) == 0x7f) {
-        // stopped: WIFSTOPPED, signal in the high byte
-        info->code = CLD_STOPPED_;
+        // stopped: WIFSTOPPED, signal in the high byte. A ptrace stop packs
+        // identically and cannot be told apart from the word alone, so do_wait
+        // marks it CLD_TRAPPED_ as it reads it; anything else is a group stop.
+        if (info->code != CLD_TRAPPED_)
+            info->code = CLD_STOPPED_;
         info->child.status = (status >> 8) & 0xff;
     } else if (status == 0xffff) {
         // continued: WIFCONTINUED. Nothing produces this yet (SIGCONT does not
@@ -731,8 +740,20 @@ dword_t sys_waitid(int_t idtype, pid_t_ id, addr_t info_addr, int_t options) {
     STRACE("waitid(%d, %d, %#x, %#x)", idtype, id, info_addr, options);
     struct siginfo_ info = {};
     int_t res = do_wait(idtype, id, &info, NULL, options);
-    if (res < 0 || (res == 0 && info.child.pid == 0))
+    if (res < 0)
         return res;
+    if (res == 0 && info.child.pid == 0) {
+        // WNOHANG with nothing to report. Linux still writes the siginfo_t,
+        // zeroed: si_pid == 0 is how the caller is meant to tell "no child was
+        // ready" from "a child was reaped", and POSIX leaves the buffer
+        // untouched only if the implementation says so. Returning without
+        // writing left whatever the caller's stack held, so a caller that did
+        // not pre-zero read a stale pid as a real one.
+        struct siginfo_ empty = {};
+        if (info_addr != 0 && user_put(info_addr, empty))
+            return _EFAULT;
+        return res;
+    }
     // do_wait hands back the raw wait(2)-encoded status, which is what wait4
     // wants but not what waitid does: waitid must report the decoded value in
     // si_status and say which kind of event it was in si_code.

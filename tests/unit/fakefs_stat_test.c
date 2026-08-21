@@ -29,6 +29,7 @@
 #include "tests/unit/unit.h"
 
 #include <fcntl.h>
+#include <stdlib.h>
 #include <limits.h>
 #include <sqlite3.h>
 #include <stdio.h>
@@ -38,6 +39,7 @@
 
 static char tmpdir[PATH_MAX];   // holds data/, meta.db and host/
 static char hostdir[PATH_MAX];  // the hook's target, outside the fakefs
+static char bounddir[PATH_MAX]; // a bind mount's target, ditto
 
 // Guest paths under here are routed to hostdir. Everything else falls through
 // to the ordinary meta.db lookup, which is what an unhooked path must keep
@@ -115,6 +117,31 @@ TEST(stat_and_fstat_agree_on_a_hooked_directory) {
     CHECK(S_ISDIR(by_path.mode));
 }
 
+// The other branch of fakefs_stat that answers from a host stat(): a path
+// registered in the bind-mount table rather than routed by the hook. It reads
+// the host stat for size, nlink and the timestamps, and takes inode/mode/owner
+// from meta.db — but dev, blksize and blocks are the host's to give, and
+// leaving them alone put the same stat/fstat disagreement here that the
+// hook-routed path had.
+TEST(stat_and_fstat_agree_on_a_bind_mounted_file) {
+    struct statbuf by_path = {}, by_fd = {};
+    // The first stat of a bind-mounted path takes a different branch: no
+    // meta.db row exists yet, so it is created and answered from a full
+    // realfs.stat. The branch under test is the one every stat after that
+    // takes, where the row is found and only some fields are refreshed from
+    // the host.
+    CHECK_EQ_INT(generic_statat(AT_PWD, "/bound/doc.txt", &by_path, true), 0);
+    memset(&by_path, 0, sizeof(by_path));
+    CHECK_EQ_INT(generic_statat(AT_PWD, "/bound/doc.txt", &by_path, true), 0);
+    CHECK_EQ_INT(fstat_via_fd("/bound/doc.txt", &by_fd), 0);
+
+    CHECK_EQ(by_path.dev, by_fd.dev);
+    CHECK_EQ_INT(by_path.blksize, by_fd.blksize);
+    CHECK_EQ_INT(by_path.blocks, by_fd.blocks);
+    CHECK_EQ_INT(by_path.nlink, by_fd.nlink);
+    CHECK(by_path.dev != 0);
+}
+
 // The hook is consulted before the meta.db table, not instead of it. A path it
 // declines has to keep resolving the ordinary way, or this fix would trade one
 // broken case for another.
@@ -178,6 +205,17 @@ static int make_fakefs(void) {
     // guest reaches only because the hook says so is what a bind mount is.
     if (mkdir(hostdir, 0755) < 0)
         return -1;
+    if (mkdir(bounddir, 0755) < 0)
+        return -1;
+    snprintf(path, sizeof(path), "%s/doc.txt", bounddir);
+    int bfd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
+    if (bfd < 0)
+        return -1;
+    if (write(bfd, "bound", 5) != 5) {
+        close(bfd);
+        return -1;
+    }
+    close(bfd);
     snprintf(path, sizeof(path), "%s/doc.txt", hostdir);
     int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
     if (fd < 0)
@@ -193,6 +231,7 @@ static int make_fakefs(void) {
 int main(void) {
     snprintf(tmpdir, sizeof(tmpdir), "/tmp/ish-fakefs-stat-test-%d", (int) getpid());
     snprintf(hostdir, sizeof(hostdir), "%s/host", tmpdir);
+    snprintf(bounddir, sizeof(bounddir), "%s/bound", tmpdir);
     if (mkdir(tmpdir, 0700) < 0) {
         perror("mkdir");
         return 2;
@@ -210,7 +249,12 @@ int main(void) {
         perror("realpath");
         return 2;
     }
-    strlcpy(hostdir, resolved, sizeof(hostdir));
+    snprintf(hostdir, sizeof(hostdir), "%s", resolved);
+    if (realpath(bounddir, resolved) == NULL) {
+        perror("realpath");
+        return 2;
+    }
+    snprintf(bounddir, sizeof(bounddir), "%s", resolved);
 
     fakefs_set_path_translate_hook(translate);
     fakefs_set_path_reverse_hook(reverse);
@@ -227,9 +271,16 @@ int main(void) {
         return 2;
     }
 
+    // Registered after the root is mounted, which is when an embedder does it.
+    if (fakefs_bind_mount("/bound", bounddir, false) < 0) {
+        fprintf(stderr, "fakefs_bind_mount failed\n");
+        return 2;
+    }
+
     RUN(stat_and_fstat_agree_on_a_hooked_file);
     RUN(the_added_fields_are_populated);
     RUN(stat_and_fstat_agree_on_a_hooked_directory);
+    RUN(stat_and_fstat_agree_on_a_bind_mounted_file);
     RUN(stat_still_works_off_the_hooked_path);
 
     int status = UNIT_REPORT();
