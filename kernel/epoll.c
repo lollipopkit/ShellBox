@@ -231,9 +231,26 @@ static int epoll_close(struct fd *fd) {
 // inner members are not registered in the outer host queue. A poll whose only
 // event source is an epoll fd therefore notices on poll_wait's one-second
 // slice rather than at once; in a mixed set any other activity brings the scan
-// round and it is seen immediately. Closing that needs poll_wakeup to travel
-// up the nesting, which has to happen outside poll->lock, since the readiness
-// scan already holds the two in the other order.
+// round and it is seen immediately.
+//
+// Closing that means poll_wakeup travelling up the nesting. Two things that
+// look like blockers are not:
+//   - Lock order works out. The house order is fd before poll, and the walk
+//     would be member->poll_lock, inner->lock, release inner, owner->poll_lock,
+//     outer->lock — which keeps it. The readiness scan's edge is outer->lock to
+//     inner->lock and it takes no fd lock, so the two do not close a cycle.
+//   - The owner cannot be freed underneath it. fd_close on an epoll fd reaches
+//     free() only through epoll_close and poll_destroy, and poll_destroy takes
+//     each member's poll_lock — the very lock the walk is holding.
+// What makes it a change of its own rather than a line here is cost and the
+// bookkeeping that avoids it. poll_wakeup runs on every socket write, pipe
+// write and tty byte, for every fd in every process. Propagating unconditionally
+// adds a lock round-trip per wakeup for every fd in any epoll set — which under
+// Node, bun or Python is all of them — to reach an epoll fd that is almost
+// never itself watched. Avoiding that needs a "this set is watched" flag kept
+// in step across poll_add_fd, poll_del_fd and poll_cleanup_fd, and a stale one
+// leaves a freed struct fd * in the hottest path in the emulator. That wants a
+// stress test, which this tree has no harness for.
 static int epoll_poll(struct fd *fd) {
     if (fd->epollfd.poll == NULL)
         return 0;
