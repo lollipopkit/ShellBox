@@ -235,14 +235,26 @@ noreturn void do_exit(int status) {
             notify(&parent->group->child_exit);
             // Wake any pidfd poller waiting on this pid.
             pidfd_notify_exit(leader->pid);
+            // The pid is the process's, which is the leader's — `current` is
+            // whichever thread of the group happened to exit last, and telling
+            // a parent a TID it never forked is not an answer to "which child".
             struct siginfo_ info = {
-                .code = SI_KERNEL_,
-                .child.pid = current->pid,
+                .child.pid = leader->pid,
                 .child.uid = current->uid,
                 .child.status = current->exit_code,
                 .child.utime = clock_from_timeval(group_rusage.utime),
                 .child.stime = clock_from_timeval(group_rusage.stime),
             };
+            // Decoded, not the raw wait(2) word. A handler installed with
+            // SA_SIGINFO reads si_code and si_status straight out of this, and
+            // it used to get SI_KERNEL and 7936 for a child that exited 31.
+            // waitid was taught this in #5; the signal was not, and the two are
+            // the same question asked from different sides.
+            waitid_decode_status(&info);
+            // decode says SIGCHLD, which is right for the signal it decodes.
+            // clone(2) lets a child ask for a different one on exit, and that
+            // is the signal being sent.
+            info.sig = leader->exit_signal;
             if (leader->exit_signal != 0)
                 send_signal(parent, leader->exit_signal, info);
         }

@@ -27,7 +27,13 @@ struct sigaction_ {
     sigset_t_ mask;
 } __attribute__((packed));
 
-#define NUM_SIGS 64
+// AArch64 Linux has signals 1..64; 64 is SIGRTMAX and musl reports it as such.
+// These arrays are indexed by the signal number itself rather than by sig-1, so
+// the size is one more than the highest signal. It was 64 as a count, which
+// made the usable range 1..63 and answered EINVAL for the one signal a program
+// asking for SIGRTMAX would name first.
+#define MAX_SIG 64
+#define NUM_SIGS (MAX_SIG + 1)
 
 #define	SIGHUP_    1
 #define	SIGINT_    2
@@ -95,8 +101,12 @@ struct siginfo_ {
             pid_t_ pid;
             uid_t_ uid;
             int_t status;
-            clock_t_ utime;
-            clock_t_ stime;
+            // 64-bit, and therefore 8-aligned, which puts them at 32 and 40 —
+            // where an AArch64 guest's siginfo_t has them. clock_t_ is
+            // dword_t (misc.h), so these sat at 28 and 32 and a guest reading
+            // si_utime got si_stime.
+            sqword_t utime;
+            sqword_t stime;
         } child;
         struct {
             addr_t addr;
@@ -111,8 +121,18 @@ struct siginfo_ {
             union sigval_ value;
             int_t _private;
         } timer;
+        // The guest's siginfo_t is 128 bytes and its libc sizes buffers by
+        // that. Without this the union ends at 48 and `user_put(info_addr,
+        // info)` wrote 48 of the 128 the caller allocated, leaving the tail as
+        // the caller had left it — demonstrated by filling a waitid buffer with
+        // 0xAB and reading it back unchanged past the end.
+        //
+        // It also decides where `uc` lands in struct rt_sigframe_arm64, which
+        // embeds this: at 128, as it is on Linux, rather than at 48.
+        char _pad[128 - 16];
     };
 };
+static_assert(sizeof(struct siginfo_) == 128, "the guest's siginfo_t is 128 bytes");
 
 // a reasonable default siginfo
 static const struct siginfo_ SIGINFO_NIL = {
@@ -180,7 +200,7 @@ int user_get_sigset(addr_t addr, dword_t size, sigset_t_ *out);
 int user_put_sigset(addr_t addr, dword_t size, sigset_t_ set);
 
 static inline sigset_t_ sig_mask(int sig) {
-    assert(sig >= 1 && sig < NUM_SIGS);
+    assert(sig >= 1 && sig <= MAX_SIG);
     return 1l << (sig - 1);
 }
 

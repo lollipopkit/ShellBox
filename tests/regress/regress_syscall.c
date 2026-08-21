@@ -458,6 +458,90 @@ static void test_waitid_siginfo(void) {
 // The probe is waitpid, not /proc: this procfs answers for live tasks only, so
 // a zombie is already invisible there and the obvious test passes against the
 // bug.
+// ---------------------------------------------------------------------------
+// What a SIGCHLD handler is handed, and what the guest's siginfo_t looks like.
+//
+// #15: si_code was SI_KERNEL (128) and si_status the raw wait(2) word — 7936
+// for a child that exited 31 — because do_exit built the siginfo by hand while
+// waitid had been taught to decode it. #16: si_utime and si_stime were 32-bit
+// at offsets 28 and 32, where an AArch64 guest reads 64-bit ones at 32 and 40,
+// so a handler read si_stime as si_utime. The two hid each other: the field was
+// at the wrong offset and nothing filled it.
+static volatile sig_atomic_t chld_seen;
+static int chld_code, chld_status, chld_pid;
+static long chld_utime;
+
+static void on_sigchld(int sig, siginfo_t *si, void *ctx) {
+    (void) sig; (void) ctx;
+    chld_code = si->si_code;
+    chld_status = si->si_status;
+    chld_pid = si->si_pid;
+    chld_utime = (long) si->si_utime;
+    chld_seen = 1;
+}
+
+static void test_sigchld_siginfo(void) {
+    section("SIGCHLD siginfo: CLD_* code, decoded status, 64-bit times");
+
+    struct sigaction sa, saved;
+    check(sigaction(SIGCHLD, NULL, &saved) == 0, "read the SIGCHLD disposition");
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = on_sigchld;
+    sa.sa_flags = SA_SIGINFO;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "install an SA_SIGINFO handler");
+
+    chld_seen = 0;
+    pid_t p = fork();
+    if (p == 0) {
+        volatile double x = 0;
+        for (long i = 0; i < 2000000; i++)
+            x += (double) i;
+        _exit(31);
+    }
+    check(p > 0, "fork for the SIGCHLD case");
+    for (int i = 0; i < 150 && !chld_seen; i++)
+        usleep(20000);
+    check(chld_seen, "the handler ran");
+    if (chld_seen) {
+        check(chld_pid == p, "si_pid is the child");
+        check(chld_code == CLD_EXITED, "si_code is CLD_EXITED, not SI_KERNEL");
+        check(chld_status == 31, "si_status is 31, not the raw 31<<8");
+        // The child spent real time; reading zero means the offset is wrong
+        // again, since do_exit does fill this one.
+        check(chld_utime > 0, "si_utime is where the guest reads it");
+    }
+    int st = 0;
+    waitpid(p, &st, 0);
+
+    // 128 bytes, which is what the guest's libc allocates. A short write leaves
+    // the caller's own bytes in the tail.
+    check(sizeof(siginfo_t) == 128, "the guest siginfo_t is 128 bytes");
+
+    check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
+}
+
+// ---------------------------------------------------------------------------
+// #17: signal 64 is SIGRTMAX on AArch64, and NUM_SIGS made the range 1..63.
+static void test_sigrtmax(void) {
+    section("signal 64 (SIGRTMAX) is usable");
+
+    check(SIGRTMAX == 64, "the guest libc says SIGRTMAX is 64");
+    for (int sig = 62; sig <= SIGRTMAX; sig++) {
+        struct sigaction sa, saved;
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = SIG_IGN;
+        char msg[64];
+        snprintf(msg, sizeof msg, "sigaction(%d)", sig);
+        int ok = sigaction(sig, NULL, &saved) == 0 && sigaction(sig, &sa, NULL) == 0;
+        check(ok, msg);
+        snprintf(msg, sizeof msg, "kill(self, %d)", sig);
+        check(kill(getpid(), sig) == 0, msg);
+        if (ok)
+            sigaction(sig, &saved, NULL);
+    }
+}
+
 static void *regress_worker(void *arg) {
     (void) arg;
     usleep(400000);
@@ -598,6 +682,8 @@ int main(int argc, char **argv) {
     test_waitpid_across_timeout();
     test_signal_still_interrupts();
     test_waitid_siginfo();
+    test_sigchld_siginfo();
+    test_sigrtmax();
     test_no_zombies_when_parent_will_not_wait();
 
     printf("\n================ RESULT ================\n");
