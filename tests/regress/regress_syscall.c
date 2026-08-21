@@ -15,9 +15,11 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -442,6 +444,129 @@ static void test_waitid_siginfo(void) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// A parent that says it will never wait does not get zombies.
+//
+// POSIX gives two ways to say it — SIGCHLD set to SIG_IGN, or SA_NOCLDWAIT —
+// and both mean a child is released as it exits rather than kept for a wait
+// that is not coming. Neither was implemented: do_exit marked every child a
+// zombie without ever consulting the parent's disposition, and the only path
+// that released one ran inside wait(2). `signal(SIGCHLD, SIG_IGN); fork();` —
+// the ordinary shape of a forking server that does not collect its children —
+// therefore held a task, a tgroup and a pid per child for the parent's life.
+//
+// The probe is waitpid, not /proc: this procfs answers for live tasks only, so
+// a zombie is already invisible there and the obvious test passes against the
+// bug.
+static void *regress_worker(void *arg) {
+    (void) arg;
+    usleep(400000);
+    return NULL;
+}
+
+static void test_no_zombies_when_parent_will_not_wait(void) {
+    section("SIGCHLD ignored / SA_NOCLDWAIT release children");
+
+    struct sigaction sa, saved;
+    // Saved and put back at the end. Every case after this one forks and waits,
+    // and SIG_DFL is not necessarily what was here — assuming it is makes this
+    // test a thing that changes the ones after it.
+    check(sigaction(SIGCHLD, NULL, &saved) == 0, "read the SIGCHLD disposition");
+
+    // Set it, rather than assume it: if this program was launched by something
+    // that had already ignored SIGCHLD, the control below would be auto-reaped
+    // and would fail against a correct kernel. A suite has to own the state it
+    // makes assertions about.
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "SIGCHLD forced to SIG_DFL first");
+
+    // The control. A parent that has not said anything keeps its zombie, and
+    // must: it is still entitled to wait for it.
+    pid_t child = fork();
+    if (child == 0)
+        _exit(0);
+    nap(0.3);
+    int status = 0;
+    check(waitpid(-1, &status, WNOHANG) == child,
+          "default disposition still keeps the zombie");
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_IGN;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "sigaction(SIGCHLD, SIG_IGN)");
+    child = fork();
+    if (child == 0)
+        _exit(0);
+    nap(0.3);
+    errno = 0;
+    check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
+          "SIG_IGN releases the child (wait answers ECHILD)");
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    sa.sa_flags = SA_NOCLDWAIT;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "sigaction(SIGCHLD, SA_NOCLDWAIT)");
+    child = fork();
+    if (child == 0)
+        _exit(0);
+    nap(0.3);
+    errno = 0;
+    check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
+          "SA_NOCLDWAIT releases the child (wait answers ECHILD)");
+
+    // The times a released child spent are still the parent's to read. Nothing
+    // reaps it, so the accounting reap_if_zombie does had to be done where the
+    // release is — and was not, at first.
+    {
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGCHLD, &sa, NULL);
+
+        struct rusage before, after;
+        getrusage(RUSAGE_CHILDREN, &before);
+        pid_t p = fork();
+        if (p == 0) {
+            volatile double x = 0;
+            for (long i = 0; i < 3000000; i++)
+                x += (double) i;
+            _exit(0);
+        }
+        nap(1.0);
+        getrusage(RUSAGE_CHILDREN, &after);
+        long delta = (long)(after.ru_utime.tv_sec - before.ru_utime.tv_sec) * 1000000
+                   + (after.ru_utime.tv_usec - before.ru_utime.tv_usec);
+        check(delta > 0, "a released child's CPU time reaches RUSAGE_CHILDREN");
+    }
+
+    // A group whose leader exits first still has to be released whole. The
+    // release names the leader rather than the last thread out for this reason:
+    // naming the last one freed the group and left the leader's task and pid
+    // waitable for the rest of the parent's life.
+    {
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGCHLD, &sa, NULL);
+
+        pid_t p = fork();
+        if (p == 0) {
+            pthread_t t;
+            if (pthread_create(&t, NULL, regress_worker, NULL) != 0)
+                _exit(1);
+            pthread_exit(NULL);   // the leader goes first; the worker is last
+        }
+        check(p > 0, "fork for the leader-exits-first case");
+        if (p > 0) {
+            nap(1.5);
+            errno = 0;
+            int st = 0;
+            check(waitpid(-1, &st, WNOHANG) == -1 && errno == ECHILD,
+                  "a group whose leader exited first is released whole");
+        }
+    }
+
+    check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
+}
+
 int main(int argc, char **argv) {
     // Optional extra path to check stat/fstat on, e.g. a fakefs mount point.
     const char *extra_path = argc > 1 ? argv[1] : NULL;
@@ -473,6 +598,7 @@ int main(int argc, char **argv) {
     test_waitpid_across_timeout();
     test_signal_still_interrupts();
     test_waitid_siginfo();
+    test_no_zombies_when_parent_will_not_wait();
 
     printf("\n================ RESULT ================\n");
     printf("  PASS: %d    FAIL: %d\n", pass, fail);

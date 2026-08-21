@@ -147,9 +147,17 @@ echo "########## cp regressions ##########"
 "$ISH" "$MOUNT_FLAG" "$ROOTFS" /bin/sh "$GUEST_ART/regress_cp.sh" ${FAKEFS_PATH:+"$FAKEFS_PATH"} || status=1
 
 echo
-if [ "$status" = "0" ]; then
-    echo "regress: all cases passed"
-else
+if [ "$status" != "0" ]; then
     echo "regress: FAILURES (see above)"
+    exit "$status"
 fi
-exit $status
+# Not "all cases passed" when most of them did not run. Every wait, signal and
+# waitid assertion lives in the compiled binary, so a run without it establishes
+# the cp cases and nothing else — and saying otherwise is how a suite comes to
+# be trusted for something it never checked.
+if [ "$have_cc" = "0" ] || [ "$MOUNT_FLAG" = "-f" ]; then
+    echo "regress: the cp cases passed; the compiled cases did not run"
+    exit 0
+fi
+echo "regress: all cases passed"
+exit 0

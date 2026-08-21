@@ -162,6 +162,7 @@ noreturn void do_exit(int status) {
         list_add(&new_parent->children, &child->siblings);
     }
 
+    bool auto_reap = false;
     if (exit_tgroup(current)) {
         // If already marked zombie by do_exit_group force path, skip
         if (leader->zombie)
@@ -191,6 +192,45 @@ noreturn void do_exit(int status) {
                 exit_hook(current, status);
             halt_system();
         } else {
+            // POSIX: a parent that ignores SIGCHLD, or that asked for
+            // SA_NOCLDWAIT, has said it will never wait. Its children are
+            // released as they exit rather than kept as zombies for a wait
+            // that is not coming. Neither was implemented, so
+            // `signal(SIGCHLD, SIG_IGN); fork();` — the ordinary way to write
+            // a forking server that does not collect its children — left one
+            // task, one tgroup and one pid behind per child, for the parent's
+            // lifetime.
+            //
+            // Read once, here, while the parent is known to be alive: this is
+            // under pids_lock, and the release below happens after the parent
+            // pointer is no longer used.
+            // sighand may be NULL: do_exit releases its own at the top, and
+            // the safety valve in do_exit_group nulls a stuck peer's without
+            // reparenting that peer's children — so a child can reach this with
+            // a parent that has one no longer. Asking a task that is on its way
+            // out what it thinks of SIGCHLD is not worth a crash; it is not
+            // going to wait either way, but leaving the zombie is the answer
+            // that was already correct before this branch existed.
+            if (leader->exit_signal == SIGCHLD_ && parent->sighand != NULL) {
+                lock(&parent->sighand->lock);
+                struct sigaction_ action = parent->sighand->action[SIGCHLD_];
+                unlock(&parent->sighand->lock);
+                if (action.handler == SIG_IGN_ || action.flags & SA_NOCLDWAIT_)
+                    auto_reap = true;
+            }
+
+            if (auto_reap) {
+                // What reap_if_zombie credits to the waiter. There is no
+                // waiter, but the parent still asked for these times the moment
+                // it calls getrusage(RUSAGE_CHILDREN) — releasing the child
+                // early is not a reason to lose them. Done here rather than at
+                // the release below because that is past the last use of
+                // `parent`.
+                lock(&parent->group->lock);
+                rusage_add(&parent->group->children_rusage, &group_rusage);
+                unlock(&parent->group->lock);
+            }
+
             leader->zombie = true;
             notify(&parent->group->child_exit);
             // Wake any pidfd poller waiting on this pid.
@@ -213,7 +253,31 @@ noreturn void do_exit(int status) {
     }
 
     vfork_notify(current);
-    if (current != leader) {
+    if (auto_reap) {
+        // What reap_if_zombie does, done here because there is no reaper
+        // coming. It cannot be called: it reads `current` for the rusage it
+        // credits to the waiter, and the task being released is on this thread.
+        //
+        // The leader, not `current`. They are usually the same, but a thread
+        // that leaves before its peers takes the `current != leader` path below
+        // and is not destroyed as the group's — so a group whose leader exits
+        // first ends up here on some other thread, and naming `current` would
+        // free the group while leaving the leader's task and pid behind
+        // forever. Measured: a pthread_exit'ing main thread left its leader
+        // waitable as a zombie for the rest of the parent's life.
+        //
+        // Safe on this thread for the same reason the branch below is: the
+        // group is dead (exit_tgroup said so), pids_lock is held, and nothing
+        // after this touches `current` before pthread_exit.
+        cond_destroy(&leader->group->child_exit);
+        task_leave_session(leader);
+        list_remove(&leader->group->pgroup);
+        free(leader->group);
+        if (leader == current)
+            current = NULL;
+        task_destroy(leader);
+    }
+    if (current != NULL && current != leader) {
         struct task *self = current;
         current = NULL;  // Clear before destroy to prevent dangling access
         task_destroy(self);
