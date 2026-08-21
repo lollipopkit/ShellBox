@@ -178,7 +178,17 @@ noreturn void do_exit(int status) {
         }
 
         if (parent == NULL) {
-            // init died
+            // init died, so the guest is over and this host process goes with
+            // it. The hook runs first: halt_system() does not return, and its
+            // `_exit(0)` is where the guest's status was being thrown away —
+            // `ish -r <rootfs> /bin/false` answered 0, and so did every other
+            // guest failure, which makes the CLI unusable from a script.
+            //
+            // An embedder's hook records and returns (ServerBox's writes the
+            // session's exit code), so it still reaches halt_system; the CLI's
+            // exits with the status and never gets there.
+            if (exit_hook != NULL)
+                exit_hook(current, status);
             halt_system();
         } else {
             leader->zombie = true;

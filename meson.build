@@ -1783,4 +1783,9 @@ if not meson.is_cross_build()
         ['tests/unit/fakefs_stat_test.c'],
         dependencies: ish)
     test('fakefs_stat', fakefs_stat_test)
+
+    uname_test = executable('uname_test',
+        ['tests/unit/uname_test.c'],
+        dependencies: ish)
+    test('uname', uname_test)
 endif
