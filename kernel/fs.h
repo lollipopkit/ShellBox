@@ -182,6 +182,15 @@ bool is_adhoc_fd(struct fd *fd);
 // filesystems
 extern const struct fs_ops procfs;
 extern const struct fs_ops fakefs;
+
+// An empty fakefs at `dir`: `dir/data` for the files and `dir/meta.db` for what
+// the host filesystem cannot hold. Returns 0, or a negative errno.
+//
+// This is what a mountable /dev is made of. realfs cannot hold a device node —
+// mknod needs root on the host — and tmpfs has no mknod at all, so a guest
+// whose root is an ordinary directory has nowhere to put /dev/null until one of
+// these exists.
+int fake_db_create(const char *dir);
 extern const struct fs_ops devptsfs;
 extern const struct fs_ops tmpfs;
 void fs_register(const struct fs_ops *fs);

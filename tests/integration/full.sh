@@ -18,31 +18,31 @@
 #
 # ## Known failures, so a run reads as a result rather than a mess
 #
-# Both glibc distributions fail to install anything, and the established cause
-# is that `ish -r` gives the guest no /dev.
+# The /dev gap that stopped both glibc distributions outright is fixed: `ish -r`
+# mounts a small fakefs at /dev and creates the nodes in it. What is left:
 #
-#   The CLI creates its device nodes only when the root is not realfs
-#   (xX_main_Xx.h: `if (fs != &realfs)`), because realfs cannot mknod without
-#   host root. Of the filesystems here only fakefs and realfs implement mknod at
-#   all -- tmpfs has none -- so a realfs root has nowhere to put /dev/urandom.
-#   ServerBox mounts a fakefs at /dev for exactly this reason.
+#   rocky / dnf    Resolves, downloads and computes the transaction, then rpm
+#                  fails to unpack it: "failed to open dir usr of /usr/lib/:
+#                  cpio: open failed - Bad file descriptor". rpm holds directory
+#                  descriptors and openat()s through them, and one of those
+#                  comes back EBADF.
 #
-#   rocky / dnf    `dnf install` ends with
-#                  "random_device::random_device(...): device not available" --
-#                  libstdc++ asking for an entropy source that is not there.
-#                  `head -c 4 /dev/urandom` in that guest fails the same way.
+#   ubuntu / apt   `apt-get update` reaches the mirror and fails on the fetch
+#                  itself. It no longer fails with "Method ... did not start
+#                  correctly", which is what it said before /dev existed.
 #
-#   ubuntu / apt   `apt-get update` fails with "Method /usr/lib/apt/methods/http
-#                  did not start correctly". The method binary runs fine on its
-#                  own -- it prints its capability banner and exits 0 -- so what
-#                  fails is apt's fork/exec plus the handshake over the pipe it
-#                  set up. Not the _apt privilege drop: `-o
-#                  APT::Sandbox::User=root` changes nothing. Whether this is the
-#                  same /dev gap is NOT established; it is the first thing to
-#                  rule out.
+# Fixed along the way, and listed here because the failures they caused looked
+# like distribution problems rather than emulator ones:
 #
-# Nothing is skipped on account of either. A known failure that stops being run
-# is a known failure that never gets fixed.
+#   setsockopt(IPPROTO_IP, IP_RECVERR) answered EINVAL, and glibc treats that as
+#   fatal in its resolver — socket, setsockopt, close, and not one DNS query on
+#   the wire. Every glibc distribution could not resolve a name.
+#
+#   syncfs was a stub returning ENOSYS, which ended a dnf transaction that had
+#   already downloaded everything.
+#
+# Nothing is skipped on account of either remaining failure. A known failure
+# that stops being run is a known failure that never gets fixed.
 #
 # ## The cache is not pristine
 #
@@ -87,12 +87,22 @@ pass=0; fail=0; failed_names=""
 # after it has worked.
 run_case() {
     local distro="$1" name="$2" marker="$3" script="$4"
-    local rootfs out started elapsed
+    local rootfs out started elapsed status
     rootfs="$(tests/integration/rootfs.sh "$distro")" || { fail=$((fail+1)); return; }
     started=$SECONDS
-    out="$("$ISH" -r "$rootfs" /bin/sh -c "mkdir -p $SCRATCH; $script; rm -rf $SCRATCH" 2>&1)"
+    # `set -e` inside the guest, and the status carried back out: a marker alone
+    # is not a result. gcc printing CC-OK after `apk add` failed is a pass by
+    # accident — the tree is reused between runs, so the compiler may already be
+    # there from a previous one, and the install being under test is the whole
+    # point of this tier.
+    out="$("$ISH" -r "$rootfs" /bin/sh -c "set -e; mkdir -p $SCRATCH; $script; rm -rf $SCRATCH" 2>&1)"
+    status=$?
     elapsed=$((SECONDS - started))
-    if printf '%s' "$out" | grep -q "$marker"; then
+    if [ "$status" != 0 ]; then
+        fail=$((fail+1)); failed_names="$failed_names $distro/$name"
+        printf '  FAIL  %-8s %-12s %3ds  (exit %s)\n' "$distro" "$name" "$elapsed" "$status"
+        printf '%s\n' "$out" | tail -12 | sed 's/^/        | /'
+    elif printf '%s' "$out" | grep -q "$marker"; then
         pass=$((pass+1)); printf '  PASS  %-8s %-12s %3ds\n' "$distro" "$name" "$elapsed"
     else
         fail=$((fail+1)); failed_names="$failed_names $distro/$name"
@@ -133,7 +143,14 @@ for distro in ${DISTROS//,/ }; do
         # rocky spells glibc's headers differently and has no `go` in the base
         # repos; a missing name is a failure of this table, so say so rather
         # than reporting the suite as broken.
-        [ -n "$pkg" ] || { echo "  SKIP  $distro $suite (no package name in this table)"; continue; }
+        # A distro or suite this table does not know is a typo in the
+        # invocation. Counted as a failure: a workflow_dispatch with a bad input
+        # used to report "full: 0 passed" and exit 0.
+        if [ -z "$pkg" ]; then
+            fail=$((fail+1)); failed_names="$failed_names $distro/$suite"
+            printf '  FAIL  %-8s %-12s  no package name in this table\n' "$distro" "$suite"
+            continue
+        fi
 
         case "$suite" in
             cc)
@@ -141,7 +158,7 @@ for distro in ${DISTROS//,/ }; do
                 # bash and then the guest's shell, and a %d in it is a format
                 # specifier to both of them before it is ever C.
                 run_case "$distro" cc "CC-OK 42" "
-                    $install $pkg >/dev/null 2>&1
+                    $install $pkg >/dev/null
                     cat > $SCRATCH/h.c <<'SRC'
 #include <stdio.h>
 int main(void) { printf(\"CC-OK %d\\n\", 6 * 7); return 0; }
@@ -150,12 +167,12 @@ SRC
                 ;;
             node)
                 run_case "$distro" node "NODE-OK" "
-                    $install $pkg >/dev/null 2>&1
+                    $install $pkg >/dev/null
                     node -e 'console.log(\"NODE-OK\", process.version)'"
                 ;;
             go)
                 run_case "$distro" go "GO-OK" "
-                    $install $pkg >/dev/null 2>&1
+                    $install $pkg >/dev/null
                     mkdir -p $SCRATCH/g && cd $SCRATCH/g
                     cat > main.go <<'SRC'
 package main
@@ -172,20 +189,25 @@ SRC
                 ;;
             rust)
                 run_case "$distro" rust "RUST-OK" "
-                    $install $pkg >/dev/null 2>&1
+                    $install $pkg >/dev/null
                     cat > $SCRATCH/r.rs <<'SRC'
 fn main() { println!(\"RUST-OK {}\", 6 * 7); }
 SRC
                     rustc -O -o $SCRATCH/r $SCRATCH/r.rs && $SCRATCH/r"
                 ;;
             *)
-                echo "  SKIP  unknown suite $suite"
+                fail=$((fail+1)); failed_names="$failed_names $distro/$suite"
+                printf '  FAIL  %-8s %-12s  unknown suite\n' "$distro" "$suite"
                 ;;
         esac
     done
 done
 
 echo
+if [ "$pass" = "0" ] && [ "$fail" = "0" ]; then
+    echo "full: nothing ran — check -d and -s" >&2
+    exit 2
+fi
 if [ "$fail" = "0" ]; then
     echo "full: $pass passed"
     exit 0

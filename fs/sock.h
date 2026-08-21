@@ -245,6 +245,7 @@ static inline int sock_flags_from_real(int real) {
 #define IP_HDRINCL_ 3
 #define IP_RETOPTS_ 7
 #define IP_MTU_DISCOVER_ 10
+#define IP_RECVERR_ 11
 #define IP_RECVTTL_ 12
 #define IP_RECVTOS_ 13
 #define TCP_NODELAY_ 1
@@ -258,6 +259,7 @@ static inline int sock_flags_from_real(int real) {
 #define IPV6_V6ONLY_ 26
 #define IPV6_TCLASS_ 67
 #define ICMP6_FILTER_ 1
+#define IPV6_RECVERR_ 25
 
 static inline int sock_opt_to_real(int fake, int level) {
     switch (level) {
@@ -291,6 +293,12 @@ static inline int sock_opt_to_real(int fake, int level) {
 #endif
         } break;
         case IPPROTO_IP: switch (fake) {
+#if defined(__linux__)
+            // Darwin has no error queue and no such option; on Linux it is the
+            // real thing, and passing it through is what makes the queue the
+            // guest asked for actually exist.
+            case IP_RECVERR_: return IP_RECVERR;
+#endif
             case IP_TOS_: return IP_TOS;
             case IP_TTL_: return IP_TTL;
             case IP_HDRINCL_: return IP_HDRINCL;

@@ -1634,7 +1634,7 @@ if get_option('offload_test_prebuilt')
 endif
 
 libfakefs = library('fakefs',
-    ['fs/fake-db.c', 'fs/fake-migrate.c', 'fs/fake-rebuild.c'],
+    ['fs/fake-db.c', 'fs/fake-migrate.c', 'fs/fake-rebuild.c', 'fs/fake-schema.c'],
     include_directories: includes,
     dependencies: sqlite3)
 
@@ -1788,4 +1788,10 @@ if not meson.is_cross_build()
         ['tests/unit/uname_test.c'],
         dependencies: ish)
     test('uname', uname_test)
+
+    # Built, not registered as a test: it needs a rootfs to boot, which is not
+    # in the repository. tests/integration/smoke.sh fetches one and runs it.
+    executable('sbm_api_test',
+        ['tests/integration/sbm_api_test.c'],
+        dependencies: ish)
 endif

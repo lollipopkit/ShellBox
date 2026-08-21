@@ -31,6 +31,13 @@ struct fakefs_db {
 int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd);
 int fake_db_deinit(struct fakefs_db *fs);
 
+// The schema every fakefs has, executed on a caller's handle. One definition,
+// because a second copy that drifts is a database two tools disagree about:
+// tools/fakefsify builds one from a tarball inside its own transaction, and
+// fake_db_create below builds an empty one.
+int fake_db_create_schema(sqlite3 *db);
+
+
 void db_begin_read(struct fakefs_db *fs);
 void db_begin_write(struct fakefs_db *fs);
 void db_commit(struct fakefs_db *fs);

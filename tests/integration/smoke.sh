@@ -4,15 +4,20 @@
 #
 # Usage:  tests/integration/smoke.sh [-i <ish binary>] [-r <rootfs>]
 #
-# ## Offline on purpose
+# ## What it does and does not reach for
 #
-# Every case here runs against what the base rootfs already ships. Nothing
-# installs a package, and nothing reaches the network — a gate that depends on
-# dl-cdn.alpinelinux.org turns red when a mirror hiccups, and a red build that
-# means nothing is worse than no build at all. Installing toolchains and
+# Every *case* runs against what the base rootfs already ships: nothing installs
+# a package, and no case talks to the network. Installing toolchains and
 # compiling with them is the full tier's job (tests/integration/full.sh), where
 # a network failure is a person reading a log rather than a blocked pull
 # request.
+#
+# One network step remains, and calling this suite "offline" would be a lie
+# without saying so: the rootfs itself is fetched, once, by rootfs.sh. CI caches
+# the tarball on its pinned digest so an ordinary run does not repeat it, and
+# `-r` skips it entirely for a tree that is already on disk. A dl-cdn outage on
+# a cold cache is therefore still a red gate — smaller than a gate that installs
+# packages, not zero.
 #
 # The rootfs is Alpine because that is what ServerBox ships. The other two are
 # in the full tier.
@@ -22,9 +27,11 @@ cd "$(dirname "$0")/../.."
 
 ISH=""
 ROOTFS=""
-while getopts "i:r:h" opt; do
+SBM=""
+while getopts "i:r:s:h" opt; do
     case $opt in
         i) ISH="$OPTARG" ;;
+        s) SBM="$OPTARG" ;;
         r) ROOTFS="$OPTARG" ;;
         h) sed -n '2,20p' "$0"; exit 0 ;;
         *) exit 2 ;;
@@ -38,6 +45,12 @@ if [ -z "$ISH" ]; then
 fi
 [ -n "$ISH" ] && [ -x "$ISH" ] || { echo "no iSH binary; build one or pass -i" >&2; exit 2; }
 [ -n "$ROOTFS" ] || ROOTFS="$(tests/integration/rootfs.sh alpine)" || exit 1
+
+# The embedder harness sits next to the ish binary in the build directory,
+# unless it was pointed somewhere else.
+if [ -z "$SBM" ]; then
+    SBM="$(dirname "$ISH")/sbm_api_test"
+fi
 
 # A rootfs is a directory on the host and it keeps whatever a run leaves in it.
 # Fixed paths meant this suite collided with itself: full.sh's go case makes
@@ -119,6 +132,19 @@ check "O_DIRECTORY on a file"  "ok" 0 \
 check "symlink resolves"       "target" 0 \
     'echo target > $SCRATCH/t; ln -sf $SCRATCH/t $SCRATCH/l; cat $SCRATCH/l'
 
+# /dev. `ish -r` used to give the guest none of this: the CLI created device
+# nodes only for a fakefs root, because realfs cannot mknod without host root.
+# The effect was worse than absence — a redirect to /dev/null created a regular
+# file at that path *in the rootfs on disk* — and it stopped dnf (no entropy
+# source for libstdc++) and apt (its download methods) outright.
+check "/dev/null swallows"     "after"   0 'echo gone > /dev/null; echo after'
+check "/dev/zero reads"        "8"       0 'head -c 8 /dev/zero | wc -c | tr -d " "'
+check "/dev/urandom reads"     "8"       0 'head -c 8 /dev/urandom | wc -c | tr -d " "'
+# ...and the rootfs is left alone: with no device node behind it, the redirect
+# above would have created this file.
+check "/dev/null is a device"  "device"  0 \
+    '[ -c /dev/null ] && echo device || echo regular-file'
+
 # Signals: a killed child is reported as killed, and the shell renders it as
 # 128+signal. This is the wait(2) status encoding that waitid_decode_status
 # reads, seen from the other end.
@@ -127,6 +153,24 @@ check "child killed by a signal" "" 143 'sh -c "kill -TERM \$\$"'
 # Environment and argv survive execve.
 check "argv"                   "a b c" 0 'sh -c "echo \$1 \$2 \$3" _ a b c'
 check "environment"            "value" 0 'X=value sh -c "echo \$X"'
+
+# The interface ServerBox links, rather than the CLI everything above goes
+# through: boot, a pty session under init, a command, its output and its exit
+# code. See the header of sbm_api_test.c.
+echo
+echo "########## embedder interface ##########"
+if [ -x "$SBM" ]; then
+    if "$SBM" "$ROOTFS"; then
+        pass=$((pass+1)); printf '  PASS  sbm_api_test\n'
+    else
+        fail=$((fail+1)); printf '  FAIL  sbm_api_test\n'
+    fi
+else
+    # Not a skip that passes quietly: this is half of what the gate is for, and
+    # a build that did not produce it is a build that changed something.
+    fail=$((fail+1))
+    printf '  FAIL  sbm_api_test not found at %s\n' "$SBM"
+fi
 
 echo
 if [ "$fail" = "0" ]; then
