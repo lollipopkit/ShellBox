@@ -5,8 +5,8 @@
 > **This repository is a fork of [ish-app/ish](https://github.com/ish-app/ish)** that adds a
 > **native ARM64 guest backend** to upstream iSH's threaded-code interpreter (*Asbestos*,
 > renamed from *jit* upstream in 2024 — [ish-app/ish@d375656f](https://github.com/ish-app/ish/commit/d375656f)).
-> It emulates AArch64 Linux on Apple Silicon, running alongside the original x86 (i386)
-> guest backend.
+> It emulates AArch64 Linux on Apple Silicon. Upstream's x86 (i386) backend was removed along
+> with the iOS app, so AArch64 is the only guest this builds.
 >
 > Asbestos is **not a JIT** — it doesn't emit machine code at runtime. For each basic block
 > it builds an array of pointers to pre-compiled native "gadget" functions that tail-call
@@ -27,8 +27,10 @@
 > The iOS app is not part of this repository: it is built as three static libraries and embedded
 > in a host app. See [Build for iOS](#build-for-ios).
 >
-> **Performance (ARM64 vs x86, compute-heavy):** C `int_arith_2M` **12x faster**,
-> Python `fib(30)` **9.2x faster**, `sum(1M)` **10.2x faster**, shell `seq+awk 100K` **7.2x faster**.
+> **Performance**, measured while both backends were still here (compute-heavy, ARM64 vs x86):
+> C `int_arith_2M` **12x faster**, Python `fib(30)` **9.2x faster**, `sum(1M)` **10.2x faster**,
+> shell `seq+awk 100K` **7.2x faster**. The x86 column is no longer reproducible from this
+> repository.
 >
 > **Full docs:** [README_arm64.md](README_arm64.md) · [中文版](README_arm64_zh.md) ·
 > [Performance report](benchmark/BENCHMARK_PERF.md) · [Compatibility report](benchmark/BENCHMARK_COMPAT.md)
@@ -46,17 +48,15 @@
 </a>
 </p>
 
-A project to get a Linux shell running on iOS, using usermode x86 emulation and syscall translation.
+A project to get a Linux shell running on iOS, using usermode AArch64 emulation and syscall
+translation.
 
 For the current status of the project, check the issues tab, and the commit logs.
 
 - [Discord server](https://discord.gg/HFAXj44)
-- [Wiki with help and tutorials](https://github.com/ish-app/ish/wiki)
-- [README中文](https://github.com/ish-app/ish/blob/master/README_ZH.md) (如若未能保持最新，请提交PR以更新)
+- [Wiki with help and tutorials](https://github.com/ish-app/ish/wiki) (upstream's, and about the app)
 
 # Hacking
-
-This project has a git submodule, make sure to clone with `--recurse-submodules` or run `git submodule update --init` after cloning.
 
 You'll need these things to build the project:
 
@@ -88,9 +88,9 @@ submodule and downloads those artifacts rather than building them.
 
 To set up your environment, cd to the project and run `meson build` to create a build directory in `build`. Then cd to the build directory and run `ninja`.
 
-To set up a self-contained Alpine linux filesystem, download the Alpine minirootfs tarball for i386 from the [Alpine website](https://alpinelinux.org/downloads/) and run `./tools/fakefsify`, with the minirootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Alpine filesystem with `./ish -f alpine /bin/sh`, assuming the output directory is called `alpine`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
+To set up a self-contained Alpine linux filesystem, download the Alpine minirootfs tarball for aarch64 from the [Alpine website](https://alpinelinux.org/downloads/) and run `./tools/fakefsify`, with the minirootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Alpine filesystem with `./ish -f alpine /bin/sh`, assuming the output directory is called `alpine`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
 
-You can replace `ish` with `tools/ptraceomatic` to run the program in a real process and single step and compare the registers at each step. I use it for debugging. Requires 64-bit Linux 4.11 or later.
+The host must be arm64: the gadgets a guest instruction dispatches to are native code for the machine running them, and `asbestos/guest-arm64/gadgets-aarch64` is the only set there is.
 
 ## Logging
 

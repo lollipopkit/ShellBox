@@ -151,7 +151,6 @@ struct statfs64_ {
     uint_t pad[4];
 } __attribute__((packed));
 
-#if defined(GUEST_ARM64)
 // ARM64 statfs structure - uses 64-bit fields throughout
 // This matches the kernel's statfs structure for LP64 architectures
 // Note: fsid_t is still { int val[2]; } = 8 bytes, not 16
@@ -169,7 +168,6 @@ struct statfs_arm64_ {
     uint64_t flags;     // f_flags
     uint64_t spare[4];  // f_spare
 };
-#endif
 
 struct statx_timestamp_ {
     int64_t sec;

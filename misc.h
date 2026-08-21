@@ -1,15 +1,11 @@
 #ifndef MISC_H
 #define MISC_H
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
 #include <assert.h>
 #include <sys/types.h>
 #include <stdnoreturn.h>
 #include <stdbool.h>
 #include <stdint.h>
-#endif
 
 // utility macros
 #define glue(a, b) _glue(a, b)
@@ -29,7 +25,6 @@
 // INT_GPF diagnostic, etc.), so cache the result at first use. The env
 // var is only read once at host startup — if the user needs to change
 // it they restart ish.
-#ifndef __KERNEL__
 #include <stdlib.h>
 static inline bool ish_exec_trace(void) {
     static int cached = -1;
@@ -37,7 +32,6 @@ static inline bool ish_exec_trace(void) {
         cached = (getenv("ISH_EXEC_TRACE") != NULL) ? 1 : 0;
     return cached != 0;
 }
-#endif
 
 #if !defined(__has_attribute)
 #define has_attribute(x) 0
@@ -61,7 +55,6 @@ static inline bool ish_exec_trace(void) {
 #endif
 #define must_check __attribute__((warn_unused_result))
 
-#ifndef __KERNEL__
 #define unlikely(x) __builtin_expect((x), 0)
 #define typecheck(type, x) ({type _x = x; x;})
 #define container_of(ptr, type, member) \
@@ -70,7 +63,6 @@ static inline bool ish_exec_trace(void) {
 #define fallthrough __attribute__((fallthrough))
 #else
 #define fallthrough
-#endif
 #endif
 
 #if has_attribute(no_sanitize)
@@ -113,9 +105,7 @@ static inline void __use(int dummy __attribute__((unused)), ...) {}
     })
 #endif
 
-#ifndef __KERNEL__
 #define array_size(arr) (sizeof(arr)/sizeof((arr)[0]))
-#endif
 
 // types
 typedef int64_t sqword_t;
@@ -125,11 +115,7 @@ typedef int32_t sdword_t;
 typedef uint16_t word_t;
 typedef uint8_t byte_t;
 
-#ifdef GUEST_ARM64
 typedef uint64_t addr_t;
-#else
-typedef dword_t addr_t;
-#endif
 typedef dword_t uint_t;
 typedef sdword_t int_t;
 
@@ -137,20 +123,14 @@ typedef sdword_t pid_t_;
 typedef dword_t uid_t_;
 typedef word_t mode_t_;
 typedef sqword_t off_t_;
-#ifdef GUEST_ARM64
 typedef sqword_t time_t_;
-#else
-typedef dword_t time_t_;
-#endif
 typedef dword_t clock_t_;
 
 #define uint(size) glue3(uint,size,_t)
 #define sint(size) glue3(int,size,_t)
 
-#ifndef __KERNEL__
 #define ERR_PTR(err) (void *) (intptr_t) (err)
 #define PTR_ERR(ptr) (intptr_t) (ptr)
 #define IS_ERR(ptr) ((uintptr_t) (ptr) > (uintptr_t) -0xfff)
-#endif
 
 #endif

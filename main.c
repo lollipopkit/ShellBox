@@ -24,10 +24,8 @@ extern __thread volatile uint64_t jit_last_x7;
 extern __thread volatile uint64_t jit_last_x10;
 extern __thread volatile int jit_crash_count;
 
-#ifdef GUEST_ARM64
 // Assembly trampoline: returns INT_JIT_CRASH via fiber_exit (defined in entry.S)
 extern void jit_crash_trampoline(void);
-#endif
 
 // cpu-offsets.h values needed by crash handler
 #define CRASH_CPU_pc 272
@@ -36,7 +34,7 @@ extern void jit_crash_trampoline(void);
 #define CRASH_LOCAL_jit_exit_sp 920
 
 static void crash_handler(int sig, siginfo_t *info, void *ctx) {
-#if defined(__aarch64__) && defined(GUEST_ARM64)
+#if defined(__aarch64__)
     // If we're inside JIT code and got SIGSEGV/SIGBUS, recover by redirecting
     // execution to jit_crash_trampoline via ucontext PC manipulation.
     // This avoids the overhead of _setjmp on every block entry.
@@ -242,7 +240,6 @@ static void microbench_signal_dump(int sig) {
     (void)sig;
     dump_pc_hist();
     dump_pc_trace();
-#ifdef GUEST_ARM64
     // Walk all tasks, dump guest x21 if available (microbench counter reg).
     extern struct pid pids[];
     for (int i = 1; i < 8; i++) {
@@ -251,7 +248,6 @@ static void microbench_signal_dump(int sig) {
             fprintf(stderr, "guest_pid=%d  x21=%llu\n", i, (unsigned long long)t->cpu.x21);
         }
     }
-#endif
     _exit(0);
 }
 
@@ -365,9 +361,7 @@ int main(int argc, char *const argv[]) {
     }
     p += snprintf(envp + p, sizeof(envp) - p, "HOME=/root") + 1;
     p += snprintf(envp + p, sizeof(envp) - p, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin") + 1;
-#ifdef GUEST_ARM64
     p += snprintf(envp + p, sizeof(envp) - p, "PYTHONMALLOC=malloc") + 1;
-#endif
     int err = xX_main_Xx(argc, argv, envp);
     if (err < 0) {
         fprintf(stderr, "xX_main_Xx: %s\n", strerror(-err));

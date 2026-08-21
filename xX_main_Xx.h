@@ -126,7 +126,6 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     size_t exec_argc = 0;
     if (argv[optind] == NULL)
 	    return _ENOENT;
-#ifdef GUEST_ARM64
     // Inject V8 flags for node to work around scope corruption in emulation.
     // --jitless: disable JIT (avoids V8 code gen incompatible with our JIT)
     // --predictable: disable concurrent GC/compilation (avoids race conditions)
@@ -177,7 +176,6 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
             goto do_exec;
         }
     }
-#endif
     while (i < argc) {
         strcpy(&argv_copy[p], argv[i]);
         p += strlen(argv[i]) + 1;
@@ -185,7 +183,6 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
         i++;
     }
     argv_copy[p] = '\0';
-#ifdef GUEST_ARM64
 do_exec:
     // Inject environment variables for the initial exec.
     // sys_execve has its own injection, but the initial do_execve bypasses it.
@@ -251,9 +248,6 @@ do_exec:
         envp_buf[ep] = '\0';
         err = do_execve(argv[optind], exec_argc, argv_copy, envp_buf);
     }
-#else
-    err = do_execve(argv[optind], exec_argc, argv_copy, envp == NULL ? "\0" : envp);
-#endif
     if (err < 0)
         return err;
     tty_drivers[TTY_CONSOLE_MAJOR] = &real_tty_driver;

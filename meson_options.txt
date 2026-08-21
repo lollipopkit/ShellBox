@@ -2,19 +2,21 @@ option('log', type: 'string', value: '')
 option('nolog', type: 'string', value: '')
 option('log_handler', type: 'string', value: 'dprintf')
 
-option('engine', type: 'combo', choices: ['asbestos', 'unicorn'], value: 'asbestos')
-option('kernel', type: 'combo', choices: ['ish', 'linux'], value: 'ish')
-option('kconfig', type: 'array', value: [])
-
-option('guest_arch', type: 'combo', choices: ['x86', 'arm64'], value: 'x86',
+# One choice, and it is not going away: ServerBox's scripts/build-ish-ios.sh
+# and scripts/ensure-ish-libs.sh pass `-Dguest_arch=arm64`, and meson fails a
+# setup that names an option it does not have. Kept as an option so those
+# scripts keep working; kept a combo so `-Dguest_arch=x86` says what is wrong
+# rather than being ignored.
+# TODO: delete once no consumer passes it.
+option('guest_arch', type: 'combo', choices: ['arm64'], value: 'arm64',
        description: 'Guest architecture to emulate')
 
 option('vdso_c_args', type: 'string', value: '')
 
 option('no_crlf', type: 'boolean', value: false)
 
-# Per-offload verification handlers (dev only, ARM64). Each offload type has
-# its own independent switch + test files, so they compile in isolation.
+# Per-offload verification handlers (dev only). Each offload type has its own
+# independent switch + test files, so they compile in isolation.
 option('offload_test_symbol', type: 'boolean', value: false,
        description: 'Build symbol-level offload test handlers (mem*/hash/dict).')
 option('offload_test_prebuilt', type: 'boolean', value: false,

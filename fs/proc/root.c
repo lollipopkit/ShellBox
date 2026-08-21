@@ -34,7 +34,6 @@ static int proc_show_cpuinfo(struct proc_entry *UNUSED(entry), struct proc_data 
     { const char *e = getenv("ISH_FAKE_NCPU"); if (e) { int n = atoi(e); if (n > 0) cpus = n; } }
     for (unsigned i = 0; i < cpus; i++) {
         proc_printf(buf, "processor\t: %u\n", i);
-#ifdef GUEST_ARM64
         // ARM64 format
         proc_printf(buf, "BogoMIPS\t: 48.00\n");
         // Include crypto features that iSH ARM64 emulates
@@ -44,10 +43,6 @@ static int proc_show_cpuinfo(struct proc_entry *UNUSED(entry), struct proc_data 
         proc_printf(buf, "CPU variant\t: 0x0\n");
         proc_printf(buf, "CPU part\t: 0x000\n");
         proc_printf(buf, "CPU revision\t: 0\n");
-#else
-        // x86 format
-        proc_printf(buf, "vendor_id\t: iSH\n");
-#endif
         proc_printf(buf, "\n");
     }
     return 0;
@@ -59,7 +54,6 @@ static void show_kb(struct proc_data *buf, const char *name, uint64_t value) {
 
 static int proc_show_meminfo(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
     struct mem_usage usage = get_mem_usage();
-#if defined(GUEST_ARM64)
     // Cap reported memory to match sys_sysinfo limit.
     // Reporting full host RAM (e.g. 24GB) causes V8 to set heap_size_limit=4GB
     // which exhausts the emulator's limited address space.
@@ -68,7 +62,6 @@ static int proc_show_meminfo(struct proc_entry *UNUSED(entry), struct proc_data 
         usage.total = MEMINFO_MAX_RAM;
     if (usage.free > MEMINFO_MAX_RAM)
         usage.free = MEMINFO_MAX_RAM;
-#endif
     show_kb(buf, "MemTotal:       ", usage.total);
     show_kb(buf, "MemFree:        ", usage.free);
     show_kb(buf, "MemShared:      ", usage.free);

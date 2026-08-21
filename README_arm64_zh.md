@@ -4,7 +4,7 @@
 
 本 fork 在上游 iSH 的 threaded-code 解释器（**Asbestos**，2024 年之前叫 *jit*，上游重命名是因为
 它本来就不是真正的 JIT）之上**新增了 ARM64 guest 后端**，在 Apple Silicon 上模拟 AArch64 Linux，
-与原版 x86 (i386) guest 后端并存。结果是一个性能和兼容性大幅提升的 Linux 环境，
+上游的 x86 (i386) guest 后端已随 iOS app 一并移除。结果是一个性能和兼容性大幅提升的 Linux 环境，
 能在 iPhone / iPad 上直接运行 **Python、Node.js、Go、Rust 和原生 CLI 工具**。
 
 > ## 🚢 生产环境使用
@@ -20,7 +20,7 @@
 >
 > 本 fork 所做的是在这个 Asbestos 框架里**新增一个 ARM64 guest 后端**：
 > 新的 gadget（`asbestos/guest-arm64/gadgets-aarch64/`）把 AArch64 guest 指令映射到若干条
-> ARM64 host 指令——同架构分派，每条 guest 指令只需几条 host 指令。上游 x86 后端依然并存。
+> ARM64 host 指令——同架构分派，每条 guest 指令只需几条 host 指令。
 > 下文部分地方用 "JIT" 作为简写，请理解为"同架构 gadget 分派"，而非运行时代码生成。
 >
 > 英文版: [README_arm64.md](README_arm64.md)
@@ -176,14 +176,18 @@ rootfs 本身属于嵌入方：`realfs` 挂载普通目录树，`fakefs` 挂载 
 
 ## 构建配置
 
-三个 meson option 决定构建内容。ARM64 需要 ARM64 host —— gadget 路径是
-`asbestos/guest-<guest>/gadgets-<host cpu family>`，不存在跨架构的那一套。
+host 必须是 ARM64：gadget 路径是 `asbestos/guest-arm64/gadgets-<host cpu family>`，
+而只存在 `gadgets-aarch64` 这一套。
 
 | Option | 取值 | 默认 |
 |---|---|---|
-| `guest_arch` | `x86`、`arm64` | `x86` |
-| `kernel` | `ish`、`linux` | `ish` |
-| `engine` | `asbestos`、`unicorn` | `asbestos` |
+| `guest_arch` | `arm64` | `arm64` |
+| `log`、`nolog` | 空格分隔的 channel 名 | 空 |
+| `log_handler` | `dprintf` 等 | `dprintf` |
+| `offload_test_symbol`、`offload_test_prebuilt` | `true`、`false` | `false` |
+
+`guest_arch` 只剩一个合法取值，保留它是因为 ServerBox 的脚本在传 `-Dguest_arch=arm64`，
+而 meson 遇到不存在的 option 会直接失败。
 
 ```bash
 # host CLI（macOS，测试用）
@@ -203,6 +207,9 @@ libarchive，无法为手机构建。`.github/workflows/static-libs.yml` 对 `ip
 ---
 
 ## 性能
+
+数据采集于两个后端都还在的时期。x86 那一列现在已无法从本仓库复现，保留它是因为它正是
+ARM64 后端被写出来的理由。
 
 使用 `benchmark/run.sh` 在 macOS 26.4.1 / Apple Silicon 上测试，采用 guest 内置计时
 （排除启动开销）。完整数据见

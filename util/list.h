@@ -8,7 +8,6 @@ struct list {
     struct list *next, *prev;
 };
 
-#ifndef __KERNEL__
 
 static inline void list_init(struct list *list) {
     list->next = list;
@@ -96,6 +95,5 @@ static inline unsigned long list_size(struct list *list) {
     return count;
 }
 
-#endif
 
 #endif

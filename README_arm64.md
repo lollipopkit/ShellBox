@@ -4,10 +4,12 @@
 
 This fork adds a **native ARM64 guest backend** to upstream iSH's threaded-code interpreter
 (*Asbestos*, formerly called *jit* — renamed upstream in 2024 because it doesn't actually emit
-machine code). The new backend emulates AArch64 Linux on Apple Silicon, running alongside
-the original x86 (i386) guest backend. The result is a dramatically faster and more
-compatible Linux environment capable of running **Python, Node.js, Go, Rust, and native
-CLI tools** directly on iPhone and iPad.
+machine code). The new backend emulates AArch64 Linux on Apple Silicon. The result is a
+dramatically faster and more compatible Linux environment capable of running **Python,
+Node.js, Go, Rust, and native CLI tools** directly on iPhone and iPad.
+
+Upstream's x86 (i386) backend was removed along with the iOS app: this repository is the
+engine an embedder links, and it emulates one guest architecture.
 
 > ## 🚢 Production Use
 >
@@ -25,9 +27,8 @@ CLI tools** directly on iPhone and iPad.
 > What this fork adds is an **ARM64 guest backend** inside that same Asbestos infrastructure:
 > new gadgets (`asbestos/guest-arm64/gadgets-aarch64/`) that map AArch64 guest instructions
 > to a few ARM64 host instructions each — same-architecture dispatch, so each guest
-> instruction costs only a handful of host instructions. The upstream x86 backend continues
-> to ship unchanged alongside it. Some prose below says "JIT" as convenient shorthand —
-> read it as "same-arch gadget dispatch," not runtime codegen.
+> instruction costs only a handful of host instructions. Some prose below says "JIT" as
+> convenient shorthand — read it as "same-arch gadget dispatch," not runtime codegen.
 
 ---
 
@@ -184,14 +185,19 @@ The rootfs itself belongs to the embedding app: `realfs` mounts an ordinary dire
 
 ## Build Configuration
 
-Three meson options decide what is built. ARM64 requires an ARM64 host — the gadgets are
-`asbestos/guest-<guest>/gadgets-<host cpu family>`, and there is no cross-architecture set.
+The host must be ARM64: the gadget set is `asbestos/guest-arm64/gadgets-<host cpu family>`,
+and `gadgets-aarch64` is the only one that exists.
 
 | Option | Values | Default |
 |---|---|---|
-| `guest_arch` | `x86`, `arm64` | `x86` |
-| `kernel` | `ish`, `linux` | `ish` |
-| `engine` | `asbestos`, `unicorn` | `asbestos` |
+| `guest_arch` | `arm64` | `arm64` |
+| `log`, `nolog` | space-separated channel names | empty |
+| `log_handler` | `dprintf`, … | `dprintf` |
+| `offload_test_symbol`, `offload_test_prebuilt` | `true`, `false` | `false` |
+
+`guest_arch` has one legal value and exists so that ServerBox's scripts, which pass
+`-Dguest_arch=arm64`, keep working — meson fails a setup that names an option it does not
+have.
 
 ```bash
 # Host CLI, for testing
@@ -211,6 +217,9 @@ and cannot be built for a phone. `.github/workflows/static-libs.yml` runs this f
 ---
 
 ## Performance
+
+Measured while both backends were still in the tree. The x86 column cannot be reproduced from
+this repository any more; it is kept because it is the reason the ARM64 backend was written.
 
 Measured with `benchmark/run.sh` on macOS 26.4.1 / Apple Silicon using guest-side
 timing (startup overhead excluded). Full details in

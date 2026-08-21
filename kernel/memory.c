@@ -26,7 +26,6 @@ static struct mmu_ops mem_mmu_ops;
 #include "kernel/mm.h"
 
 
-#ifdef GUEST_ARM64
 // ============================================================
 // ARM64: 4-level page table for 48-bit address space
 // ============================================================
@@ -371,124 +370,6 @@ page_t pt_find_hole_for_reservation(struct mem *mem, pages_t size) {
     return pt_find_hole_impl(mem, size, /*prefer_high=*/true);
 }
 
-#else
-// ============================================================
-// x86: 2-level flat page table for 32-bit address space
-// ============================================================
-
-void mem_init(struct mem *mem) {
-    mem->pgdir = calloc(MEM_PGDIR_SIZE, sizeof(struct pt_entry *));
-    mem->pgdir_used = 0;
-    mem->mmap_hint = 0;
-    mem->reservations = NULL;
-    mem->mmu.ops = &mem_mmu_ops;
-    mem->mmu.asbestos = asbestos_new(&mem->mmu);
-    mem->mmu.changes = 0;
-    wrlock_init(&mem->lock);
-    lock_init(&mem->cow_lock);
-}
-
-void mem_destroy(struct mem *mem) {
-    write_wrlock(&mem->lock);
-    pt_unmap_always(mem, 0, MEM_PAGES);
-    // [T-ish-mm-double-destroy-crash] Freed asbestos MUST also be nulled out.
-    // Under CLONE_VM exit_group races (multi-threaded python3 during MCP
-    // teardown), the same struct mm can be reached by a second cleanup path
-    // once refcount has already hit zero — the pt_unmap_always above would
-    // then dereference a freed asbestos and crash in asbestos_invalidate_range
-    // with EXC_BAD_ACCESS. Nulling here + NULL-guarding the invalidate calls
-    // turns the race into a safe no-op instead of a segfault.
-    asbestos_free(mem->mmu.asbestos);
-    mem->mmu.asbestos = NULL;
-    while (mem->reservations) {
-        struct mem_reservation *r = mem->reservations;
-        mem->reservations = r->next;
-        free(r);
-    }
-    for (int i = 0; i < MEM_PGDIR_SIZE; i++) {
-        if (mem->pgdir[i] != NULL)
-            free(mem->pgdir[i]);
-    }
-    free(mem->pgdir);
-    write_wrunlock(&mem->lock);
-    wrlock_destroy(&mem->lock);
-}
-
-#define PGDIR_TOP(page) ((page) >> 10)
-#define PGDIR_BOTTOM(page) ((page) & (MEM_PGDIR_SIZE - 1))
-
-static struct pt_entry *mem_pt_new(struct mem *mem, page_t page) {
-    struct pt_entry *pgdir = mem->pgdir[PGDIR_TOP(page)];
-    if (pgdir == NULL) {
-        pgdir = mem->pgdir[PGDIR_TOP(page)] = calloc(MEM_PGDIR_SIZE, sizeof(struct pt_entry));
-        mem->pgdir_used++;
-    }
-    return &pgdir[PGDIR_BOTTOM(page)];
-}
-
-struct pt_entry *mem_pt(struct mem *mem, page_t page) {
-    struct pt_entry *pgdir = mem->pgdir[PGDIR_TOP(page)];
-    if (pgdir == NULL)
-        return NULL;
-    struct pt_entry *entry = &pgdir[PGDIR_BOTTOM(page)];
-    if (entry->data == NULL)
-        return NULL;
-    return entry;
-}
-
-static void mem_pt_del(struct mem *mem, page_t page) {
-    struct pt_entry *entry = mem_pt(mem, page);
-    if (entry != NULL)
-        entry->data = NULL;
-}
-
-void mem_next_page(struct mem *mem, page_t *page) {
-    (*page)++;
-    if (*page >= MEM_PAGES)
-        return;
-    while (*page < MEM_PAGES && mem->pgdir[PGDIR_TOP(*page)] == NULL)
-        *page = (*page - PGDIR_BOTTOM(*page)) + MEM_PGDIR_SIZE;
-}
-
-static page_t x86_find_hole_from(struct mem *mem, pages_t size, page_t start) {
-    page_t hole_end = 0;
-    bool in_hole = false;
-    for (page_t page = start; page > 0x40000; page--) {
-        if (!in_hole && mem_pt(mem, page) == NULL) {
-            in_hole = true;
-            hole_end = page + 1;
-        }
-        if (mem_pt(mem, page) != NULL)
-            in_hole = false;
-        else if (hole_end - page == size)
-            return page;
-    }
-    return BAD_PAGE;
-}
-
-page_t pt_find_hole(struct mem *mem, pages_t size) {
-    page_t start = mem->mmap_hint;
-    if (start == 0 || start > 0xefffd || start <= 0x40000 + size)
-        start = 0xefffd;
-
-    page_t result = x86_find_hole_from(mem, size, start);
-    if (result != BAD_PAGE) {
-        mem->mmap_hint = (result > 0) ? result - 1 : 0;
-        return result;
-    }
-
-    if (start < 0xefffd) {
-        result = x86_find_hole_from(mem, size, 0xefffd);
-        if (result != BAD_PAGE) {
-            mem->mmap_hint = (result > 0) ? result - 1 : 0;
-            return result;
-        }
-    }
-
-    return BAD_PAGE;
-}
-
-#endif // GUEST_ARM64
 
 // ============================================================
 // Reservation API — shared by x86 and ARM64.
@@ -675,7 +556,6 @@ int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
     for (page_t page = start; page < start + pages; page++) {
         struct pt_entry *entry = mem_pt(mem, page);
         if (entry == NULL) {
-#ifdef GUEST_ARM64
             // Page is reservation-only (V8 heap cage chunk reserved
             // PROT_NONE, guest now mprotect'ing RW). Materialise it
             // via pt_map_nothing with the requested flags — i.e. treat
@@ -700,7 +580,6 @@ int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
                 }
                 pt_map_nothing(mem, run_start, run_len, flags | P_ANONYMOUS);
             }
-#endif
             continue;
         }
         int old_flags = entry->flags;
@@ -808,13 +687,8 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
             goto check_reservation;
 
         // Enforce RLIMIT_STACK: don't grow stack beyond the limit.
-#ifdef GUEST_ARM64
         // Stack top is at STACK_TOP_PAGE (guard page), stack grows down from STACK_INIT_PAGE.
         pages_t guard_page = STACK_TOP_PAGE;
-#else
-        // Stack top is at page 0xffffe (guard page), stack grows down from 0xffffd.
-        pages_t guard_page = 0xffffe;
-#endif
         rlim_t_ stack_limit = rlimit(RLIMIT_STACK_);
         if (stack_limit != RLIM_INFINITY_) {
             pages_t stack_pages = guard_page - page;

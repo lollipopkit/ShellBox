@@ -119,16 +119,12 @@ struct sigevent_ {
     union sigval_ value;  // offset 0, size 8
     int_t signo;          // offset 8, size 4
     int_t method;         // offset 12, size 4
-#ifdef GUEST_ARM64
     // ARM64: struct sigevent is 64 bytes with additional fields
     // sigev_notify_function, sigev_notify_attributes, padding
     union {
         pid_t_ tid;       // for SIGEV_THREAD_ID
         char _pad[48];    // padding to reach 64 bytes total (8+4+4+48=64)
     };
-#else
-    pid_t_ tid;
-#endif
 };
 
 // send a signal
@@ -189,7 +185,6 @@ static inline void sigset_del(sigset_t_ *set, int sig) {
     *set &= ~sig_mask(sig);
 }
 
-#if defined(GUEST_ARM64)
 struct stack_t_ {
     uint64_t stack;    // ss_sp: 8 bytes on ARM64
     int32_t flags;     // ss_flags: 4 bytes
@@ -197,14 +192,6 @@ struct stack_t_ {
     uint64_t size;     // ss_size: 8 bytes on ARM64
 };
 #define MINSIGSTKSZ_ 6144
-#else
-struct stack_t_ {
-    addr_t stack;
-    dword_t flags;
-    dword_t size;
-};
-#define MINSIGSTKSZ_ 2048
-#endif
 #define SS_ONSTACK_ 1
 #define SS_DISABLE_ 2
 dword_t sys_sigaltstack(addr_t ss, addr_t old_ss);
@@ -220,7 +207,6 @@ dword_t sys_tgkill(pid_t_ tgid, pid_t_ tid, dword_t sig);
 // signal frame structs. There's a good chance this should go in its own header file
 
 // thanks kernel for giving me something to copy/paste
-#if defined(GUEST_ARM64)
 // ARM64 sigcontext matches Linux kernel (arch/arm64/include/uapi/asm/sigcontext.h)
 #define FPSIMD_MAGIC 0x46508001
 #define ESR_MAGIC    0x45535201
@@ -281,100 +267,6 @@ struct rt_sigframe_ {
     struct ucontext_ uc;
     char retcode[8];
 };
-#else
-struct sigcontext_ {
-    word_t gs, __gsh;
-    word_t fs, __fsh;
-    word_t es, __esh;
-    word_t ds, __dsh;
-    dword_t di;
-    dword_t si;
-    dword_t bp;
-    dword_t sp;
-    dword_t bx;
-    dword_t dx;
-    dword_t cx;
-    dword_t ax;
-    dword_t trapno;
-    dword_t err;
-    dword_t ip;
-    word_t cs, __csh;
-    dword_t flags;
-    dword_t sp_at_signal;
-    word_t ss, __ssh;
-
-    dword_t fpstate;
-    dword_t oldmask;
-    dword_t cr2;
-};
-
-struct ucontext_ {
-    uint_t flags;
-    uint_t link;
-    struct stack_t_ stack;
-    struct sigcontext_ mcontext;
-    sigset_t_ sigmask;
-} __attribute__((packed));
-
-struct fpreg_ {
-    word_t significand[4];
-    word_t exponent;
-};
-
-struct fpxreg_ {
-    word_t significand[4];
-    word_t exponent;
-    word_t padding[3];
-};
-
-struct xmmreg_ {
-    uint32_t element[4];
-};
-
-struct fpstate_ {
-    /* Regular FPU environment.  */
-    dword_t cw;
-    dword_t sw;
-    dword_t tag;
-    dword_t ipoff;
-    dword_t cssel;
-    dword_t dataoff;
-    dword_t datasel;
-    struct fpreg_ st[8];
-    word_t status;
-    word_t magic;
-
-    /* FXSR FPU environment.  */
-    dword_t _fxsr_env[6];
-    dword_t mxcsr;
-    dword_t reserved;
-    struct fpxreg_ fxsr_st[8];
-    struct xmmreg_ xmm[8];
-    dword_t padding[56];
-};
-
-struct sigframe_ {
-    addr_t restorer;
-    dword_t sig;
-    struct sigcontext_ sc;
-    struct fpstate_ fpstate;
-    dword_t extramask;
-    char retcode[8];
-};
-
-struct rt_sigframe_ {
-    addr_t restorer;
-    int_t sig;
-    addr_t pinfo;
-    addr_t puc;
-    union {
-        struct siginfo_ info;
-        char __pad[128];
-    };
-    struct ucontext_ uc;
-    char retcode[8];
-};
-#endif
 
 // On a 64-bit system with 32-bit emulation, the fpu state is stored in extra
 // space at the end of the frame, not in the frame itself. We store the fpu

@@ -1,5 +1,0 @@
-[submodule "deps/linux"]
-	path = deps/linux
-	url = https://github.com/ish-app/linux
-	update = none
-	shallow = true

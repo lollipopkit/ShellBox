@@ -4,11 +4,7 @@
 #include "misc.h"
 #include "emu/mmu.h"
 
-#ifdef __KERNEL__
-#include <linux/stddef.h>
-#else
 #include <stddef.h>
-#endif
 
 // ARM64 NEON/FP register - 128-bit vector
 union arm64_vreg {

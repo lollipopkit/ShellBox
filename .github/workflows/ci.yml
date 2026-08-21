@@ -5,57 +5,28 @@ on:
   pull_request:
       branches: [main]
 
+# There is no Linux job. It built the x86 guest on an x86 runner, and both
+# halves of that are gone: the guest is AArch64, and the gadgets it dispatches
+# to are native code for the host, so the host has to be arm64 too. An
+# `ubuntu-24.04-arm` runner would build platform/linux.c again if that path
+# ever needs covering.
 jobs:
-  build-linux:
-    runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        cc: [clang, gcc]
-        kernel: [ish, linux]
-    steps:
-      - uses: actions/checkout@v2
-        with:
-            submodules: true
-      - uses: actions/setup-python@v2
-        with:
-            python-version: '3.x'
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install libarchive-dev
-          pip3 install meson ninja
-      - name: Clone Linux
-        if: matrix.kernel == 'linux'
-        run: deps/clone-linux.sh
-      - name: Build
-        run: |
-          meson build -Dengine=asbestos -Dkernel=${{matrix.kernel}}
-          ninja -C build
-        env:
-          CC: ${{matrix.cc}}
-      - name: Test
-        if: matrix.kernel == 'ish'
-        run: ninja -C build test
-
-  # The host build, for both guest architectures. It used to be an xcodebuild
-  # of the iSH app; there is no app here any more, and what an embedder gets is
-  # the meson build, so that is what is proved.
+  # The host build. It used to be an xcodebuild of the iSH app; there is no app
+  # here any more, and what an embedder gets is the meson build, so that is
+  # what is proved.
   build-mac:
     runs-on: macos-15
-    strategy:
-      matrix:
-        guest_arch: [x86, arm64]
     steps:
       - uses: actions/checkout@v2
-        with:
-            submodules: true
       - name: Install dependencies
         run: |
           brew install llvm lld ninja libarchive meson
       - name: Build
         run: |
-          meson setup build -Dguest_arch=${{matrix.guest_arch}}
+          meson setup build
           ninja -C build
+      - name: Test
+        run: meson test -C build --print-errorlogs
 
   # What ServerBox links, built the way it builds it: a cross build for the
   # device SDK, of the three library targets and nothing else. `tools/fakefsify`
@@ -65,8 +36,6 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v2
-        with:
-            submodules: true
       - name: Install dependencies
         run: brew install llvm lld ninja libarchive meson
       - name: Build
