@@ -56,8 +56,8 @@ case "${1:-}" in
     LAYOUT=oci
     ;;
   ubuntu)
-    URL="https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz"
-    SHA=7b2dced6dd56ad5e4a813fa25c8de307b655fdabc6ea9213175a92c48dabb048
+    URL="https://cdimage.ubuntu.com/ubuntu-base/releases/26.04/release/ubuntu-base-26.04-base-arm64.tar.gz"
+    SHA=b2b46a37324ea1954e93f293fe6d7c2241daf2fc298c4022e6e4caceeed74cab
     LAYOUT=plain
     ;;
   *)

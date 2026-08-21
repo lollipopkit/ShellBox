@@ -61,8 +61,14 @@ pass=0; fail=0
 # the right thing on its way to dying.
 check() {
     local name="$1" want_out="$2" want_status="$3" cmd="$4"
-    local out status
-    out="$("$ISH" -r "$ROOTFS" /bin/sh -c "SCRATCH=$SCRATCH; mkdir -p \$SCRATCH; $cmd" 2>/dev/null)"
+    local out status errfile
+    # stderr to a file rather than to /dev/null: a case that fails because the
+    # emulator died says so on stderr, and discarding it left CI reporting
+    # fourteen identical "status 139, wanted 0" lines with no reason attached.
+    # Kept out of $out so that a guest writing to stderr does not fail a case
+    # that is about stdout.
+    errfile="$(mktemp)"
+    out="$("$ISH" -r "$ROOTFS" /bin/sh -c "SCRATCH=$SCRATCH; mkdir -p \$SCRATCH; $cmd" 2>"$errfile")"
     status=$?
     if [ "$out" = "$want_out" ] && [ "$status" = "$want_status" ]; then
         pass=$((pass+1)); printf '  PASS  %s\n' "$name"
@@ -71,7 +77,11 @@ check() {
         printf '  FAIL  %s\n' "$name"
         printf '        output: %q\n        want:   %q\n' "$out" "$want_out"
         printf '        status: %s  want: %s\n' "$status" "$want_status"
+        # 139 is 128+SIGSEGV: the emulator, not the guest.
+        [ "$status" = 139 ] && printf '        (128+11: the host process segfaulted)\n'
+        [ -s "$errfile" ] && sed 's/^/        | /' "$errfile" | head -20
     fi
+    rm -f "$errfile"
 }
 
 echo "########## smoke ($ISH -r $ROOTFS) ##########"
