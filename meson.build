@@ -1634,7 +1634,7 @@ if get_option('offload_test_prebuilt')
 endif
 
 libfakefs = library('fakefs',
-    ['fs/fake-db.c', 'fs/fake-migrate.c', 'fs/fake-rebuild.c'],
+    ['fs/fake-db.c', 'fs/fake-migrate.c', 'fs/fake-rebuild.c', 'fs/fake-schema.c'],
     include_directories: includes,
     dependencies: sqlite3)
 

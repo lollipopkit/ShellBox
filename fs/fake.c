@@ -1590,6 +1590,44 @@ int fakefs_bind_unmount(const char *linux_path) {
 }
 
 
+int fake_db_create(const char *dir) {
+    char path[PATH_MAX];
+    if (mkdir(dir, 0755) < 0 && errno != EEXIST)
+        return errno_map();
+    snprintf(path, sizeof(path), "%s/data", dir);
+    if (mkdir(path, 0755) < 0 && errno != EEXIST)
+        return errno_map();
+
+    snprintf(path, sizeof(path), "%s/meta.db", dir);
+    sqlite3 *db = NULL;
+    if (sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL) != SQLITE_OK) {
+        sqlite3_close(db);
+        return _EIO;
+    }
+
+    int err = fake_db_create_schema(db);
+    if (err >= 0) {
+        // The root of the mount. fakefs stores "/" as the empty blob, so this
+        // row is what makes the mount point resolvable at all.
+        struct ish_stat root = { .mode = S_IFDIR | 0755 };
+        sqlite3_stmt *stmt = NULL;
+        err = _EIO;
+        if (sqlite3_prepare_v2(db, "insert into stats (inode, stat) values (1, ?)",
+                               -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_blob(stmt, 1, &root, sizeof(root), SQLITE_STATIC);
+            if (sqlite3_step(stmt) == SQLITE_DONE)
+                err = 0;
+            sqlite3_finalize(stmt);
+        }
+        if (err >= 0 &&
+            sqlite3_exec(db, "insert into paths (path, inode) values (x'', 1);",
+                         NULL, NULL, NULL) != SQLITE_OK)
+            err = _EIO;
+    }
+    sqlite3_close(db);
+    return err;
+}
+
 static int fakefs_mount(struct mount *mount) {
     char db_path[PATH_MAX];
     strcpy(db_path, mount->source);

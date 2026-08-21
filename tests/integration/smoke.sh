@@ -127,6 +127,19 @@ check "O_DIRECTORY on a file"  "ok" 0 \
 check "symlink resolves"       "target" 0 \
     'echo target > $SCRATCH/t; ln -sf $SCRATCH/t $SCRATCH/l; cat $SCRATCH/l'
 
+# /dev. `ish -r` used to give the guest none of this: the CLI created device
+# nodes only for a fakefs root, because realfs cannot mknod without host root.
+# The effect was worse than absence — a redirect to /dev/null created a regular
+# file at that path *in the rootfs on disk* — and it stopped dnf (no entropy
+# source for libstdc++) and apt (its download methods) outright.
+check "/dev/null swallows"     "after"   0 'echo gone > /dev/null; echo after'
+check "/dev/zero reads"        "8"       0 'head -c 8 /dev/zero | wc -c | tr -d " "'
+check "/dev/urandom reads"     "8"       0 'head -c 8 /dev/urandom | wc -c | tr -d " "'
+# ...and the rootfs is left alone: with no device node behind it, the redirect
+# above would have created this file.
+check "/dev/null is a device"  "device"  0 \
+    '[ -c /dev/null ] && echo device || echo regular-file'
+
 # Signals: a killed child is reported as killed, and the shell renders it as
 # 128+signal. This is the wait(2) status encoding that waitid_decode_status
 # reads, seen from the other end.

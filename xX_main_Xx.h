@@ -19,10 +19,29 @@
 
 void real_tty_reset_term(void);
 
+// Where the fakefs backing /dev lives, when one was needed. Empty otherwise.
+static char dev_fakefs_dir[PATH_MAX];
+
+// A few kilobytes of sqlite in the system temp directory. Removed on the way
+// out rather than left for /tmp's own housekeeping — and removed here, in the
+// exit handler, because the process leaves through _exit and runs no atexit
+// handler. A run killed outright still leaves one behind; it is named for the
+// pid, so it is identifiable.
+static void remove_dev_fakefs(void) {
+    if (dev_fakefs_dir[0] == '\0')
+        return;
+    char command[PATH_MAX + 16];
+    snprintf(command, sizeof(command), "rm -rf '%s'", dev_fakefs_dir);
+    if (system(command) != 0)
+        fprintf(stderr, "note: could not remove %s\n", dev_fakefs_dir);
+    dev_fakefs_dir[0] = '\0';
+}
+
 static void exit_handler(struct task *task, int code) {
     if (task->parent != NULL)
         return;
     real_tty_reset_term();
+    remove_dev_fakefs();
     if (code & 0xff) {
         // Guest died from a signal. Don't raise on the host (our crash_handler
         // would intercept it). Just exit with the conventional 128+signal code.
@@ -94,8 +113,41 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     become_first_process();
     current->thread = pthread_self();
 
-    // Create essential device nodes (only works with fakefs)
-    if (fs != &realfs) {
+    // /dev has to be a filesystem that can hold a device node, and the root
+    // is not always one: realfs needs root on the host to mknod, and tmpfs has
+    // no mknod at all. So when the root is an ordinary directory, /dev gets a
+    // small fakefs of its own — which is what an embedder does too, and for the
+    // same reason (ServerBox's make_dev).
+    //
+    // Without it a guest has no /dev whatsoever, and the effect is worse than
+    // things being absent: a shell redirecting to /dev/null does not write to a
+    // device, it creates a regular file at that path in the rootfs. dnf died on
+    // std::random_device with no /dev/urandom to open, apt could not start its
+    // download methods, and every `2>/dev/null` left a file behind.
+    if (fs == &realfs) {
+        snprintf(dev_fakefs_dir, sizeof(dev_fakefs_dir), "%s/ish-dev-%d",
+                 getenv("TMPDIR") != NULL ? getenv("TMPDIR") : "/tmp", getpid());
+        // Trailing slashes in TMPDIR are ordinary on macOS and would give a
+        // path with a double slash, which is harmless, and a mount source whose
+        // basename fakefs checks, which is not.
+        int err = fake_db_create(dev_fakefs_dir);
+        if (err < 0) {
+            fprintf(stderr, "warning: no /dev for the guest (%d)\n", err);
+            dev_fakefs_dir[0] = '\0';
+        } else {
+            char source[PATH_MAX];
+            snprintf(source, sizeof(source), "%s/data", dev_fakefs_dir);
+            generic_mkdirat(AT_PWD, "/dev", 0755);
+            err = do_mount(&fakefs, source, "/dev", "", 0);
+            if (err < 0) {
+                fprintf(stderr, "warning: /dev did not mount (%d)\n", err);
+                remove_dev_fakefs();
+            }
+        }
+    }
+
+    // Create essential device nodes
+    if (fs != &realfs || dev_fakefs_dir[0] != '\0') {
         generic_mknodat(AT_PWD, "/dev/null", S_IFCHR|0666, dev_make(MEM_MAJOR, DEV_NULL_MINOR));
         generic_mknodat(AT_PWD, "/dev/zero", S_IFCHR|0666, dev_make(MEM_MAJOR, DEV_ZERO_MINOR));
         generic_mknodat(AT_PWD, "/dev/full", S_IFCHR|0666, dev_make(MEM_MAJOR, DEV_FULL_MINOR));

@@ -18,31 +18,31 @@
 #
 # ## Known failures, so a run reads as a result rather than a mess
 #
-# Both glibc distributions fail to install anything, and the established cause
-# is that `ish -r` gives the guest no /dev.
+# The /dev gap that stopped both glibc distributions outright is fixed: `ish -r`
+# mounts a small fakefs at /dev and creates the nodes in it. What is left:
 #
-#   The CLI creates its device nodes only when the root is not realfs
-#   (xX_main_Xx.h: `if (fs != &realfs)`), because realfs cannot mknod without
-#   host root. Of the filesystems here only fakefs and realfs implement mknod at
-#   all -- tmpfs has none -- so a realfs root has nowhere to put /dev/urandom.
-#   ServerBox mounts a fakefs at /dev for exactly this reason.
+#   rocky / dnf    Resolves, downloads and computes the transaction, then rpm
+#                  fails to unpack it: "failed to open dir usr of /usr/lib/:
+#                  cpio: open failed - Bad file descriptor". rpm holds directory
+#                  descriptors and openat()s through them, and one of those
+#                  comes back EBADF.
 #
-#   rocky / dnf    `dnf install` ends with
-#                  "random_device::random_device(...): device not available" --
-#                  libstdc++ asking for an entropy source that is not there.
-#                  `head -c 4 /dev/urandom` in that guest fails the same way.
+#   ubuntu / apt   `apt-get update` reaches the mirror and fails on the fetch
+#                  itself. It no longer fails with "Method ... did not start
+#                  correctly", which is what it said before /dev existed.
 #
-#   ubuntu / apt   `apt-get update` fails with "Method /usr/lib/apt/methods/http
-#                  did not start correctly". The method binary runs fine on its
-#                  own -- it prints its capability banner and exits 0 -- so what
-#                  fails is apt's fork/exec plus the handshake over the pipe it
-#                  set up. Not the _apt privilege drop: `-o
-#                  APT::Sandbox::User=root` changes nothing. Whether this is the
-#                  same /dev gap is NOT established; it is the first thing to
-#                  rule out.
+# Fixed along the way, and listed here because the failures they caused looked
+# like distribution problems rather than emulator ones:
 #
-# Nothing is skipped on account of either. A known failure that stops being run
-# is a known failure that never gets fixed.
+#   setsockopt(IPPROTO_IP, IP_RECVERR) answered EINVAL, and glibc treats that as
+#   fatal in its resolver — socket, setsockopt, close, and not one DNS query on
+#   the wire. Every glibc distribution could not resolve a name.
+#
+#   syncfs was a stub returning ENOSYS, which ended a dnf transaction that had
+#   already downloaded everything.
+#
+# Nothing is skipped on account of either remaining failure. A known failure
+# that stops being run is a known failure that never gets fixed.
 #
 # ## The cache is not pristine
 #

@@ -67,15 +67,8 @@ static bool path_normalize(const char *path, char *out) {
     return true;
 }
 
-static const char *schema = Q(
-    create table meta (id integer unique default 0, db_inode integer);
-    insert into meta (db_inode) values (0);
-    create table stats (inode integer primary key, stat blob);
-    create table paths (path blob primary key, inode integer references stats(inode));
-    create index inode_to_path on paths (inode, path);
-    // no index is needed on stats, because the rows are ordered by the primary key
-    pragma user_version=3;
-);
+// The schema lives in fs/fake-db.c, which libfakefs and the kernel share; a
+// second copy here was a database two tools could disagree about.
 
 bool fakefs_import(const char *archive_path, const char *fs, struct fakefsify_error *err_out, struct progress p) {
     int err = mkdir(fs, 0777);
@@ -97,7 +90,10 @@ bool fakefs_import(const char *archive_path, const char *fs, struct fakefsify_er
     CHECK_ERR();
     EXEC("pragma journal_mode=wal")
     EXEC("begin");
-    EXEC(schema);
+    if (fake_db_create_schema(db) < 0) {
+        err = SQLITE_ERROR;
+        CHECK_ERR();
+    }
 
     // open the archive
     struct archive *archive = archive_read_new();

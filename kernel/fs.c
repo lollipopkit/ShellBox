@@ -1287,6 +1287,19 @@ dword_t sys_fsync(fd_t f) {
     return err;
 }
 
+// Linux flushes the whole filesystem the descriptor is on. There is no such
+// call on Darwin, and no way to name "the filesystem" of a guest fd that spans
+// realfs, fakefs and tmpfs — so this flushes the descriptor itself, which is
+// the part of the promise that can be kept and the part a caller is usually
+// after.
+//
+// It was a stub returning ENOSYS, and dnf treats that as fatal: an install that
+// had already resolved and downloaded everything ended on it.
+dword_t sys_syncfs(fd_t f) {
+    STRACE("syncfs(%d)", f);
+    return sys_fsync(f);
+}
+
 // a few stubs
 dword_t sys_sendfile(fd_t out_fd, fd_t in_fd, addr_t offset_addr, dword_t count) {
     return sys_sendfile64(out_fd, in_fd, offset_addr, count);
