@@ -38,7 +38,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ish-cli
-          path: build/ish
+          path: |
+            build/ish
+            build/sbm_api_test
           retention-days: 1
 
   # A guest that boots and answers correctly. Offline — see the header of
@@ -55,7 +57,7 @@ jobs:
           path: build
       - name: Integration (smoke)
         run: |
-          chmod +x build/ish
+          chmod +x build/ish build/sbm_api_test
           tests/integration/smoke.sh -i build/ish
 
   # What ServerBox links, built the way it builds it: a cross build for the

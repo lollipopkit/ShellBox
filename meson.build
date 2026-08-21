@@ -1788,4 +1788,10 @@ if not meson.is_cross_build()
         ['tests/unit/uname_test.c'],
         dependencies: ish)
     test('uname', uname_test)
+
+    # Built, not registered as a test: it needs a rootfs to boot, which is not
+    # in the repository. tests/integration/smoke.sh fetches one and runs it.
+    executable('sbm_api_test',
+        ['tests/integration/sbm_api_test.c'],
+        dependencies: ish)
 endif

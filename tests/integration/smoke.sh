@@ -22,9 +22,11 @@ cd "$(dirname "$0")/../.."
 
 ISH=""
 ROOTFS=""
-while getopts "i:r:h" opt; do
+SBM=""
+while getopts "i:r:s:h" opt; do
     case $opt in
         i) ISH="$OPTARG" ;;
+        s) SBM="$OPTARG" ;;
         r) ROOTFS="$OPTARG" ;;
         h) sed -n '2,20p' "$0"; exit 0 ;;
         *) exit 2 ;;
@@ -38,6 +40,12 @@ if [ -z "$ISH" ]; then
 fi
 [ -n "$ISH" ] && [ -x "$ISH" ] || { echo "no iSH binary; build one or pass -i" >&2; exit 2; }
 [ -n "$ROOTFS" ] || ROOTFS="$(tests/integration/rootfs.sh alpine)" || exit 1
+
+# The embedder harness sits next to the ish binary in the build directory,
+# unless it was pointed somewhere else.
+if [ -z "$SBM" ]; then
+    SBM="$(dirname "$ISH")/sbm_api_test"
+fi
 
 # A rootfs is a directory on the host and it keeps whatever a run leaves in it.
 # Fixed paths meant this suite collided with itself: full.sh's go case makes
@@ -127,6 +135,24 @@ check "child killed by a signal" "" 143 'sh -c "kill -TERM \$\$"'
 # Environment and argv survive execve.
 check "argv"                   "a b c" 0 'sh -c "echo \$1 \$2 \$3" _ a b c'
 check "environment"            "value" 0 'X=value sh -c "echo \$X"'
+
+# The interface ServerBox links, rather than the CLI everything above goes
+# through: boot, a pty session under init, a command, its output and its exit
+# code. See the header of sbm_api_test.c.
+echo
+echo "########## embedder interface ##########"
+if [ -x "$SBM" ]; then
+    if "$SBM" "$ROOTFS"; then
+        pass=$((pass+1)); printf '  PASS  sbm_api_test\n'
+    else
+        fail=$((fail+1)); printf '  FAIL  sbm_api_test\n'
+    fi
+else
+    # Not a skip that passes quietly: this is half of what the gate is for, and
+    # a build that did not produce it is a build that changed something.
+    fail=$((fail+1))
+    printf '  FAIL  sbm_api_test not found at %s\n' "$SBM"
+fi
 
 echo
 if [ "$fail" = "0" ]; then
