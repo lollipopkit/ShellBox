@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -457,6 +458,12 @@ static void test_waitid_siginfo(void) {
 // The probe is waitpid, not /proc: this procfs answers for live tasks only, so
 // a zombie is already invisible there and the obvious test passes against the
 // bug.
+static void *regress_worker(void *arg) {
+    (void) arg;
+    usleep(400000);
+    return NULL;
+}
+
 static void test_no_zombies_when_parent_will_not_wait(void) {
     section("SIGCHLD ignored / SA_NOCLDWAIT release children");
 
@@ -465,6 +472,14 @@ static void test_no_zombies_when_parent_will_not_wait(void) {
     // and SIG_DFL is not necessarily what was here — assuming it is makes this
     // test a thing that changes the ones after it.
     check(sigaction(SIGCHLD, NULL, &saved) == 0, "read the SIGCHLD disposition");
+
+    // Set it, rather than assume it: if this program was launched by something
+    // that had already ignored SIGCHLD, the control below would be auto-reaped
+    // and would fail against a correct kernel. A suite has to own the state it
+    // makes assertions about.
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "SIGCHLD forced to SIG_DFL first");
 
     // The control. A parent that has not said anything keeps its zombie, and
     // must: it is still entitled to wait for it.
@@ -521,6 +536,32 @@ static void test_no_zombies_when_parent_will_not_wait(void) {
         long delta = (long)(after.ru_utime.tv_sec - before.ru_utime.tv_sec) * 1000000
                    + (after.ru_utime.tv_usec - before.ru_utime.tv_usec);
         check(delta > 0, "a released child's CPU time reaches RUSAGE_CHILDREN");
+    }
+
+    // A group whose leader exits first still has to be released whole. The
+    // release names the leader rather than the last thread out for this reason:
+    // naming the last one freed the group and left the leader's task and pid
+    // waitable for the rest of the parent's life.
+    {
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGCHLD, &sa, NULL);
+
+        pid_t p = fork();
+        if (p == 0) {
+            pthread_t t;
+            if (pthread_create(&t, NULL, regress_worker, NULL) != 0)
+                _exit(1);
+            pthread_exit(NULL);   // the leader goes first; the worker is last
+        }
+        check(p > 0, "fork for the leader-exits-first case");
+        if (p > 0) {
+            nap(1.5);
+            errno = 0;
+            int st = 0;
+            check(waitpid(-1, &st, WNOHANG) == -1 && errno == ECHILD,
+                  "a group whose leader exited first is released whole");
+        }
     }
 
     check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
