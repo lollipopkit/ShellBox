@@ -3,7 +3,7 @@ name: CI
 on:
   push:
   pull_request:
-      branches: [master]
+      branches: [main]
 
 jobs:
   build-linux:
@@ -37,11 +37,14 @@ jobs:
         if: matrix.kernel == 'ish'
         run: ninja -C build test
 
+  # The host build, for both guest architectures. It used to be an xcodebuild
+  # of the iSH app; there is no app here any more, and what an embedder gets is
+  # the meson build, so that is what is proved.
   build-mac:
     runs-on: macos-15
     strategy:
       matrix:
-        kernel: [ish, linux]
+        guest_arch: [x86, arm64]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -49,12 +52,45 @@ jobs:
       - name: Install dependencies
         run: |
           brew install llvm lld ninja libarchive meson
-      - name: Clone Linux
-        if: matrix.kernel == 'linux'
-        run: deps/clone-linux.sh
       - name: Build
-        if: matrix.kernel == 'ish'
-        run: xcodebuild -project iSH.xcodeproj -scheme iSH -arch arm64 -sdk iphoneos CODE_SIGNING_ALLOWED=NO
+        run: |
+          meson setup build -Dguest_arch=${{matrix.guest_arch}}
+          ninja -C build
+
+  # What ServerBox links, built the way it builds it: a cross build for the
+  # device SDK, of the three library targets and nothing else. `tools/fakefsify`
+  # links the host's libarchive and cannot be built for a phone, so `ninja` with
+  # no target would fail here.
+  build-ios-libs:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v2
+        with:
+            submodules: true
+      - name: Install dependencies
+        run: brew install llvm lld ninja libarchive meson
       - name: Build
-        if: matrix.kernel == 'linux'
-        run: xcodebuild -project iSH.xcodeproj -scheme iSH+Linux -arch x86_64 -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+        run: |
+          sysroot="$(xcrun --sdk iphoneos --show-sdk-path)"
+          cat > ios.ini <<EOF
+          [binaries]
+          c = 'clang'
+          cpp = 'clang++'
+          ar = 'ar'
+          strip = 'strip'
+          pkg-config = 'pkg-config'
+
+          [built-in options]
+          c_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+          c_link_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+          cpp_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+          cpp_link_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+
+          [host_machine]
+          system = 'darwin'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          EOF
+          meson setup build-ios . -Dguest_arch=arm64 --buildtype=release --cross-file ios.ini
+          ninja -C build-ios libish.a libish_emu.a libfakefs.a

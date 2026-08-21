@@ -36,6 +36,9 @@
 // --- dynamic devices ---
 #define DYN_DEV_MAJOR 240
 
+// TODO: both were registered through dyndev by the iOS app, which is no longer
+// in this repository, so nothing claims these minors. Delete unless an embedder
+// wants them; see the clipboard note in fs/fd.h.
 // /dev/clipboard
 #define DEV_CLIPBOARD_MINOR 0
 // /dev/gps

@@ -21,9 +21,11 @@
 > - **Node.js 22 / npm / npx** — V8 guard pages, binary patch, `--jitless` injection
 > - **Go and Rust** — large VA reservations, signal frame alignment, FUTEX_WAIT_BITSET, PMULL
 > - **Full NEON + Crypto** — AES/SHA/CRC32 instructions for TLS and hashing at native-ish speed
-> - **Agent integration** — `ISHShellExecutor` (Obj-C shell API), `DebugServer` (JSON-RPC over HTTP),
->   `Native Offload` (bypass emulation for selected binaries), bind mounts for host↔guest file sharing
-> - **iOS-first rootfs** — Alpine 3.21 aarch64 with full `apk` ecosystem and versioned overlay patching
+> - **Native Offload** — bypass emulation for selected binaries, symbols, or whole functions
+> - **Bind mounts** — share host directories into the guest filesystem without copying
+>
+> The iOS app is not part of this repository: it is built as three static libraries and embedded
+> in a host app. See [Build for iOS](#build-for-ios).
 >
 > **Performance (ARM64 vs x86, compute-heavy):** C `int_arith_2M` **12x faster**,
 > Python `fib(30)` **9.2x faster**, `sum(1M)` **10.2x faster**, shell `seq+awk 100K` **7.2x faster**.
@@ -32,12 +34,6 @@
 > [Performance report](benchmark/BENCHMARK_PERF.md) · [Compatibility report](benchmark/BENCHMARK_COMPAT.md)
 >
 > ---
-
-<p align="center">
-<a href="https://testflight.apple.com/join/ZtGfhNkH">
-<img src="https://raw.githubusercontent.com/OpenMinis/ish-arm64/master/.github/testflight_badge.svg" alt="Download on TestFlight" height="60"/>
-</a>
-</p>
 
 [![Build Status](https://github.com/ish-app/ish/actions/workflows/ci.yml/badge.svg)](https://github.com/ish-app/ish/actions)
 [![goto counter](https://img.shields.io/github/search/ish-app/ish/goto.svg)](https://github.com/ish-app/ish/search?q=goto)
@@ -54,8 +50,6 @@ A project to get a Linux shell running on iOS, using usermode x86 emulation and 
 
 For the current status of the project, check the issues tab, and the commit logs.
 
-- [App Store page](https://apps.apple.com/us/app/ish-shell/id1436902243)
-- [TestFlight beta (ARM64 fork)](https://testflight.apple.com/join/ZtGfhNkH)
 - [Discord server](https://discord.gg/HFAXj44)
 - [Wiki with help and tutorials](https://github.com/ish-app/ish/wiki)
 - [README中文](https://github.com/ish-app/ish/blob/master/README_ZH.md) (如若未能保持最新，请提交PR以更新)
@@ -75,7 +69,20 @@ You'll need these things to build the project:
 
 ## Build for iOS
 
-Open the project in Xcode, open iSH.xcconfig, and change `ROOT_BUNDLE_IDENTIFIER` to something unique. You'll also need to update the development team ID in the project (not target!) build settings. Then click Run. There are scripts that should do everything else automatically. If you run into any problems, open an issue and I'll try to help.
+This repository holds no iOS app. It is built as three static libraries — `libish.a`,
+`libish_emu.a`, `libfakefs.a` — and embedded in a host app, which supplies the terminal UI and
+calls into the engine itself. Cross-compile them with a meson cross file naming the SDK:
+
+```bash
+meson setup build-ios . -Dguest_arch=arm64 --buildtype=release --cross-file ios.ini
+ninja -C build-ios libish.a libish_emu.a libfakefs.a
+```
+
+`ninja` with no target fails here: `tools/fakefsify` links the host's libarchive and cannot be
+built for a phone. `.github/workflows/static-libs.yml` does exactly this for `iphoneos` and
+`iphonesimulator` on every push to `main` and publishes the result as a `vX.Y.Z` release;
+[ServerBox](https://github.com/lollipopkit/flutter_server_box) carries this repository as a
+submodule and downloads those artifacts rather than building them.
 
 ## Build command line tool for testing
 
@@ -89,8 +96,8 @@ You can replace `ish` with `tools/ptraceomatic` to run the program in a real pro
 
 iSH has several logging channels which can be enabled at build time. By default, all of them are disabled. To enable them:
 
-- In Xcode: Set the `ISH_LOG` setting in iSH.xcconfig to a space-separated list of log channels.
-- With Meson (command line tool for testing): Run `meson configure -Dlog="<space-separated list of log channels>"`.
+- Run `meson configure -Dlog="<space-separated list of log channels>"` in the build directory.
+  An embedding app passes the same thing as `-DDEBUG_<channel>=1` to its own compiler.
 
 Available channels:
 

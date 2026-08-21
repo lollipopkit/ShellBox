@@ -50,7 +50,9 @@ fundamental limits:
 
 ```
 +--------------------------------------------------------------+
-|  iOS App (iSH ARM64)                                         |
+|  Embedding app (terminal UI, rootfs, lifecycle)              |
+|  .............................................................|
+|  libish.a + libish_emu.a + libfakefs.a                       |
 |                                                              |
 |  +--------------------------------------------------------+  |
 |  |  Asbestos (threaded-code interpreter)                  |  |
@@ -63,12 +65,11 @@ fundamental limits:
 |  +--------------------------------------------------------+  |
 |                                                              |
 |  +-------------------+    +-------------------------------+  |
-|  |  Linux Kernel     |    |  Agent Integration            |  |
-|  |  (syscalls,       |    |  - ISHShellExecutor           |  |
-|  |   signals,        |    |  - DebugServer (JSON-RPC)     |  |
-|  |   futex, epoll)   |    |  - Native Offload             |  |
-|  +-------------------+    |  - Bind Mounts                |  |
-|                           +-------------------------------+  |
+|  |  Linux Kernel     |    |  Host integration             |  |
+|  |  (syscalls,       |    |  - Native Offload             |  |
+|  |   signals,        |    |  - Bind Mounts                |  |
+|  |   futex, epoll)   |    |  - pty sessions               |  |
+|  +-------------------+    +-------------------------------+  |
 |  +-------------------+                                       |
 |  |  Filesystem       |                                       |
 |  |  fakefs + realfs  |                                       |
@@ -133,38 +134,17 @@ Running Node.js on a userspace emulator required solving multiple V8-specific pr
 
 **Result**: `npm install`, `npm exec`, `npx`, and `create-next-app` all work.
 
-### 4. Agent Integration
+### 4. Embedding Interface
 
-Mechanisms designed for AI agent orchestration on iOS:
+What a host app drives the engine with. The Objective-C wrappers that used to sit on top of
+these — `ISHShellExecutor`, a JSON-RPC `DebugServer` — belonged to the iOS app and are no longer
+in this repository; an embedder writes its own against the headers below.
 
-#### ISHShellExecutor (`app/ISHShellExecutor.h`)
+#### Boot and sessions (`kernel/init.h`, `fs/tty.h`, `fs/path.h`)
 
-Objective-C API for programmatic shell execution with streaming output:
-
-```objc
-[ISHShellExecutor executeCommand:@"pip install requests"
-                    lineCallback:^(NSString *line, BOOL isStdErr) {
-                        NSLog(@"%@", line);
-                    }
-                      completion:^(ISHShellExecutionResult *result) {
-                          NSLog(@"Exit code: %d", result.exitCode);
-                      }];
-```
-
-#### DebugServer (`app/DebugServer.c`)
-
-JSON-RPC over HTTP server for guest introspection:
-
-```bash
-# List files
-curl localhost:1234 -d '{"jsonrpc":"2.0","id":1,"method":"fs.readdir","params":{"path":"/usr/bin"}}'
-
-# Execute command
-curl localhost:1234 -d '{"jsonrpc":"2.0","id":1,"method":"guest.exec","params":{"command":"python3 --version"}}'
-
-# Inspect processes
-curl localhost:1234 -d '{"jsonrpc":"2.0","id":1,"method":"task.list"}'
-```
+`mount_root()` puts a filesystem under the guest, `become_first_process()`, `do_execve()` and
+`task_start()` start init, and a session is a pty from `pty_open_fake()` that the host reads and
+writes. ServerBox's `ios/Runner/ish/sbm_ish.c` is a worked example of the whole sequence.
 
 #### Native Offload (`kernel/native_offload.c`)
 
@@ -192,34 +172,41 @@ fakefs_bind_mount("/host/path/to/data", "/mnt/data", /*read_only=*/true);
 
 Enables AI agents to share files between the host app and the Linux guest without copying.
 
-### 5. Rootfs Management
+### 5. Guest Environment
 
-- **Alpine 3.21 aarch64** with full apk package manager
-- **RootfsPatch.bundle**: Versioned overlay system for incremental rootfs updates
-- **Polyfills**: WebAssembly polyfill for undici/llhttp, fetch polyfill for HTTP downloads
+- **Alpine aarch64** with the full apk package manager
 - **OPENSSL_armcap=0** and **GODEBUG/GOMAXPROCS** injection in `sys_execve`
+
+The rootfs itself belongs to the embedding app: `realfs` mounts an ordinary directory tree, and
+`fakefs` mounts a `fakefsify` output. Neither is shipped here.
 
 ---
 
 ## Build Configuration
 
-| Target | Scheme | xcconfig | Guest Arch | Bundle ID Suffix |
-|--------|--------|----------|------------|------------------|
-| x86 (original) | iSH | `App.xcconfig` | i386 | — |
-| ARM64 | iSH-ARM64 | `AppARM64.xcconfig` | aarch64 | `.arm64` |
-| ARM64 + FFmpeg | iSH-ARM64-ffmpeg | `AppARM64-ffmpeg.xcconfig` | aarch64 | `.arm64` |
+Three meson options decide what is built. ARM64 requires an ARM64 host — the gadgets are
+`asbestos/guest-<guest>/gadgets-<host cpu family>`, and there is no cross-architecture set.
 
-The ARM64 target links meson-built libraries (`libish.a`, `libish_emu.a`, `libfakefs.a`) directly
-from `build-arm64-release/`, bypassing Xcode's auto-discovery of x86 library targets.
+| Option | Values | Default |
+|---|---|---|
+| `guest_arch` | `x86`, `arm64` | `x86` |
+| `kernel` | `ish`, `linux` | `ish` |
+| `engine` | `asbestos`, `unicorn` | `asbestos` |
 
 ```bash
-# Build ARM64 CLI (macOS, for testing)
+# Host CLI, for testing
 meson setup build-arm64-release -Dguest_arch=arm64 --buildtype=release
 ninja -C build-arm64-release
-
-# Run
 ./build-arm64-release/ish -f ./alpine-arm64-fakefs /bin/sh
+
+# The three libraries an embedding app links, for a device SDK
+meson setup build-ios . -Dguest_arch=arm64 --buildtype=release --cross-file ios.ini
+ninja -C build-ios libish.a libish_emu.a libfakefs.a
 ```
+
+Named targets in the cross build, not `ninja` alone: `tools/fakefsify` links the host's libarchive
+and cannot be built for a phone. `.github/workflows/static-libs.yml` runs this for `iphoneos` and
+`iphonesimulator` and publishes the archives as a `vX.Y.Z` release.
 
 ---
 
@@ -307,7 +294,8 @@ Major milestones:
 4. **Node.js support**: V8 guard pages, MAP_NORESERVE, binary patch, exit cleanup
 5. **Go support**: Signal frame alignment, sigreturn fixes, NZCV preservation
 6. **Rust/uv support**: FUTEX_WAIT_BITSET, PMULL, BFM, demand-mapped reads
-7. **Agent integration**: ISHShellExecutor, DebugServer, Native Offload, Bind Mounts
+7. **Agent integration**: Native Offload, Bind Mounts — and ISHShellExecutor and DebugServer,
+   which were part of the iOS app and left with it
 8. **Stability**: 50+ bug fixes for concurrency, memory leaks, use-after-free, deadlocks
 
 ---
@@ -348,12 +336,7 @@ iSH/
 │   ├── real.c                   # Host filesystem access
 │   ├── sock.c/h                 # Socket emulation
 │   └── poll.c                   # epoll/poll/select
-├── app/
-│   ├── AppARM64.xcconfig        # ARM64 build config
-│   ├── GuestARM64.xcconfig      # Guest arch definition
-│   ├── ISHShellExecutor.h/m     # Shell execution API
-│   ├── DebugServer.c/h          # JSON-RPC debug server
-│   └── RootfsPatch.bundle/      # Versioned rootfs overlay
+├── main.c, xX_main_Xx.h         # The host CLI; an embedder writes its own
 └── benchmark/
     ├── run.sh                    # Unified benchmark entry point
     ├── assets/                   # shellbench.sh + cbench_lite + prebuilt binaries
