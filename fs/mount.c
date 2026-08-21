@@ -229,10 +229,11 @@ dword_t sys_umount2(addr_t target_addr, dword_t flags) {
     if (err < 0)
         return err;
 
-    lock(&mounts_lock);
-    err = do_umount(target);
-    unlock(&mounts_lock);
-    return err;
+    // do_umount takes mounts_lock itself — it has to, so that finding the
+    // mount and committing to removing it are one step — and releases it on
+    // every path out. Taking it here as well deadlocked the calling thread
+    // against itself on every umount(2): lock_t is not recursive.
+    return do_umount(target);
 }
 
 struct list mounts = {&mounts, &mounts};
