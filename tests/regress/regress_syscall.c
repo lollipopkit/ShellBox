@@ -544,6 +544,40 @@ static void test_sigrtmax(void) {
 
 // ---------------------------------------------------------------------------
 // #18: what waitid is required to reject, report and preserve.
+// ---------------------------------------------------------------------------
+// #11: an absolute path makes the dirfd irrelevant.
+//
+// Linux ignores dirfd when the path is absolute rather than validating it.
+// Every *at syscall here checked the descriptor first, so `openat(-1, "/", ...)`
+// answered EBADF where Linux opens the root. rpm's file-state machine does
+// exactly that, and every package in a dnf transaction failed to unpack.
+static void test_at_ignores_dirfd_for_absolute_paths(void) {
+    section("*at syscalls ignore dirfd for an absolute path");
+
+    int fd = openat(-1, "/", O_RDONLY | O_DIRECTORY);
+    check(fd >= 0, "openat(-1, \"/\", O_DIRECTORY)");
+    if (fd >= 0)
+        close(fd);
+
+    // A descriptor that is merely closed, rather than -1.
+    int closed = open("/", O_RDONLY | O_DIRECTORY);
+    if (closed >= 0)
+        close(closed);
+    fd = openat(closed, "/etc", O_RDONLY | O_DIRECTORY);
+    check(fd >= 0, "openat(<closed fd>, \"/etc\", O_DIRECTORY)");
+    if (fd >= 0)
+        close(fd);
+
+    // And the rule is not open()'s alone.
+    struct stat st;
+    check(fstatat(-1, "/", &st, 0) == 0, "fstatat(-1, \"/\")");
+
+    // A *relative* path with a bad descriptor is still EBADF.
+    errno = 0;
+    check(openat(-1, "etc", O_RDONLY | O_DIRECTORY) == -1 && errno == EBADF,
+          "openat(-1, \"etc\") is still EBADF");
+}
+
 static void test_waitid_conformance(void) {
     section("waitid: option and id validation, WNOWAIT, WCONTINUED, si_utime");
 
@@ -760,6 +794,7 @@ int main(int argc, char **argv) {
     test_waitpid_across_timeout();
     test_signal_still_interrupts();
     test_waitid_siginfo();
+    test_at_ignores_dirfd_for_absolute_paths();
     test_waitid_conformance();
     test_sigchld_siginfo();
     test_sigrtmax();

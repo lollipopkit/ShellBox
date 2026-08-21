@@ -11,7 +11,10 @@
 #include "fs/dev.h"
 #include "fs/real.h"
 
-static struct fd *at_fd(fd_t f) {
+// Declared in fs/path.h, which says why `path` is a parameter.
+struct fd *at_fd(fd_t f, const char *path) {
+    if (path != NULL && path[0] == '/')
+        return AT_PWD;
     if (f == AT_FDCWD_)
         return AT_PWD;
     return f_get(f);
@@ -48,7 +51,7 @@ dword_t sys_faccessat(fd_t at_f, addr_t path_addr, mode_t_ mode, dword_t flags) 
     char path[MAX_PATH];
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     STRACE("faccessat(%d, \"%s\", 0x%x, %d)", at_f, path, mode, flags);
@@ -75,7 +78,7 @@ fd_t sys_openat(fd_t at_f, addr_t path_addr, dword_t flags, mode_t_ mode) {
     if (flags & O_CREAT_)
         apply_umask(&mode);
 
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL) {
         return _EBADF;
     }
@@ -95,7 +98,7 @@ dword_t sys_readlinkat(fd_t at_f, addr_t path_addr, addr_t buf_addr, dword_t buf
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("readlinkat(%d, \"%s\", %#x, %#x)", at_f, path, buf_addr, bufsize);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     char buf[bufsize];
@@ -120,10 +123,10 @@ dword_t sys_linkat(fd_t src_at_f, addr_t src_addr, fd_t dst_at_f, addr_t dst_add
     if (user_read_string(dst_addr, dst, sizeof(dst)))
         return _EFAULT;
     STRACE("linkat(%d, \"%s\", %d, \"%s\")", src_at_f, src, dst_at_f, dst);
-    struct fd *src_at = at_fd(src_at_f);
+    struct fd *src_at = at_fd(src_at_f, src);
     if (src_at == NULL)
         return _EBADF;
-    struct fd *dst_at = at_fd(dst_at_f);
+    struct fd *dst_at = at_fd(dst_at_f, dst);
     if (dst_at == NULL)
         return _EBADF;
     return generic_linkat(src_at, src, dst_at, dst);
@@ -139,7 +142,7 @@ dword_t sys_unlinkat(fd_t at_f, addr_t path_addr, int_t flags) {
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("unlinkat(%d, \"%s\", %d)", at_f, path, flags);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     if (flags & AT_REMOVEDIR_)
@@ -162,10 +165,10 @@ dword_t sys_renameat2(fd_t src_at_f, addr_t src_addr, fd_t dst_at_f, addr_t dst_
     if (user_read_string(dst_addr, dst, sizeof(dst)))
         return _EFAULT;
     STRACE("renameat(%d, \"%s\", %d, \"%s\")", src_at_f, src, dst_at_f, dst);
-    struct fd *src_at = at_fd(src_at_f);
+    struct fd *src_at = at_fd(src_at_f, src);
     if (src_at == NULL)
         return _EBADF;
-    struct fd *dst_at = at_fd(dst_at_f);
+    struct fd *dst_at = at_fd(dst_at_f, dst);
     if (dst_at == NULL)
         return _EBADF;
     return generic_renameat(src_at, src, dst_at, dst);
@@ -187,7 +190,7 @@ dword_t sys_symlinkat(addr_t target_addr, fd_t at_f, addr_t link_addr) {
     if (user_read_string(link_addr, link, sizeof(link)))
         return _EFAULT;
     STRACE("symlinkat(\"%s\", %d, \"%s\")", target, at_f, link);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, link);
     if (at == NULL)
         return _EBADF;
     return generic_symlinkat(target, at, link);
@@ -203,7 +206,7 @@ dword_t sys_mknodat(fd_t at_f, addr_t path_addr, mode_t_ mode, dev_t_ dev) {
         return _EFAULT;
     STRACE("mknodat(%d, \"%s\", %#x, %#x)", at_f, path, mode, dev);
     apply_umask(&mode);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     return generic_mknodat(at, path, mode, dev);
@@ -1077,7 +1080,7 @@ static dword_t sys_utime_common(fd_t at_f, addr_t path_addr, struct timespec ati
     STRACE("utimensat(%d, %s, {{%lld, %lld}, {%lld, %lld}}, %d)", at_f, path,
             (long long)atime.tv_sec, (long long)atime.tv_nsec,
             (long long)mtime.tv_sec, (long long)mtime.tv_nsec, flags);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
 
@@ -1155,7 +1158,7 @@ dword_t sys_fchmodat(fd_t at_f, addr_t path_addr, dword_t mode) {
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("fchmodat(%d, \"%s\", %o)", at_f, path, mode);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     mode &= ~S_IFMT;
@@ -1193,7 +1196,7 @@ dword_t sys_fchownat(fd_t at_f, addr_t path_addr, dword_t owner, dword_t group, 
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("fchownat(%d, \"%s\", %d, %d, %d)", at_f, path, owner, group, flags);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     // realfs can't change ownership on host, silently succeed
@@ -1257,7 +1260,7 @@ dword_t sys_mkdirat(fd_t at_f, addr_t path_addr, mode_t_ mode) {
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("mkdirat(%d, %s, 0%o)", at_f, path, mode);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     apply_umask(&mode);
