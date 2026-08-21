@@ -700,7 +700,10 @@ error:
 // Nothing in iSH sets the 0x80 core-dump bit today, so CLD_DUMPED is
 // unreachable in practice; it is handled anyway so this stays correct if
 // core dumps are ever implemented.
-static void waitid_decode_status(struct siginfo_ *info) {
+// Not static: tests/unit/waitid_test.c drives it directly. Reaching it through
+// sys_waitid would mean a real child in a real process for each of the six
+// encodings, and two of them (continued, dumped) cannot be produced at all.
+void waitid_decode_status(struct siginfo_ *info) {
     dword_t status = info->child.status;
     info->sig = SIGCHLD_;
     if ((status & 0xff) == 0x7f) {

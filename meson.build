@@ -1768,4 +1768,19 @@ if not meson.is_cross_build()
         ['tests/unit/fchdir_test.c'],
         dependencies: ish)
     test('fchdir', fchdir_test)
+
+    openflags_test = executable('openflags_test',
+        ['tests/unit/openflags_test.c'],
+        dependencies: ish)
+    test('openflags', openflags_test)
+
+    waitid_test = executable('waitid_test',
+        ['tests/unit/waitid_test.c'],
+        dependencies: ish)
+    test('waitid', waitid_test)
+
+    fakefs_stat_test = executable('fakefs_stat_test',
+        ['tests/unit/fakefs_stat_test.c'],
+        dependencies: ish)
+    test('fakefs_stat', fakefs_stat_test)
 endif

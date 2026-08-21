@@ -41,6 +41,9 @@ noreturn void do_exit_group(int status);
 dword_t sys_exit_group(dword_t status);
 dword_t sys_wait4(pid_t_ pid, addr_t status_addr, dword_t options, addr_t rusage_addr);
 dword_t sys_waitid(int_t idtype, pid_t_ id, addr_t info_addr, int_t options);
+// Rewrites a raw wait(2)-encoded child.status in place as the (si_code,
+// si_status) pair waitid(2) reports. Declared here for tests/unit/waitid_test.c.
+void waitid_decode_status(struct siginfo_ *info);
 dword_t sys_waitpid(pid_t_ pid, addr_t status_addr, dword_t options);
 
 // memory management
