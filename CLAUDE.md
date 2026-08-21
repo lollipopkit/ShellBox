@@ -88,6 +88,12 @@ Channels are compiled in, off by default: `meson configure -Dlog='strace verbose
 file picks its channel with `#define DEFAULT_CHANNEL <name>` before including `debug.h`; `TRACE()`
 then routes there and compiles to nothing when the channel is off.
 
+An "illegal instruction" report names the encoding that had no gadget, and
+`tools/decode-insn.sh` turns it into a mnemonic — give it the word, or pipe it
+the whole log. AArch64 is little-endian, so the word has to be byte-reversed
+before a disassembler will take it, which is the step the script exists to stop
+people getting wrong.
+
 Runtime diagnostics are environment variables, all prefixed `ISH_` (`ISH_EXEC_TRACE`,
 `ISH_LOCK_TRACE`, `ISH_WATCH_PAGE`, `ISH_OFFLOAD_STATS`, `ISH_NO_CHAIN`, …). Grep `getenv("ISH_`
 for the current set. Some require a build flag (`-DLOCK_SLOW_TRACE=1`, `-DISH_GADGET_PROFILE`).

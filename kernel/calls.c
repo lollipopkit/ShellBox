@@ -1054,6 +1054,11 @@ void handle_interrupt(int interrupt) {
                 ill_insn |= (uint32_t)b << (i * 8);
             }
             printk("%d illegal instruction at 0x%llx: insn=0x%08x\n", current->pid, (unsigned long long)cpu->pc, ill_insn);
+            // The word is the whole of the evidence, and on its own it is not
+            // something a person can act on. Naming the tool here is the
+            // difference between a bug report that says "it crashed" and one
+            // that says which instruction has no gadget — see issue #7.
+            printk("  decode it with: tools/decode-insn.sh 0x%08x\n", ill_insn);
         }
         printk("\n");
         dump_stack(8);
