@@ -134,6 +134,10 @@ void send_signal(struct task *task, int sig, struct siginfo_ info) {
 
     if (sig == SIGCONT_ || sig == SIGKILL_) {
         lock(&task->group->lock);
+        // Only a group that was actually stopped has been continued; SIGCONT
+        // to a running one is not an event a waiter should see.
+        if (task->group->stopped && sig == SIGCONT_)
+            task->group->continued = true;
         task->group->stopped = false;
         notify(&task->group->stopped_cond);
         unlock(&task->group->lock);

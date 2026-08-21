@@ -542,6 +542,84 @@ static void test_sigrtmax(void) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// #18: what waitid is required to reject, report and preserve.
+static void test_waitid_conformance(void) {
+    section("waitid: option and id validation, WNOWAIT, WCONTINUED, si_utime");
+
+    siginfo_t si;
+    pid_t p = fork();
+    if (p == 0) _exit(3);
+    check(p > 0, "fork");
+    nap(0.3);
+
+    // An option set that selects no event is EINVAL, not a wait.
+    memset(&si, 0, sizeof si);
+    errno = 0;
+    check(waitid(P_PID, p, &si, WNOHANG) == -1 && errno == EINVAL,
+          "waitid with no WEXITED/WSTOPPED/WCONTINUED is EINVAL");
+
+    // P_ALL takes no id, and P_PID takes a real one.
+    errno = 0;
+    check(waitid(P_ALL, 12345, &si, WEXITED | WNOHANG) == -1 && errno == EINVAL,
+          "waitid(P_ALL) with an id is EINVAL");
+    errno = 0;
+    check(waitid(P_PID, 0, &si, WEXITED | WNOHANG) == -1 && errno == EINVAL,
+          "waitid(P_PID, 0) is EINVAL");
+
+    // The child is still there, and WNOWAIT leaves it there.
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PID, p, &si, WEXITED | WNOWAIT) == 0 && si.si_status == 3,
+          "WNOWAIT reports the exited child");
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PID, p, &si, WEXITED) == 0 && si.si_status == 3,
+          "and leaves it for the next wait");
+
+    // P_PGID with id 0 means the caller's own group.
+    p = fork();
+    if (p == 0) _exit(5);
+    nap(0.3);
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PGID, 0, &si, WEXITED | WNOHANG) == 0 && si.si_pid == p,
+          "waitid(P_PGID, 0) means this process group");
+
+    // The times, which waitid reports in the siginfo rather than a rusage.
+    p = fork();
+    if (p == 0) {
+        volatile double x = 0;
+        for (long i = 0; i < 2000000; i++)
+            x += (double) i;
+        _exit(0);
+    }
+    nap(0.7);
+    memset(&si, 0, sizeof si);
+    waitid(P_PID, p, &si, WEXITED);
+    check((long) si.si_utime > 0, "waitid fills si_utime");
+
+    // A stop, reported twice under WNOWAIT, and then a continue.
+    p = fork();
+    if (p == 0) { for (;;) pause(); }
+    nap(0.3);
+    kill(p, SIGSTOP);
+    nap(0.3);
+    memset(&si, 0, sizeof si);
+    int r1 = waitid(P_PID, p, &si, WSTOPPED | WNOWAIT | WNOHANG);
+    int first = si.si_status;
+    memset(&si, 0, sizeof si);
+    int r2 = waitid(P_PID, p, &si, WSTOPPED | WNOHANG);
+    check(r1 == 0 && first == SIGSTOP && r2 == 0 && si.si_status == SIGSTOP,
+          "WNOWAIT leaves a stop for the next wait");
+
+    kill(p, SIGCONT);
+    nap(0.4);
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PID, p, &si, WCONTINUED | WNOHANG) == 0 &&
+          si.si_code == CLD_CONTINUED,
+          "WCONTINUED reports a continued child");
+    kill(p, SIGKILL);
+    waitpid(p, NULL, 0);
+}
+
 static void *regress_worker(void *arg) {
     (void) arg;
     usleep(400000);
@@ -682,6 +760,7 @@ int main(int argc, char **argv) {
     test_waitpid_across_timeout();
     test_signal_still_interrupts();
     test_waitid_siginfo();
+    test_waitid_conformance();
     test_sigchld_siginfo();
     test_sigrtmax();
     test_no_zombies_when_parent_will_not_wait();

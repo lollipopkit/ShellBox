@@ -617,6 +617,10 @@ static bool reap_if_zombie(struct task *task, struct siginfo_ *info_out, struct 
     }
     if (rusage_out != NULL)
         *rusage_out = rusage;
+    // waitid has no rusage argument and reports these in the siginfo instead.
+    // sys_waitid passes NULL above, so without this they came back zero.
+    info_out->child.utime = clock_from_timeval(rusage.utime);
+    info_out->child.stime = clock_from_timeval(rusage.stime);
 
     unlock(&task->group->lock);
 
@@ -639,25 +643,50 @@ static bool reap_if_zombie(struct task *task, struct siginfo_ *info_out, struct 
     return true;
 }
 
-static bool notify_if_stopped(struct task *task, struct siginfo_ *info_out) {
+static bool notify_if_stopped(struct task *task, struct siginfo_ *info_out, int options) {
     lock(&task->group->lock);
     bool stopped = task->group->stopped;
     unlock(&task->group->lock);
     if (!stopped || task->group->group_exit_code == 0)
         return false;
     dword_t exit_code = task->group->group_exit_code;
-    task->group->group_exit_code = 0;
+    // WNOWAIT means look without taking. reap_if_zombie has always honoured it
+    // for an exited child; a stopped one was consumed by the first wait, so a
+    // second identical wait found nothing.
+    if (!(options & WNOWAIT_))
+        task->group->group_exit_code = 0;
     info_out->child.status = exit_code;
+    return true;
+}
+
+// A group that was stopped and has since been continued. The event is consumed
+// by the wait that reports it, as a stop is.
+static bool notify_if_continued(struct task *task, struct siginfo_ *info_out, int options) {
+    lock(&task->group->lock);
+    bool continued = task->group->continued;
+    if (continued && !(options & WNOWAIT_))
+        task->group->continued = false;
+    unlock(&task->group->lock);
+    if (!continued)
+        return false;
+    // Linux reports SIGCONT as the status and CLD_CONTINUED as the code; the
+    // 0xffff encoding is what waitid_decode_status reads it back from.
+    info_out->child.status = 0xffff;
     return true;
 }
 
 static bool reap_if_needed(struct task *task, struct siginfo_ *info_out, struct rusage_ *rusage_out, int options) {
     assert(task_is_leader(task));
-    if ((options & WUNTRACED_ && notify_if_stopped(task, info_out)) ||
+    if ((options & WUNTRACED_ && notify_if_stopped(task, info_out, options)) ||
+        (options & WCONTINUED_ && notify_if_continued(task, info_out, options)) ||
         (options & WEXITED_ && reap_if_zombie(task, info_out, rusage_out, options))) {
         info_out->sig = SIGCHLD_;
         return true;
     }
+    // A ptrace stop is a stop: a wait that asked only for WEXITED should not be
+    // answered with one.
+    if (!(options & WUNTRACED_))
+        return false;
     lock(&task->ptrace.lock);
     if (task->ptrace.stopped && task->ptrace.signal) {
         // I had this code here because it made something work, but it's now
@@ -670,7 +699,8 @@ static bool reap_if_needed(struct task *task, struct siginfo_ *info_out, struct 
         // while the tracee is still around to ask; waitid_decode_status keeps
         // the answer. wait4 ignores si_code and is unaffected.
         info_out->code = CLD_TRAPPED_;
-        task->ptrace.signal = 0;
+        if (!(options & WNOWAIT_))
+            task->ptrace.signal = 0;
         unlock(&task->ptrace.lock);
         return true;
     }
@@ -682,6 +712,11 @@ int do_wait(int idtype, pid_t_ id, struct siginfo_ *info, struct rusage_ *rusage
     if (idtype != P_ALL_ && idtype != P_PID_ && idtype != P_PGID_)
         return _EINVAL;
     if (options & ~(WNOHANG_|WUNTRACED_|WEXITED_|WCONTINUED_|WNOWAIT_|__WALL_))
+        return _EINVAL;
+    // Unknown bits were rejected and the absence of every known one was not, so
+    // `waitid(P_PID, child, &si, 0)` fell into the blocking loop. sys_wait4
+    // always adds WEXITED_, so this only ever fires for waitid.
+    if (!(options & (WUNTRACED_|WEXITED_|WCONTINUED_)))
         return _EINVAL;
 
     lock(&pids_lock);
@@ -699,7 +734,10 @@ retry:
             list_for_each_entry(&current->children, task, siblings) {
                 if (!task_is_leader(task))
                     continue;
-                if (idtype == P_PGID_ && task->group->pgid != id)
+                // id 0 is the caller's own process group, which is what
+                // sys_wait4 already maps its zero argument to.
+                if (idtype == P_PGID_ &&
+                    task->group->pgid != (id == 0 ? current->group->pgid : id))
                     continue;
                 no_children = false;
                 info->child.pid = task->pid;
@@ -824,6 +862,10 @@ void waitid_decode_status(struct siginfo_ *info) {
 
 dword_t sys_waitid(int_t idtype, pid_t_ id, addr_t info_addr, int_t options) {
     STRACE("waitid(%d, %d, %#x, %#x)", idtype, id, info_addr, options);
+    // Here rather than in do_wait, which sys_wait4 also calls — and that one
+    // hands P_ALL the id -1 it was given.
+    if ((idtype == P_ALL_ && id != 0) || (idtype == P_PID_ && id <= 0))
+        return _EINVAL;
     struct siginfo_ info = {};
     int_t res = do_wait(idtype, id, &info, NULL, options);
     if (res < 0)
