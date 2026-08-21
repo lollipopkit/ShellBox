@@ -671,9 +671,16 @@ int_t sys_sendto(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags, a
     struct fd *sock = sock_getfd(sock_fd);
     if (sock == NULL)
         return _EBADF;
-    char *buffer = malloc(len + 1);
-    if (user_read(buffer_addr, buffer, len))
+    // len is a 32-bit guest length, so len + 1 wrapped to zero at UINT32_MAX
+    // and user_read then copied four gigabytes into it. The result was also
+    // never checked before being written through.
+    char *buffer = malloc((size_t) len + 1);
+    if (buffer == NULL)
+        return _ENOMEM;
+    if (user_read(buffer_addr, buffer, len)) {
+        free(buffer);
         return _EFAULT;
+    }
     buffer[len] = '\0';
     STRACE("sendto(%d, \"%.100s\", %d, %d, 0x%x, %d)", sock_fd, buffer, len, flags, sockaddr_addr, sockaddr_len);
     int real_flags = sock_flags_to_real(flags);

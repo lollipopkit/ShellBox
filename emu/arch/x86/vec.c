@@ -569,15 +569,24 @@ void vec_shuffle_d128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint
     for (int i = 0; i < 4; i++)
         dst->u32[i] = src_copy.u32[(encoding >> (i*2)) % 4];
 }
+// Both selections read from copies, as the shuffles above already do. Two
+// ways this went wrong without them: the second low lane could select the
+// first, which had just been overwritten, whatever the operands were; and
+// with `src == dst` — `SHUFPS xmm0, xmm0, imm` is a legal encoding — the high
+// lanes read a source whose low half was already the result.
 void vec_shuffle_ps128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    dst->u32[0] = dst->u32[(encoding >> 0) & 3];
-    dst->u32[1] = dst->u32[(encoding >> 2) & 3];
-    dst->u32[2] = src->u32[(encoding >> 4) & 3];
-    dst->u32[3] = src->u32[(encoding >> 6) & 3];
+    union xmm_reg src_copy = *src;
+    union xmm_reg dst_copy = *dst;
+    dst->u32[0] = dst_copy.u32[(encoding >> 0) & 3];
+    dst->u32[1] = dst_copy.u32[(encoding >> 2) & 3];
+    dst->u32[2] = src_copy.u32[(encoding >> 4) & 3];
+    dst->u32[3] = src_copy.u32[(encoding >> 6) & 3];
 }
 void vec_shuffle_pd128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    dst->qw[0] = dst->qw[(encoding >> 0) & 1];
-    dst->qw[1] = src->qw[(encoding >> 1) & 1];
+    union xmm_reg src_copy = *src;
+    union xmm_reg dst_copy = *dst;
+    dst->qw[0] = dst_copy.qw[(encoding >> 0) & 1];
+    dst->qw[1] = src_copy.qw[(encoding >> 1) & 1];
 }
 
 void vec_movmask_b128(NO_CPU, const union xmm_reg *src, uint32_t *dst) {

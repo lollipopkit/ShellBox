@@ -81,9 +81,16 @@ struct cmsghdr_ {
 };
 #define SCM_RIGHTS_ 1
 // copied and ported from musl
-#define CMSG_LEN_(cmsg) (((cmsg)->len + sizeof(dword_t) - 1) & ~(dword_t)(sizeof(dword_t) - 1))
+// The alignment is computed in size_t. `len` is a 32-bit field the guest
+// fills in, and rounding it up in that width wrapped to zero for a len near
+// UINT32_MAX — CMSG_NEXT_ then advanced by nothing, CMSG_NXTHDR_ handed back
+// the same header, and the walk in sys_sendmsg spun forever on a message a
+// guest could construct at will. The `<= sizeof(struct cmsghdr_)` guard is
+// what makes every step move.
+#define CMSG_LEN_(cmsg) (((size_t)(cmsg)->len + sizeof(dword_t) - 1) & ~(size_t)(sizeof(dword_t) - 1))
 #define CMSG_NEXT_(cmsg) ((uint8_t *)(cmsg) + CMSG_LEN_(cmsg))
 #define CMSG_NXTHDR_(cmsg, mhdr_end) ((cmsg)->len < sizeof (struct cmsghdr_) || \
+        CMSG_LEN_(cmsg) <= sizeof(struct cmsghdr_) || \
         CMSG_LEN_(cmsg) + sizeof(struct cmsghdr_) >= (size_t) (mhdr_end - (uint8_t *)(cmsg)) \
         ? NULL : (struct cmsghdr_ *)CMSG_NEXT_(cmsg))
 
