@@ -103,6 +103,10 @@ int poll_wait(struct poll *poll, poll_callback_t callback, void *context, struct
 // thread will add or remove fds from this poll
 void poll_destroy(struct poll *poll);
 
+// True if any registration in this set is ready right now. For an epoll fd's
+// own poll operation, so poll() and select() can wait on one.
+bool poll_any_ready(struct poll *poll);
+
 // for fd_close
 void poll_cleanup_fd(struct fd *fd);
 

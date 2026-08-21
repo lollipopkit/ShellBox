@@ -79,8 +79,10 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     // comes with it, and is load-bearing rather than tidiness — a cycle would
     // make either of the walks above recurse forever.
     //
-    // The same gap applies to an epoll fd passed to poll() or select(); those
-    // go through the same missing .poll and are not rejected here.
+    // An epoll fd passed to poll() or select() is a different case and is not
+    // rejected: epoll_ops has a .poll now, so those report readiness. It is
+    // this refusal that makes that safe, by keeping the nesting one level
+    // deep and free of cycles.
     if (op == EPOLL_CTL_ADD_ && fd->ops == &epoll_ops) {
         // Said once. A guest that probes for nested epoll does so from a loop,
         // and the point of the message is that the refusal is deliberate —
@@ -216,6 +218,29 @@ static int epoll_close(struct fd *fd) {
     return 0;
 }
 
+// An epoll set is readable when any of its registrations is ready. Linux
+// allows poll() and select() on an epoll fd; without this, epoll_ops had no
+// poll operation at all, so the wait loop's readiness scan read the set as
+// never ready and a guest waiting on one waited forever.
+//
+// Bounded at one level and free of cycles because epoll_ctl refuses to put an
+// epoll set inside another: the members poll_any_ready walks are never epoll
+// fds, so the only lock edge is outer poll to inner poll with no path back.
+//
+// TODO: nothing wakes the outer wait when the inner set becomes ready — the
+// inner members are not registered in the outer host queue. A poll whose only
+// event source is an epoll fd therefore notices on poll_wait's one-second
+// slice rather than at once; in a mixed set any other activity brings the scan
+// round and it is seen immediately. Closing that needs poll_wakeup to travel
+// up the nesting, which has to happen outside poll->lock, since the readiness
+// scan already holds the two in the other order.
+static int epoll_poll(struct fd *fd) {
+    if (fd->epollfd.poll == NULL)
+        return 0;
+    return poll_any_ready(fd->epollfd.poll) ? POLL_READ : 0;
+}
+
 static struct fd_ops epoll_ops = {
     .close = epoll_close,
+    .poll = epoll_poll,
 };

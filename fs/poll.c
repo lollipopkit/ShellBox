@@ -279,6 +279,37 @@ void poll_cleanup_fd(struct fd *fd) {
     unlock(&fd->poll_lock);
 }
 
+// True if any registration in this set is ready right now, by the same rules
+// the wait loop applies. This is what an epoll fd answers its own poll
+// operation with, so that poll() and select() can wait on one.
+//
+// Takes poll->lock, and is called from the wait loop of a *different* poll
+// with that one's lock held. The only edge is therefore outer to inner, and
+// there is no path back: epoll_ctl refuses to put an epoll set inside another,
+// so the members walked here are never epoll fds, and a poll() set is not
+// something an fd can refer to at all.
+bool poll_any_ready(struct poll *poll) {
+    bool ready = false;
+    lock(&poll->lock);
+    struct poll_fd *poll_fd;
+    list_for_each_entry(&poll->poll_fds, poll_fd, fds) {
+        if (poll_fd->oneshot_fired)
+            continue;
+        struct fd *fd = poll_fd->fd;
+        if (fd->ops->poll == NULL)
+            continue;
+        int types = fd->ops->poll(fd) & (poll_fd->types | POLL_HUP | POLL_ERR);
+        if (poll_fd->types & POLL_EDGETRIGGERED)
+            types &= ~poll_fd->triggered_types;
+        if (types) {
+            ready = true;
+            break;
+        }
+    }
+    unlock(&poll->lock);
+    return ready;
+}
+
 // Diagnostic: dump each member fd of a poll set with its current poll state.
 void poll_dump_members(struct poll *poll) {
     lock(&poll->lock);
