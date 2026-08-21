@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -459,7 +460,11 @@ static void test_waitid_siginfo(void) {
 static void test_no_zombies_when_parent_will_not_wait(void) {
     section("SIGCHLD ignored / SA_NOCLDWAIT release children");
 
-    struct sigaction sa;
+    struct sigaction sa, saved;
+    // Saved and put back at the end. Every case after this one forks and waits,
+    // and SIG_DFL is not necessarily what was here — assuming it is makes this
+    // test a thing that changes the ones after it.
+    check(sigaction(SIGCHLD, NULL, &saved) == 0, "read the SIGCHLD disposition");
 
     // The control. A parent that has not said anything keeps its zombie, and
     // must: it is still entitled to wait for it.
@@ -494,10 +499,31 @@ static void test_no_zombies_when_parent_will_not_wait(void) {
     check(waitpid(-1, &status, WNOHANG) == -1 && errno == ECHILD,
           "SA_NOCLDWAIT releases the child (wait answers ECHILD)");
 
-    // Put it back: every case after this one forks and waits.
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = SIG_DFL;
-    sigaction(SIGCHLD, &sa, NULL);
+    // The times a released child spent are still the parent's to read. Nothing
+    // reaps it, so the accounting reap_if_zombie does had to be done where the
+    // release is — and was not, at first.
+    {
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGCHLD, &sa, NULL);
+
+        struct rusage before, after;
+        getrusage(RUSAGE_CHILDREN, &before);
+        pid_t p = fork();
+        if (p == 0) {
+            volatile double x = 0;
+            for (long i = 0; i < 3000000; i++)
+                x += (double) i;
+            _exit(0);
+        }
+        nap(1.0);
+        getrusage(RUSAGE_CHILDREN, &after);
+        long delta = (long)(after.ru_utime.tv_sec - before.ru_utime.tv_sec) * 1000000
+                   + (after.ru_utime.tv_usec - before.ru_utime.tv_usec);
+        check(delta > 0, "a released child's CPU time reaches RUSAGE_CHILDREN");
+    }
+
+    check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
 }
 
 int main(int argc, char **argv) {

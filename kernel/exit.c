@@ -212,6 +212,18 @@ noreturn void do_exit(int status) {
                     auto_reap = true;
             }
 
+            if (auto_reap) {
+                // What reap_if_zombie credits to the waiter. There is no
+                // waiter, but the parent still asked for these times the moment
+                // it calls getrusage(RUSAGE_CHILDREN) — releasing the child
+                // early is not a reason to lose them. Done here rather than at
+                // the release below because that is past the last use of
+                // `parent`.
+                lock(&parent->group->lock);
+                rusage_add(&parent->group->children_rusage, &group_rusage);
+                unlock(&parent->group->lock);
+            }
+
             leader->zombie = true;
             notify(&parent->group->child_exit);
             // Wake any pidfd poller waiting on this pid.
