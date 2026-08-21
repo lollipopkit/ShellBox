@@ -14,9 +14,7 @@
 #include "kernel/memory.h"
 #include "util/list.h"
 #include "util/signpost.h"
-#ifdef GUEST_ARM64
 #include "kernel/native_offload.h"
-#endif
 
 // Thread-local recovery state for JIT crash handling.
 // When a host SIGSEGV occurs inside JIT code (due to a stale TLB pointer
@@ -215,13 +213,8 @@ void dump_block_prof(void) {
 __thread int ish_thread_marker;
 
 // Architecture-specific instruction pointer access
-#if defined(GUEST_ARM64)
 #define CPU_IP(cpu) ((cpu)->pc)
 #define CPU_HAS_SINGLE_STEP 0
-#else
-#define CPU_IP(cpu) ((cpu)->eip)
-#define CPU_HAS_SINGLE_STEP ((cpu)->tf)
-#endif
 
 extern int current_pid(void);
 
@@ -496,7 +489,6 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
     if (!gen_start(ip, &state))
         return NULL;
-#ifdef GUEST_ARM64
     // Pre-built gadget offload (ARM64 only): if a native spec_fn is registered for
     // this function entry, emit one prebuilt gadget covering the whole function
     // instead of the normal gadget stream. Lossless: no registration → normal
@@ -511,7 +503,6 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
             return state.block;
         }
     }
-#endif
     while (true) {
         if (!gen_step(&state, tlb))
             break;
@@ -532,7 +523,6 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     return state.block;
 }
 
-#ifdef GUEST_ARM64
 // W^X compile wrapper. Guest JITs (bun/JSC) patch their code pages in place
 // (inline caches, repatched branches). Without protection, a block compiled
 // while such a patch is mid-flight caches torn bytes and keeps executing them
@@ -587,13 +577,6 @@ static struct fiber_block *fiber_block_compile_protected(struct asbestos *asbest
         fiber_block_free(NULL, block);
     }
 }
-#else
-// The W^X compile protection above is guest-arm64 only, so there are no
-// statistics to report here. Defined anyway, because kernel/exit.c and main.c
-// call it unconditionally: without this, -Dguest_arch=x86 did not link at all,
-// on any host. That is what the build-mac CI job builds.
-void dump_wx_stats(void) {}
-#endif
 
 // Remove all pointers to the block. It can't be freed yet because another
 // thread may be executing it.
@@ -739,7 +722,6 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             cpu->pc = 0;
             return INT_GPF;
         }
-#ifdef GUEST_ARM64
         // --- Mixed execution: return from a nested prebuilt-gadget call ---
         // A prebuilt spec_fn that hit a guest bl/blr set LR to PREBUILT_SENTINEL
         // and re-entered the dispatch loop to run the callee. When the callee
@@ -779,7 +761,6 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                 continue;
             }
         }
-#endif
         // Trace-JIT bypass: if a native translation already exists for
         // this PC (in the dispatch table), skip the gadget block compile
         // and run native instead. If no translation exists yet, kick off
@@ -827,11 +808,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                 lock(&asbestos->lock);
                 block = fiber_lookup(asbestos, ip);
                 if (block == NULL) {
-#ifdef GUEST_ARM64
                     block = fiber_block_compile_protected(asbestos, ip, tlb);
-#else
-                    block = fiber_block_compile(ip, tlb);
-#endif
                     if (block == NULL) {
                         unlock(&asbestos->lock);
                         interrupt = INT_GPF;
@@ -1034,7 +1011,6 @@ static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
     return interrupt;
 }
 
-#ifdef GUEST_ARM64
 // Mixed execution: run guest function `target_pc` to completion as threaded-
 // code and return its result (guest x0). Called from a prebuilt spec_fn at a
 // bl/blr site. The callee runs through the normal dispatch loop; we point its
@@ -1080,13 +1056,11 @@ uint64_t prebuilt_call(struct cpu_state *cpu, struct tlb *tlb, addr_t target_pc)
     tlb->frame = outer_frame;
     return ret;
 }
-#endif
 
 int cpu_run_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     ish_thread_marker = 1;
     if (cpu->poked_ptr == NULL)
         cpu->poked_ptr = &cpu->_poked;
-#ifdef GUEST_ARM64
     // NOTE: Do NOT invalidate exclusive monitor here.
     // This function is called once, but the inner loop (cpu_step_to_interrupt)
     // calls fiber_enter repeatedly. The LDXR/STXR pair may span multiple
@@ -1094,7 +1068,6 @@ int cpu_run_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     // LDXR/STXR atomicity across block boundaries.
     // The exclusive monitor is invalidated by STXR itself (success or fail)
     // and by context switches / signal delivery.
-#endif
     struct asbestos *asbestos = cpu->mmu->asbestos;
     __atomic_add_fetch(&asbestos->active_threads, 1, __ATOMIC_RELAXED);
     tlb_refresh(tlb, cpu->mmu);

@@ -17,17 +17,8 @@
 #define ELF_AARCH64 183     // EM_AARCH64
 
 // Select the correct machine type based on guest architecture
-#if defined(GUEST_X86)
-#define ELF_MACHINE ELF_X86
-#define ELF_CLASS   ELF_32BIT
-#elif defined(GUEST_ARM64)
 #define ELF_MACHINE ELF_AARCH64
 #define ELF_CLASS   ELF_64BIT
-#else
-// Default to x86 for backward compatibility
-#define ELF_MACHINE ELF_X86
-#define ELF_CLASS   ELF_32BIT
-#endif
 
 // 32-bit ELF header (for x86)
 struct elf_header32 {
@@ -78,11 +69,7 @@ struct elf_header64 {
 };
 
 // Use architecture-appropriate header
-#if defined(GUEST_ARM64)
 typedef struct elf_header64 elf_header;
-#else
-typedef struct elf_header32 elf_header;
-#endif
 
 // Legacy alias for backward compatibility
 struct elf_header {
@@ -160,19 +147,11 @@ struct prg_header {
 #define PH_X (1 << 0)
 
 // Auxiliary vector entry - architecture dependent size
-#if defined(GUEST_ARM64)
 struct aux_ent {
     uint64_t type;
     uint64_t value;
 };
 #define ELF_PTR_SIZE 8
-#else
-struct aux_ent {
-    uint32_t type;
-    uint32_t value;
-};
-#define ELF_PTR_SIZE 4
-#endif
 
 #define AX_PHDR 3
 #define AX_PHENT 4

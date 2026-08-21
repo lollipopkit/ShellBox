@@ -78,7 +78,6 @@ struct esr_context {
 
 // Function to setup signal frame for ARM64
 static inline int arm64_setup_sigframe(struct sigcontext_arm64 *ctx, struct cpu_state *cpu) {
-#if defined(GUEST_ARM64)
     ctx->fault_address = cpu->segfault_addr;
     for (int i = 0; i < 31; i++) {
         ctx->regs[i] = cpu->regs[i];
@@ -87,16 +86,10 @@ static inline int arm64_setup_sigframe(struct sigcontext_arm64 *ctx, struct cpu_
     ctx->pc = cpu->pc;
     ctx->pstate = arm64_get_nzcv(cpu);
     return 0;
-#else
-    (void)ctx;
-    (void)cpu;
-    return -1;
-#endif
 }
 
 // Function to restore CPU state from signal frame
 static inline int arm64_restore_sigframe(struct cpu_state *cpu, struct sigcontext_arm64 *ctx) {
-#if defined(GUEST_ARM64)
     for (int i = 0; i < 31; i++) {
         cpu->regs[i] = ctx->regs[i];
     }
@@ -104,11 +97,6 @@ static inline int arm64_restore_sigframe(struct cpu_state *cpu, struct sigcontex
     cpu->pc = ctx->pc;
     arm64_set_nzcv(cpu, (uint32_t)ctx->pstate);
     return 0;
-#else
-    (void)ctx;
-    (void)cpu;
-    return -1;
-#endif
 }
 
 #endif

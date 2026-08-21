@@ -107,13 +107,11 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
     struct tlb_entry *tlb_ent = &tlb->entries[TLB_INDEX(addr)];
     tlb_ent->page = TLB_PAGE(addr);
     tlb_ent->data_minus_addr = (uintptr_t) ptr - TLB_PAGE(addr);
-#ifdef GUEST_ARM64
     // Record the coherence generation this host pointer is valid for. A hit on
     // this entry is only trustworthy while mmu->changes still equals this; if
     // another thread remapped the page (CoW/mmap/munmap) mmu->changes advances
     // and the cached data_minus_addr points at the stale host backing.
     tlb_ent->gen = (uintptr_t) gen;
-#endif
 
     if (type == MEM_WRITE) {
         tlb_ent->page_if_writable = TLB_PAGE(addr);
@@ -130,7 +128,6 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
     return (void *) (tlb_ent->data_minus_addr + addr);
 }
 
-#if defined(GUEST_ARM64)
 /*
  * C-based memory access functions for ARM64 guest gadgets.
  * These provide reliable memory access by using the proven C-based TLB code.
@@ -695,4 +692,3 @@ __no_instrument int c_simd_store_interleaved(struct cpu_state *cpu, struct tlb *
     }
     return 0;
 }
-#endif

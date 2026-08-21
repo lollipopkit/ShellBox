@@ -20,7 +20,6 @@ struct mem_reservation {
     struct mem_reservation *next;
 };
 
-#ifdef GUEST_ARM64
 // ARM64: 4-level page table for 48-bit address space
 // L0[512] → L1[512] → L2[512] → L3[512 pt_entry]
 // 9+9+9+9 = 36-bit page number + 12-bit offset = 48-bit address
@@ -68,26 +67,6 @@ struct mem {
 // Upper bound for valid user addresses (page number, 48-bit / 4K = 36-bit)
 #define USER_ADDR_MAX_PAGE  0xFFFFFFFFFULL
 
-#else
-// x86: 2-level flat page table for 32-bit address space
-// pgdir[1024] → pt_entry[1024]
-#define MEM_PGDIR_SIZE (1 << 10)
-
-struct mem {
-    struct pt_entry **pgdir;
-    int pgdir_used;
-
-    struct mmu mmu;
-
-    page_t mmap_hint;
-
-    // Lazy MAP_NORESERVE reservations (V8 cage etc.). Shared with ARM64.
-    struct mem_reservation *reservations;
-
-    wrlock_t lock;
-    lock_t cow_lock;
-};
-#endif
 
 // Initialize the address space
 void mem_init(struct mem *mem);
@@ -157,12 +136,10 @@ page_t pt_find_hole(struct mem *mem, pages_t size);
 struct mem_reservation *mem_find_reservation(struct mem *mem, page_t page);
 void mem_remove_reservations(struct mem *mem, page_t start, pages_t pages);
 
-#ifdef GUEST_ARM64
 int pt_map_lazy(struct mem *mem, page_t start, pages_t pages, unsigned flags);
 // Find a hole for a V8-style large reservation. Prefers addresses
 // above 4GB so heap pointers are non-canonical in low 32 bits.
 page_t pt_find_hole_for_reservation(struct mem *mem, pages_t size);
-#endif
 
 // Map memory + offset into fake memory, unmapping existing mappings. Takes
 // ownership of memory. It will be freed with:

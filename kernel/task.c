@@ -70,12 +70,10 @@ struct task *task_create_(struct task *parent) {
     task->pid = pid->id;
     pid->task = task;
 
-#ifdef GUEST_ARM64
     // Invalidate exclusive monitor after copying parent state.
     // Child must not inherit parent's LDXR reservation, as any context
     // switch or interrupt (including fork/clone) invalidates exclusive state.
     task->cpu.excl_addr = UINT64_MAX;
-#endif
 
     // The poke flag must not be inherited: poked_ptr would alias the parent's
     // _poked byte (cross-task pokes), and a copied _poked=true seeds a

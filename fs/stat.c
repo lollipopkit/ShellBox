@@ -87,15 +87,9 @@ static dword_t sys_stat_path(fd_t at_f, addr_t path_addr, addr_t statbuf_addr, b
     struct statbuf stat = {};
     if ((err = generic_statat(at, path, &stat, follow_links)) < 0)
         return err;
-#ifdef GUEST_ARM64
     struct stat_arm64 arm64stat = stat_convert_arm64(stat);
     if (user_put(statbuf_addr, arm64stat))
         return _EFAULT;
-#else
-    struct newstat64 newstat = stat_convert_newstat64(stat);
-    if (user_put(statbuf_addr, newstat))
-        return _EFAULT;
-#endif
     return 0;
 }
 
@@ -120,15 +114,9 @@ dword_t sys_fstat64(fd_t fd_no, addr_t statbuf_addr) {
     int err = fd->mount->fs->fstat(fd, &stat);
     if (err < 0)
         return err;
-#ifdef GUEST_ARM64
     struct stat_arm64 arm64stat = stat_convert_arm64(stat);
     if (user_put(statbuf_addr, arm64stat))
         return _EFAULT;
-#else
-    struct newstat64 newstat = stat_convert_newstat64(stat);
-    if (user_put(statbuf_addr, newstat))
-        return _EFAULT;
-#endif
     return 0;
 }
 

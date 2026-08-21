@@ -4,7 +4,7 @@
 
 本 fork 在上游 iSH 的 threaded-code 解释器（**Asbestos**，2024 年之前叫 *jit*，上游重命名是因为
 它本来就不是真正的 JIT）之上**新增了 ARM64 guest 后端**，在 Apple Silicon 上模拟 AArch64 Linux，
-与原版 x86 (i386) guest 后端并存。结果是一个性能和兼容性大幅提升的 Linux 环境，
+上游的 x86 (i386) guest 后端已随 iOS app 一并移除。结果是一个性能和兼容性大幅提升的 Linux 环境，
 能在 iPhone / iPad 上直接运行 **Python、Node.js、Go、Rust 和原生 CLI 工具**。
 
 > ## 🚢 生产环境使用
@@ -20,7 +20,7 @@
 >
 > 本 fork 所做的是在这个 Asbestos 框架里**新增一个 ARM64 guest 后端**：
 > 新的 gadget（`asbestos/guest-arm64/gadgets-aarch64/`）把 AArch64 guest 指令映射到若干条
-> ARM64 host 指令——同架构分派，每条 guest 指令只需几条 host 指令。上游 x86 后端依然并存。
+> ARM64 host 指令——同架构分派，每条 guest 指令只需几条 host 指令。
 > 下文部分地方用 "JIT" 作为简写，请理解为"同架构 gadget 分派"，而非运行时代码生成。
 >
 > 英文版: [README_arm64.md](README_arm64.md)
@@ -45,7 +45,9 @@
 
 ```
 +--------------------------------------------------------------+
-|  iOS App (iSH ARM64)                                         |
+|  嵌入方 app（终端 UI、rootfs、生命周期）                     |
+|  .............................................................|
+|  libish.a + libish_emu.a + libfakefs.a                       |
 |                                                              |
 |  +--------------------------------------------------------+  |
 |  |  Asbestos (threaded-code 解释器)                       |  |
@@ -58,12 +60,11 @@
 |  +--------------------------------------------------------+  |
 |                                                              |
 |  +-------------------+    +-------------------------------+  |
-|  |  Linux 内核       |    |  Agent 集成                   |  |
-|  |  (syscalls,       |    |  - ISHShellExecutor           |  |
-|  |   signals,        |    |  - DebugServer (JSON-RPC)     |  |
-|  |   futex, epoll)   |    |  - Native Offload             |  |
-|  +-------------------+    |  - Bind Mounts                |  |
-|                           +-------------------------------+  |
+|  |  Linux 内核       |    |  Host 集成                    |  |
+|  |  (syscalls,       |    |  - Native Offload             |  |
+|  |   signals,        |    |  - Bind Mounts                |  |
+|  |   futex, epoll)   |    |  - pty 会话                   |  |
+|  +-------------------+    +-------------------------------+  |
 |  +-------------------+                                       |
 |  |  文件系统         |                                       |
 |  |  fakefs + realfs  |                                       |
@@ -125,38 +126,17 @@
 
 **效果**: `npm install`、`npm exec`、`npx`、`create-next-app` 全部可用。
 
-### 4. Agent 集成
+### 4. 嵌入接口
 
-为 iOS 上的 AI agent 编排设计的机制:
+host app 驱动引擎所用的接口。原先架在这些接口之上的 Objective-C 封装
+（`ISHShellExecutor`、JSON-RPC 的 `DebugServer`）属于 iOS app，已不在本仓库中；
+嵌入方基于下列 header 自行实现。
 
-#### ISHShellExecutor（`app/ISHShellExecutor.h`）
+#### 启动与会话（`kernel/init.h`、`fs/tty.h`、`fs/path.h`）
 
-支持流式输出的 Objective-C shell 执行 API:
-
-```objc
-[ISHShellExecutor executeCommand:@"pip install requests"
-                    lineCallback:^(NSString *line, BOOL isStdErr) {
-                        NSLog(@"%@", line);
-                    }
-                      completion:^(ISHShellExecutionResult *result) {
-                          NSLog(@"Exit code: %d", result.exitCode);
-                      }];
-```
-
-#### DebugServer（`app/DebugServer.c`）
-
-HTTP 上的 JSON-RPC 服务器，用于 guest 内省:
-
-```bash
-# 列出文件
-curl localhost:1234 -d '{"jsonrpc":"2.0","id":1,"method":"fs.readdir","params":{"path":"/usr/bin"}}'
-
-# 执行命令
-curl localhost:1234 -d '{"jsonrpc":"2.0","id":1,"method":"guest.exec","params":{"command":"python3 --version"}}'
-
-# 查看进程
-curl localhost:1234 -d '{"jsonrpc":"2.0","id":1,"method":"task.list"}'
-```
+`mount_root()` 为 guest 挂上文件系统，`become_first_process()`、`do_execve()` 与
+`task_start()` 启动 init，一个会话是 `pty_open_fake()` 返回的 pty，由 host 读写。
+完整流程可参考 ServerBox 的 `ios/Runner/ish/sbm_ish.c`。
 
 #### Native Offload（`kernel/native_offload.c`）
 
@@ -184,38 +164,52 @@ fakefs_bind_mount("/host/path/to/data", "/mnt/data", /*read_only=*/true);
 
 让 AI agent 能在 host app 与 Linux guest 之间共享文件而无需复制。
 
-### 5. Rootfs 管理
+### 5. Guest 环境
 
-- **Alpine 3.21 aarch64**，自带完整 apk 包管理器
-- **RootfsPatch.bundle**: 增量 rootfs 更新的版本化 overlay 系统
-- **Polyfills**: undici/llhttp 的 WebAssembly polyfill、HTTP 下载的 fetch polyfill
+- **Alpine aarch64**，自带完整 apk 包管理器
 - **OPENSSL_armcap=0** 和 **GODEBUG/GOMAXPROCS** 在 `sys_execve` 中注入
+
+rootfs 本身属于嵌入方：`realfs` 挂载普通目录树，`fakefs` 挂载 `fakefsify` 的输出，
+两者本仓库都不附带。
 
 ---
 
 ## 构建配置
 
-| Target | Scheme | xcconfig | Guest Arch | Bundle ID 后缀 |
-|--------|--------|----------|------------|------------------|
-| x86（原版） | iSH | `App.xcconfig` | i386 | — |
-| ARM64 | iSH-ARM64 | `AppARM64.xcconfig` | aarch64 | `.arm64` |
-| ARM64 + FFmpeg | iSH-ARM64-ffmpeg | `AppARM64-ffmpeg.xcconfig` | aarch64 | `.arm64` |
+host 必须是 ARM64：gadget 路径是 `asbestos/guest-arm64/gadgets-<host cpu family>`，
+而只存在 `gadgets-aarch64` 这一套。
 
-ARM64 target 直接链接 `build-arm64-release/` 中 meson 构建的库
-（`libish.a`、`libish_emu.a`、`libfakefs.a`），避免 Xcode 自动发现 x86 的 library target。
+| Option | 取值 | 默认 |
+|---|---|---|
+| `guest_arch` | `arm64` | `arm64` |
+| `log`、`nolog` | 空格分隔的 channel 名 | 空 |
+| `log_handler` | `dprintf` 等 | `dprintf` |
+| `offload_test_symbol`、`offload_test_prebuilt` | `true`、`false` | `false` |
+
+`guest_arch` 只剩一个合法取值，保留它是因为 ServerBox 的脚本在传 `-Dguest_arch=arm64`，
+而 meson 遇到不存在的 option 会直接失败。
 
 ```bash
-# 构建 ARM64 CLI（macOS，测试用）
+# host CLI（macOS，测试用）
 meson setup build-arm64-release -Dguest_arch=arm64 --buildtype=release
 ninja -C build-arm64-release
-
-# 运行
 ./build-arm64-release/ish -f ./alpine-arm64-fakefs /bin/sh
+
+# 嵌入方链接的三个库，针对 device SDK
+meson setup build-ios . -Dguest_arch=arm64 --buildtype=release --cross-file ios.ini
+ninja -C build-ios libish.a libish_emu.a libfakefs.a
 ```
+
+cross build 必须指定 target 而不能只跑 `ninja`：`tools/fakefsify` 链接 host 的
+libarchive，无法为手机构建。`.github/workflows/static-libs.yml` 对 `iphoneos` 与
+`iphonesimulator` 各跑一次，并把产物作为 `vX.Y.Z` release 发布。
 
 ---
 
 ## 性能
+
+数据采集于两个后端都还在的时期。x86 那一列现在已无法从本仓库复现，保留它是因为它正是
+ARM64 后端被写出来的理由。
 
 使用 `benchmark/run.sh` 在 macOS 26.4.1 / Apple Silicon 上测试，采用 guest 内置计时
 （排除启动开销）。完整数据见
@@ -297,7 +291,8 @@ x86 minirootfs 缺 bind-tools/解析器配置，非模拟器 bug。
 4. **Node.js 支持**: V8 守护页、MAP_NORESERVE、二进制补丁、退出清理
 5. **Go 支持**: 信号帧对齐、sigreturn 修复、NZCV 保留
 6. **Rust/uv 支持**: FUTEX_WAIT_BITSET、PMULL、BFM、按需映射读取
-7. **Agent 集成**: ISHShellExecutor、DebugServer、Native Offload、Bind Mounts
+7. **Agent 集成**: Native Offload、Bind Mounts；ISHShellExecutor 与 DebugServer 属于
+   iOS app，已随之移除
 8. **稳定性**: 50+ 个 bug 修复（并发、内存泄漏、use-after-free、死锁）
 
 ---
@@ -338,12 +333,7 @@ iSH/
 │   ├── real.c                   # Host 文件系统访问
 │   ├── sock.c/h                 # Socket 模拟
 │   └── poll.c                   # epoll/poll/select
-├── app/
-│   ├── AppARM64.xcconfig        # ARM64 构建配置
-│   ├── GuestARM64.xcconfig      # Guest 架构定义
-│   ├── ISHShellExecutor.h/m     # Shell 执行 API
-│   ├── DebugServer.c/h          # JSON-RPC 调试服务
-│   └── RootfsPatch.bundle/      # 版本化 rootfs overlay
+├── main.c, xX_main_Xx.h         # host CLI；嵌入方自行实现对应部分
 └── benchmark/
     ├── run.sh                   # 统一入口
     ├── assets/                  # 测试脚本和预编译二进制

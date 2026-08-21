@@ -48,13 +48,22 @@ fail() { echo -e "${RED}ERR${NC} $*"; }
 hr()   { echo "────────────────────────────────────────────────────────────────"; }
 
 # ── Preflight ───────────────────────────────────────────────────────
+# The x86 side is optional and, from this repository, unbuildable: the x86
+# guest backend was removed. The columns are kept because the reports in this
+# directory have them and a comparison that once ran should not be silently
+# rewritten as if it had only ever measured one thing. Point ISH_X86 at a
+# build from before the removal to fill them in again.
+HAVE_X86=0
 preflight() {
     local ok=1
-    [ -x "$ISH_X86" ]       || { fail "x86 binary: $ISH_X86"; ok=0; }
     [ -x "$ISH_ARM64" ]     || { fail "ARM64 binary: $ISH_ARM64"; ok=0; }
-    [ -d "$FAKEFS_X86" ]    || { fail "x86 fakefs: $FAKEFS_X86"; ok=0; }
     [ -d "$FAKEFS_ARM64" ]  || { fail "ARM64 fakefs: $FAKEFS_ARM64"; ok=0; }
     [ $ok -eq 0 ] && exit 1
+    if [ -x "$ISH_X86" ] && [ -d "$FAKEFS_X86" ]; then
+        HAVE_X86=1
+    else
+        log "no x86 build, measuring ARM64 against native only"
+    fi
 }
 
 # ── Timing via /usr/bin/time ────────────────────────────────────────
@@ -108,17 +117,17 @@ suite_shell() {
     hr
 
     # Purge stale blocking special files (see _purge_fakefs_special_files).
-    _purge_fakefs_special_files "$FAKEFS_X86" "x86"
+    [ "$HAVE_X86" = 1 ] && _purge_fakefs_special_files "$FAKEFS_X86" "x86"
     _purge_fakefs_special_files "$FAKEFS_ARM64" "ARM64"
 
     # Push benchmark scripts + prebuilt binaries into both rootfs
     for asset in shellbench.sh cbench_lite.c; do
         [ -f "$ASSETS_DIR/$asset" ] || continue
-        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+        [ "$HAVE_X86" = 1 ] && cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
         cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
     done
     # Push prebuilt C binaries (avoids slow in-emulator compilation)
-    if [ -f "$ASSETS_DIR/cbench_lite_x86" ]; then
+    if [ "$HAVE_X86" = 1 ] && [ -f "$ASSETS_DIR/cbench_lite_x86" ]; then
         cat "$ASSETS_DIR/cbench_lite_x86" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/cbench_prebuilt && chmod +x /tmp/cbench_prebuilt" 2>/dev/null || true
     fi
     if [ -f "$ASSETS_DIR/cbench_lite_arm64" ]; then
@@ -130,9 +139,11 @@ suite_shell() {
     local native_out; native_out=$(mktemp)
     bash "$ASSETS_DIR/shellbench.sh" > "$native_out" 2>/dev/null
 
-    log "Running on x86..."
     local x86_out; x86_out=$(mktemp)
-    timeout 900 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "sh /tmp/shellbench.sh" > "$x86_out" 2>/dev/null || true
+    if [ "$HAVE_X86" = 1 ]; then
+        log "Running on x86..."
+        timeout 900 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "sh /tmp/shellbench.sh" > "$x86_out" 2>/dev/null || true
+    fi
 
     log "Running on ARM64..."
     local arm_out; arm_out=$(mktemp)
@@ -605,11 +616,11 @@ suite_compat() {
     hr
 
     # Purge stale blocking special files before anything touches the fakefs.
-    _purge_fakefs_special_files "$FAKEFS_X86" "x86"
+    [ "$HAVE_X86" = 1 ] && _purge_fakefs_special_files "$FAKEFS_X86" "x86"
     _purge_fakefs_special_files "$FAKEFS_ARM64" "ARM64"
 
     # Auto-install missing packages on both architectures
-    _ensure_packages "$ISH_X86" -f "$FAKEFS_X86" "x86"
+    [ "$HAVE_X86" = 1 ] && _ensure_packages "$ISH_X86" -f "$FAKEFS_X86" "x86"
     _ensure_packages "$ISH_ARM64" -f "$FAKEFS_ARM64" "ARM64"
 
     # Push test assets used by COMPAT_TESTS into both rootfs (e.g. the bun
@@ -617,7 +628,7 @@ suite_compat() {
     # still FAIL the bun test since bun isn't installed there.
     for asset in bun_lang_test.js; do
         [ -f "$ASSETS_DIR/$asset" ] || continue
-        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+        [ "$HAVE_X86" = 1 ] && cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
         cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
     done
     echo ""
@@ -648,7 +659,9 @@ suite_compat() {
         esac
 
         local xr ar
-        if timeout "$t" "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "$cmd" >/dev/null 2>&1; then
+        if [ "$HAVE_X86" != 1 ]; then
+            xr="—"
+        elif timeout "$t" "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "$cmd" >/dev/null 2>&1; then
             xr="PASS"; x86p=$((x86p+1))
         else
             xr="FAIL"; x86f=$((x86f+1))
@@ -660,14 +673,16 @@ suite_compat() {
         fi
 
         local xs as
-        [ "$xr" = "PASS" ] && xs="${GREEN}PASS${NC}" || xs="${RED}FAIL${NC}"
+        if [ "$xr" = "PASS" ]; then xs="${GREEN}PASS${NC}"
+        elif [ "$xr" = "—" ]; then xs="  —  "
+        else xs="${RED}FAIL${NC}"; fi
         [ "$ar" = "PASS" ] && as="${GREEN}PASS${NC}" || as="${RED}FAIL${NC}"
         printf "%-9s %-22s │ %b │ %b\n" "$cat" "$name" "$xs" "$as"
         rows+=("$cat|$name|$xr|$ar")
     done
 
     echo ""
-    ok "x86:   $x86p / $total pass ($(( x86p * 100 / total ))%)"
+    [ "$HAVE_X86" = 1 ] && ok "x86:   $x86p / $total pass ($(( x86p * 100 / total ))%)"
     ok "ARM64: $armp / $total pass ($(( armp * 100 / total ))%)"
 
     _md_compat "$x86p" "$x86f" "$armp" "$armf" "$total" "${rows[@]}"
@@ -762,7 +777,7 @@ write_perf_header() {
 
 > **Generated:** $(date '+%Y-%m-%d %H:%M:%S')
 > **Host:** macOS $(sw_vers -productVersion) / $(uname -m)
-> **x86:** $(basename "$ISH_X86") ($(ls -lh "$ISH_X86" | awk '{print $5}'), fakefs)
+> **x86:** $([ "$HAVE_X86" = 1 ] && ls -lh "$ISH_X86" | awk '{print $5}' || echo "not built")
 > **ARM64:** $(basename "$ISH_ARM64") ($(ls -lh "$ISH_ARM64" | awk '{print $5}'), fakefs)
 > **Runs:** $RUNS (median) | **Timeout:** ${TIMEOUT_S}s
 

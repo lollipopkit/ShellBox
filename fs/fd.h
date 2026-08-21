@@ -73,7 +73,10 @@ struct fd {
             } unix_cred;
         } socket;
 
-        // See app/Pasteboard.m
+        // TODO: unused since the iOS app was removed. The only implementation
+        // of /dev/clipboard was the app's PasteboardDevice, registered at
+        // runtime through dyndev; nothing in the libraries registers one now.
+        // Delete this and DEV_CLIPBOARD_MINOR unless an embedder wants it back.
         struct {
             // UIPasteboard.changeCount
             uint64_t generation;

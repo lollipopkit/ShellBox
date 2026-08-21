@@ -3,58 +3,63 @@ name: CI
 on:
   push:
   pull_request:
-      branches: [master]
+      branches: [main]
 
+# There is no Linux job. It built the x86 guest on an x86 runner, and both
+# halves of that are gone: the guest is AArch64, and the gadgets it dispatches
+# to are native code for the host, so the host has to be arm64 too. An
+# `ubuntu-24.04-arm` runner would build platform/linux.c again if that path
+# ever needs covering.
 jobs:
-  build-linux:
-    runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        cc: [clang, gcc]
-        kernel: [ish, linux]
-    steps:
-      - uses: actions/checkout@v2
-        with:
-            submodules: true
-      - uses: actions/setup-python@v2
-        with:
-            python-version: '3.x'
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install libarchive-dev
-          pip3 install meson ninja
-      - name: Clone Linux
-        if: matrix.kernel == 'linux'
-        run: deps/clone-linux.sh
-      - name: Build
-        run: |
-          meson build -Dengine=asbestos -Dkernel=${{matrix.kernel}}
-          ninja -C build
-        env:
-          CC: ${{matrix.cc}}
-      - name: Test
-        if: matrix.kernel == 'ish'
-        run: ninja -C build test
-
+  # The host build. It used to be an xcodebuild of the iSH app; there is no app
+  # here any more, and what an embedder gets is the meson build, so that is
+  # what is proved.
   build-mac:
     runs-on: macos-15
-    strategy:
-      matrix:
-        kernel: [ish, linux]
     steps:
       - uses: actions/checkout@v2
-        with:
-            submodules: true
       - name: Install dependencies
         run: |
           brew install llvm lld ninja libarchive meson
-      - name: Clone Linux
-        if: matrix.kernel == 'linux'
-        run: deps/clone-linux.sh
       - name: Build
-        if: matrix.kernel == 'ish'
-        run: xcodebuild -project iSH.xcodeproj -scheme iSH -arch arm64 -sdk iphoneos CODE_SIGNING_ALLOWED=NO
+        run: |
+          meson setup build
+          ninja -C build
+      - name: Test
+        run: meson test -C build --print-errorlogs
+
+  # What ServerBox links, built the way it builds it: a cross build for the
+  # device SDK, of the three library targets and nothing else. `tools/fakefsify`
+  # links the host's libarchive and cannot be built for a phone, so `ninja` with
+  # no target would fail here.
+  build-ios-libs:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: brew install llvm lld ninja libarchive meson
       - name: Build
-        if: matrix.kernel == 'linux'
-        run: xcodebuild -project iSH.xcodeproj -scheme iSH+Linux -arch x86_64 -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+        run: |
+          sysroot="$(xcrun --sdk iphoneos --show-sdk-path)"
+          cat > ios.ini <<EOF
+          [binaries]
+          c = 'clang'
+          cpp = 'clang++'
+          ar = 'ar'
+          strip = 'strip'
+          pkg-config = 'pkg-config'
+
+          [built-in options]
+          c_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+          c_link_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+          cpp_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+          cpp_link_args = ['-arch', 'arm64', '-isysroot', '$sysroot', '-miphoneos-version-min=13.0']
+
+          [host_machine]
+          system = 'darwin'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          EOF
+          meson setup build-ios . -Dguest_arch=arm64 --buildtype=release --cross-file ios.ini
+          ninja -C build-ios libish.a libish_emu.a libfakefs.a

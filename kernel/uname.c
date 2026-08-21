@@ -26,11 +26,7 @@ void do_uname(struct uname *uts) {
     strcpy(uts->hostname, hostname);
     strcpy(uts->release, "4.20.69-ish");
     snprintf(uts->version, sizeof(uts->version), "%s %s %s", uname_version, __DATE__, __TIME__);
-#if defined(GUEST_ARM64)
     strcpy(uts->arch, "aarch64");
-#else
-    strcpy(uts->arch, "i686");
-#endif
     strcpy(uts->domain, "(none)");
 }
 
@@ -55,7 +51,6 @@ static uint64_t get_total_ram(void) {
 }
 static void sysinfo_specific(struct sys_info *info) {
     uint64_t total_ram = get_total_ram();
-#if defined(GUEST_ARM64)
     // Cap reported RAM to avoid musl/V8 allocating enormous arenas.
     // Must be consistent with MEMINFO_MAX_RAM in fs/proc/root.c.
     // Go runtime needs ~1.1GB for page summaries; 4GB gives headroom.
@@ -74,16 +69,6 @@ static void sysinfo_specific(struct sys_info *info) {
     info->freeram = used_bytes < total_ram ? total_ram - used_bytes : 0;
 #else
     info->freeram = total_ram / 2;  // fallback: report 50% free
-#endif
-#else
-    // For x86, scale down to 32-bit with mem_unit
-    if (total_ram > UINT32_MAX) {
-        info->mem_unit = (uint32_t)(total_ram / UINT32_MAX) + 1;
-        info->totalram = (uint32_t)(total_ram / info->mem_unit);
-    } else {
-        info->mem_unit = 1;
-        info->totalram = (uint32_t)total_ram;
-    }
 #endif
 }
 #elif __linux__
@@ -112,7 +97,6 @@ dword_t sys_sysinfo(addr_t info_addr) {
     info.loads[2] = uptime.load_15m;
     sysinfo_specific(&info);
 
-#if defined(GUEST_ARM64)
     // glibc static binaries sometimes call sysinfo with the __stack_chk_guard address
     // as the buffer. This is a quirk of glibc's raise()/abort() implementation.
     // The canary address is typically in .data.rel.ro section.
@@ -133,7 +117,6 @@ dword_t sys_sysinfo(addr_t info_addr) {
             return 0;
         }
     }
-#endif
 
     if (user_put(info_addr, info))
         return _EFAULT;

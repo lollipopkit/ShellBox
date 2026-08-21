@@ -5,8 +5,8 @@
 > **This repository is a fork of [ish-app/ish](https://github.com/ish-app/ish)** that adds a
 > **native ARM64 guest backend** to upstream iSH's threaded-code interpreter (*Asbestos*,
 > renamed from *jit* upstream in 2024 — [ish-app/ish@d375656f](https://github.com/ish-app/ish/commit/d375656f)).
-> It emulates AArch64 Linux on Apple Silicon, running alongside the original x86 (i386)
-> guest backend.
+> It emulates AArch64 Linux on Apple Silicon. Upstream's x86 (i386) backend was removed along
+> with the iOS app, so AArch64 is the only guest this builds.
 >
 > Asbestos is **not a JIT** — it doesn't emit machine code at runtime. For each basic block
 > it builds an array of pointers to pre-compiled native "gadget" functions that tail-call
@@ -21,23 +21,21 @@
 > - **Node.js 22 / npm / npx** — V8 guard pages, binary patch, `--jitless` injection
 > - **Go and Rust** — large VA reservations, signal frame alignment, FUTEX_WAIT_BITSET, PMULL
 > - **Full NEON + Crypto** — AES/SHA/CRC32 instructions for TLS and hashing at native-ish speed
-> - **Agent integration** — `ISHShellExecutor` (Obj-C shell API), `DebugServer` (JSON-RPC over HTTP),
->   `Native Offload` (bypass emulation for selected binaries), bind mounts for host↔guest file sharing
-> - **iOS-first rootfs** — Alpine 3.21 aarch64 with full `apk` ecosystem and versioned overlay patching
+> - **Native Offload** — bypass emulation for selected binaries, symbols, or whole functions
+> - **Bind mounts** — share host directories into the guest filesystem without copying
 >
-> **Performance (ARM64 vs x86, compute-heavy):** C `int_arith_2M` **12x faster**,
-> Python `fib(30)` **9.2x faster**, `sum(1M)` **10.2x faster**, shell `seq+awk 100K` **7.2x faster**.
+> The iOS app is not part of this repository: it is built as three static libraries and embedded
+> in a host app. See [Build for iOS](#build-for-ios).
+>
+> **Performance**, measured while both backends were still here (compute-heavy, ARM64 vs x86):
+> C `int_arith_2M` **12x faster**, Python `fib(30)` **9.2x faster**, `sum(1M)` **10.2x faster**,
+> shell `seq+awk 100K` **7.2x faster**. The x86 column is no longer reproducible from this
+> repository.
 >
 > **Full docs:** [README_arm64.md](README_arm64.md) · [中文版](README_arm64_zh.md) ·
 > [Performance report](benchmark/BENCHMARK_PERF.md) · [Compatibility report](benchmark/BENCHMARK_COMPAT.md)
 >
 > ---
-
-<p align="center">
-<a href="https://testflight.apple.com/join/ZtGfhNkH">
-<img src="https://raw.githubusercontent.com/OpenMinis/ish-arm64/master/.github/testflight_badge.svg" alt="Download on TestFlight" height="60"/>
-</a>
-</p>
 
 [![Build Status](https://github.com/ish-app/ish/actions/workflows/ci.yml/badge.svg)](https://github.com/ish-app/ish/actions)
 [![goto counter](https://img.shields.io/github/search/ish-app/ish/goto.svg)](https://github.com/ish-app/ish/search?q=goto)
@@ -50,19 +48,15 @@
 </a>
 </p>
 
-A project to get a Linux shell running on iOS, using usermode x86 emulation and syscall translation.
+A project to get a Linux shell running on iOS, using usermode AArch64 emulation and syscall
+translation.
 
 For the current status of the project, check the issues tab, and the commit logs.
 
-- [App Store page](https://apps.apple.com/us/app/ish-shell/id1436902243)
-- [TestFlight beta (ARM64 fork)](https://testflight.apple.com/join/ZtGfhNkH)
 - [Discord server](https://discord.gg/HFAXj44)
-- [Wiki with help and tutorials](https://github.com/ish-app/ish/wiki)
-- [README中文](https://github.com/ish-app/ish/blob/master/README_ZH.md) (如若未能保持最新，请提交PR以更新)
+- [Wiki with help and tutorials](https://github.com/ish-app/ish/wiki) (upstream's, and about the app)
 
 # Hacking
-
-This project has a git submodule, make sure to clone with `--recurse-submodules` or run `git submodule update --init` after cloning.
 
 You'll need these things to build the project:
 
@@ -75,22 +69,35 @@ You'll need these things to build the project:
 
 ## Build for iOS
 
-Open the project in Xcode, open iSH.xcconfig, and change `ROOT_BUNDLE_IDENTIFIER` to something unique. You'll also need to update the development team ID in the project (not target!) build settings. Then click Run. There are scripts that should do everything else automatically. If you run into any problems, open an issue and I'll try to help.
+This repository holds no iOS app. It is built as three static libraries — `libish.a`,
+`libish_emu.a`, `libfakefs.a` — and embedded in a host app, which supplies the terminal UI and
+calls into the engine itself. Cross-compile them with a meson cross file naming the SDK:
+
+```bash
+meson setup build-ios . -Dguest_arch=arm64 --buildtype=release --cross-file ios.ini
+ninja -C build-ios libish.a libish_emu.a libfakefs.a
+```
+
+`ninja` with no target fails here: `tools/fakefsify` links the host's libarchive and cannot be
+built for a phone. `.github/workflows/static-libs.yml` does exactly this for `iphoneos` and
+`iphonesimulator` on every push to `main` and publishes the result as a `vX.Y.Z` release;
+[ServerBox](https://github.com/lollipopkit/flutter_server_box) carries this repository as a
+submodule and downloads those artifacts rather than building them.
 
 ## Build command line tool for testing
 
 To set up your environment, cd to the project and run `meson build` to create a build directory in `build`. Then cd to the build directory and run `ninja`.
 
-To set up a self-contained Alpine linux filesystem, download the Alpine minirootfs tarball for i386 from the [Alpine website](https://alpinelinux.org/downloads/) and run `./tools/fakefsify`, with the minirootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Alpine filesystem with `./ish -f alpine /bin/sh`, assuming the output directory is called `alpine`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
+To set up a self-contained Alpine linux filesystem, download the Alpine minirootfs tarball for aarch64 from the [Alpine website](https://alpinelinux.org/downloads/) and run `./tools/fakefsify`, with the minirootfs tarball as the first argument and the name of the output directory as the second argument. Then you can run things inside the Alpine filesystem with `./ish -f alpine /bin/sh`, assuming the output directory is called `alpine`. If `tools/fakefsify` doesn't exist for you in your build directory, that might be because it couldn't find libarchive on your system (see above for ways to install it.)
 
-You can replace `ish` with `tools/ptraceomatic` to run the program in a real process and single step and compare the registers at each step. I use it for debugging. Requires 64-bit Linux 4.11 or later.
+The host must be arm64: the gadgets a guest instruction dispatches to are native code for the machine running them, and `asbestos/guest-arm64/gadgets-aarch64` is the only set there is.
 
 ## Logging
 
 iSH has several logging channels which can be enabled at build time. By default, all of them are disabled. To enable them:
 
-- In Xcode: Set the `ISH_LOG` setting in iSH.xcconfig to a space-separated list of log channels.
-- With Meson (command line tool for testing): Run `meson configure -Dlog="<space-separated list of log channels>"`.
+- Run `meson configure -Dlog="<space-separated list of log channels>"` in the build directory.
+  An embedding app passes the same thing as `-DDEBUG_<channel>=1` to its own compiler.
 
 Available channels:
 
