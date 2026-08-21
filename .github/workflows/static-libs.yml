@@ -6,16 +6,25 @@
 # libarchive first — hundreds of megabytes for output that only changes when
 # this repository does.
 #
-# The release is tagged `libs-<sha>`. A consumer pins this fork by gitlink and
-# by nothing else, so the sha is the one name both sides already agree on: it
-# can ask for the libraries belonging to the revision it has checked out, with
-# no second version to keep in step. That is also why every commit on the
-# default branch gets one — a gitlink may point at any of them.
+# The release is tagged `vX.Y.Z`, one per commit on the default branch — a
+# gitlink may point at any of them. It used to be tagged `libs-<sha>`, which a
+# consumer could derive from the gitlink and nothing else; the cost was a
+# releases page where every entry was a hash and GitHub had no way to order
+# them, so the "Latest" badge sat on whichever release happened to be marked
+# and stayed there. The name is now readable and orderable, and the mapping
+# back to a revision is a question the consumer asks its own checkout: the tag
+# is on the commit, so `git tag --points-at HEAD` answers it offline. See
+# `scripts/ensure-ish-libs.sh` in ServerBox.
 #
-# The prefix is not decoration. GitHub refuses a tag of 40 or 64 hex characters
-# outright — it would be indistinguishable from a commit sha — and the refusal
-# arrives from the pre-receive hook after the assets have already uploaded, so
-# the run fails having left a release behind that was never published.
+# The version follows the same rule as the `gtp` shell function: the patch
+# number carries the count of commits since the previous tag, so the distance
+# between two releases is legible from their names.
+#
+# Do not go back to tagging with a bare sha. GitHub refuses a tag of 40 or 64
+# hex characters outright — it would be indistinguishable from a commit — and
+# the refusal arrives from the pre-receive hook after the assets have already
+# uploaded, so the run fails having left a release behind that was never
+# published. That is what the old `libs-` prefix was for.
 name: Static libraries
 
 on:
@@ -25,6 +34,12 @@ on:
 
 permissions:
   contents: write
+
+# Serialised, because two runs would read the same "last tag" and compute the
+# same next one. The second would then be publishing over the first's release.
+concurrency:
+  group: static-libs
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -36,6 +51,47 @@ jobs:
         with:
           submodules: true
           persist-credentials: false
+          # The whole history and every tag: the version below is derived from
+          # the last tag and the distance to it, and the default shallow
+          # checkout has neither.
+          fetch-depth: 0
+
+      - name: Next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # By version rather than by when the tag was made, which is what "the
+          # last one" has to mean for names that sort.
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
+
+          if [ -z "$latest" ]; then
+            # Upstream's own tags are `builds/beta/N` and `builds/*/N`, so there
+            # is no series here to continue, and `gtp`'s fallback — the count of
+            # commits since the beginning of history — would be a five-figure
+            # patch number on a repository this old. Start one instead.
+            tag=v1.0.0
+          else
+            IFS=. read -r major minor patch <<<"${latest#v}"
+            # Every commit in the range, not the first-parent walk, which is
+            # what `gtp` counts. A pull request merged rather than squashed
+            # therefore moves the patch number by its own length — five commits
+            # in and the next tag is five further on. That is the count meaning
+            # what it says; it is not a run that was skipped.
+            count="$(git rev-list --count "$latest..HEAD")"
+            if [ "$count" -eq 0 ]; then
+              # A re-run of `workflow_dispatch` on a commit already tagged.
+              # Publishing over the existing release is what is wanted; a fresh
+              # tag for the same commit is not.
+              tag="$latest"
+            else
+              tag="v$major.$minor.$((patch + count))"
+            fi
+          fi
+
+          echo "note: $latest -> $tag for ${GITHUB_SHA}" >&2
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
 
       - name: Install build tools
         run: brew install llvm lld ninja libarchive meson
@@ -94,12 +150,14 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
-          tag_name: libs-${{ github.sha }}
-          name: ${{ github.sha }}
-          # Not the latest of anything: these are build outputs for whichever
-          # revision a consumer has pinned, and the newest is only relevant to
-          # a consumer that has moved its gitlink.
-          make_latest: false
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          # The newest build of the default branch is a defensible thing for
+          # "latest" to mean, now that the names sort. It was false while every
+          # tag was a hash, on the reasoning that these are outputs for a
+          # pinned revision and no one of them is newer in any useful sense —
+          # true, and it left the badge on whichever release had it last.
+          make_latest: true
           body: |
             Static libraries for `${{ github.sha }}`, built for arm64.
 
