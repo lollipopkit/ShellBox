@@ -54,8 +54,13 @@ int fakefs_migrate(struct fakefs_db *fs, int UNUSED(root_fd)) {
     user_version = PREPARE("pragma user_version");
     STEP(user_version);
     int version = sqlite3_column_int(user_version, 0);
-    FINALIZE(user_version);
+    // Handed over before the finalize, not after: FINALIZE checks its own
+    // result and jumps to sql_err on a bad one, and sql_err finalizes
+    // user_version again. Clearing it afterwards was too late for exactly the
+    // case the label exists for.
+    sqlite3_stmt *finishing = user_version;
     user_version = NULL;
+    FINALIZE(finishing);
 
     EXEC("begin");
     int versions = sizeof(migrations)/sizeof(migrations[0]);

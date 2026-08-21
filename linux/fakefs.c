@@ -743,9 +743,17 @@ static int fakefs_get_tree(struct fs_context *fc) {
 
     err = vfs_get_super(fc, vfs_get_keyed_super, fakefs_fill_super);
     if (err < 0) {
-        fake_db_deinit(&info->db);
-        host_close(info->root_fd);
-        info->root_fd = -1;
+        // Only if nothing else took ownership. sget_fc moves s_fs_info to the
+        // super block and clears it here, so a failure after that point has
+        // already run fakefs_kill_sb — which deinits the same db and closes
+        // the same descriptor, and frees `info`. Cleaning up unconditionally
+        // would be a use-after-free rather than the leak it was meant to fix.
+        info = fc->s_fs_info;
+        if (info != NULL) {
+            fake_db_deinit(&info->db);
+            host_close(info->root_fd);
+            info->root_fd = -1;
+        }
         return err;
     }
     return 0;

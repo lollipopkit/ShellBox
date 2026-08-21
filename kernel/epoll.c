@@ -81,8 +81,15 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     // The same gap applies to an epoll fd passed to poll() or select(); those
     // go through the same missing .poll and are not rejected here.
     if (op == EPOLL_CTL_ADD_ && fd->ops == &epoll_ops) {
-        printk("epoll_ctl: refusing to nest epoll set %d inside %d (pid=%d): unsupported\n",
-               f, epoll_f, current->pid);
+        // Said once. A guest that probes for nested epoll does so from a loop,
+        // and the point of the message is that the refusal is deliberate —
+        // which one line makes as well as thousands.
+        static bool said;
+        if (!said) {
+            said = true;
+            printk("epoll_ctl: refusing to nest epoll set %d inside %d (pid=%d): "
+                   "unsupported, reported once\n", f, epoll_f, current->pid);
+        }
         return _EINVAL;
     }
 

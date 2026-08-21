@@ -931,7 +931,12 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
         return _ENOMEM;
     // See sys_accept: sized by what an address can be, not by the unbounded
     // length the guest supplied.
-    struct sockaddr_max_ sockaddr;
+    //
+    // Zeroed, so that a host which reports no address — a connected socket, or
+    // an orderly shutdown before anything arrived — leaves AF_UNSPEC here
+    // rather than whatever the stack held. That is what the check before
+    // writing it out reads.
+    struct sockaddr_max_ sockaddr = {};
     socklen_t real_len = sizeof(sockaddr);
 
     // Determine whether this call should wait for data:
@@ -1027,10 +1032,19 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags,
     // when sockaddr_len_addr was given, so writing it out on the strength of
     // sockaddr_addr alone handed the guest an uninitialised buffer.
     if (sockaddr_addr != 0 && sockaddr_len_addr != 0) {
-        dword_t out_len = real_len;
-        int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
-        if (err < 0)
-            return err;
+        // And only if the host filled one in at all. It does not on a
+        // connected socket, and the accumulating loop above only asks on its
+        // first pass — so a wait that ended at `got == 0` never asked either.
+        // Writing it out regardless was worse than a disclosure of stack
+        // bytes: sockaddr_write does not recognise AF_UNSPEC and answers
+        // _EINVAL, failing the whole call after the data had been delivered.
+        dword_t out_len = 0;
+        if (real_len > 0 && ((struct sockaddr *) &sockaddr)->sa_family != AF_UNSPEC) {
+            out_len = real_len;
+            int err = sockaddr_write(sockaddr_addr, &sockaddr, sockaddr_len, &out_len);
+            if (err < 0)
+                return err;
+        }
         if (user_put(sockaddr_len_addr, out_len))
             return _EFAULT;
     }
@@ -1383,12 +1397,20 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         for (cmsg = (void *) msg_control; cmsg != NULL; cmsg = CMSG_NXTHDR_(cmsg, mhdr_end)) {
             if (cmsg->level != SOL_SOCKET_)
                 continue;
-            if (cmsg->type != SCM_RIGHTS_)
-                return _EINVAL;
+            // Both of these are reached with the whole iovec array already
+            // allocated, so they leave through the cleanup rather than
+            // returning: a guest could otherwise leak a host buffer per
+            // vector on every malformed control message it sent.
+            if (cmsg->type != SCM_RIGHTS_) {
+                err = _EINVAL;
+                goto out_free_iov;
+            }
             num_fds += (cmsg->len - sizeof(struct cmsghdr_)) / sizeof(fd_t);
         }
-        if (num_fds > 253) // *magic*
-            return _EINVAL;
+        if (num_fds > 253) { // *magic*
+            err = _EINVAL;
+            goto out_free_iov;
+        }
 
         if (num_fds > 0) {
             // send one (1) real fd and put the rest in a struct scm
@@ -1532,6 +1554,16 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     struct sockaddr_max_ msg_name;
     if (msg_fake.msg_namelen > sizeof(msg_name))
         msg_fake.msg_namelen = sizeof(msg_name);
+    // How much room the guest has. msg.msg_namelen below is the host buffer's
+    // size on the way in and the address's real length on the way out, so by
+    // the time the result is written back there is nothing left that says what
+    // the guest asked for — and sizeof(msg_name) was passed as the capacity
+    // instead, writing a full sockaddr_max_ into however little the guest had.
+    uint_t guest_namelen = msg_fake.msg_namelen;
+    // The truncation flags below are set as they are discovered, and the host's
+    // own flags overwrite msg_fake.msg_flags at the end. Kept apart so neither
+    // loses the other.
+    bool ctrunc = false;
     if (msg_fake.msg_name != 0) {
         msg.msg_name = &msg_name;
         msg.msg_namelen = sizeof(msg_name);
@@ -1727,7 +1759,7 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
                     // way out; the ones after it are still held here.
                     for (unsigned j = i + 1; j < scm->num_fds; j++)
                         fd_close(scm->fds[j]);
-                    msg_fake.msg_flags |= MSG_CTRUNC_;
+                    ctrunc = true;
                     break;
                 }
                 fds[installed++] = f;
@@ -1744,7 +1776,7 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
             size_t write_len = cmsg->len;
             if (write_len > guest_controllen) {
                 write_len = guest_controllen;
-                msg_fake.msg_flags |= MSG_CTRUNC_;
+                ctrunc = true;
             }
             if (write_len > 0 && user_write(msg_fake.msg_control, cmsg, write_len))
                 return _EFAULT;
@@ -1759,14 +1791,24 @@ skip_scm:
 
     // msg_name (changed)
     if (msg.msg_name != 0) {
-        int err = sockaddr_write(msg_fake.msg_name, msg.msg_name, sizeof(msg_name), &msg.msg_namelen);
+        // Bounded by what the guest has room for. sockaddr_write copies the
+        // smaller of this and the address's real length, and msg_namelen below
+        // reports the real one whether or not it all fitted — which is what
+        // Linux's move_addr_to_user does.
+        int err = sockaddr_write(msg_fake.msg_name, msg.msg_name, guest_namelen, &msg.msg_namelen);
         if (err < 0)
             return err;
     }
     msg_fake.msg_namelen = msg.msg_namelen;
 
     // msg_flags (changed)
+    // Assigned, then the truncation this call found is put back: written the
+    // other way round, the host's flags overwrote MSG_CTRUNC_ and the guest was
+    // told a control message was complete when descriptors had been dropped
+    // from it.
     msg_fake.msg_flags = sock_flags_from_real(msg.msg_flags);
+    if (ctrunc)
+        msg_fake.msg_flags |= MSG_CTRUNC_;
 
     // Write back the updated msghdr to guest memory
 #ifdef GUEST_ARM64

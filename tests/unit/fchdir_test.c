@@ -84,10 +84,9 @@ TEST(bad_dirfd_fails_without_holding_the_lock) {
 // current directory first, and on a closed descriptor that open takes the
 // number that was just freed — so fchdir then succeeds, on the cwd.
 TEST(unopened_dirfd_fails_without_holding_the_lock) {
-    const int nowhere = 9999;
-    CHECK_EQ_INT(fcntl(nowhere, F_GETFD), -1);
-
-    CHECK_EQ_INT(lock_fchdir(nowhere), -1);
+    // -1, rather than some number that merely happens to be free: this has to
+    // be invalid by definition, not by circumstance.
+    CHECK_EQ_INT(lock_fchdir(-1), -1);
 
     int good = open(tmpdir, O_RDONLY | O_DIRECTORY);
     CHECK(good >= 0);
