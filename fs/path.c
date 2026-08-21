@@ -15,6 +15,11 @@
 
 struct path_cache_entry {
     char input_path[MAX_PATH];     // Original path (with at_path prefix if any)
+    // The task root the entry was resolved under. Part of the identity because
+    // an absolute symlink target resolves against it, so the same input can
+    // normalize two ways — and a thread can chroot itself, so "one cache per
+    // thread" does not make the root constant for the life of an entry.
+    char root_path[MAX_PATH];
     char normalized[MAX_PATH];     // Normalized result
     uint64_t timestamp;            // nanosecond timestamp
     int flags;                     // N_SYMLINK_FOLLOW or N_SYMLINK_NOFOLLOW
@@ -51,7 +56,7 @@ static void path_cache_init(void) {
 
 // Try to get cached normalized path
 // Returns 0 on cache hit, -1 on cache miss
-static int path_cache_get(const char *full_path, int flags, char *out) {
+static int path_cache_get(const char *full_path, const char *root_path, int flags, char *out) {
     path_cache_init();
 
     uint32_t hash = path_hash(full_path);
@@ -60,6 +65,9 @@ static int path_cache_get(const char *full_path, int flags, char *out) {
 
     // Check cache validity
     if (!entry->valid)
+        return -1;
+
+    if (strcmp(entry->root_path, root_path) != 0)
         return -1;
 
     // Check path and flags match
@@ -82,7 +90,7 @@ static int path_cache_get(const char *full_path, int flags, char *out) {
 }
 
 // Store normalized path in cache
-static void path_cache_set(const char *full_path, int flags, const char *normalized) {
+static void path_cache_set(const char *full_path, const char *root_path, int flags, const char *normalized) {
     path_cache_init();
 
     uint32_t hash = path_hash(full_path);
@@ -92,6 +100,9 @@ static void path_cache_set(const char *full_path, int flags, const char *normali
     // Store in cache
     strncpy(entry->input_path, full_path, MAX_PATH - 1);
     entry->input_path[MAX_PATH - 1] = '\0';
+
+    strncpy(entry->root_path, root_path, MAX_PATH - 1);
+    entry->root_path[MAX_PATH - 1] = '\0';
 
     strncpy(entry->normalized, normalized, MAX_PATH - 1);
     entry->normalized[MAX_PATH - 1] = '\0';
@@ -119,6 +130,16 @@ static int __path_normalize(const char *at_path, const char *root_path, const ch
 
     if (strcmp(path, "") == 0)
         return _ENOENT;
+
+    // How much of `out` the task's own root occupies. `..` may climb out of a
+    // working directory but not out of this — otherwise `/../etc` from a task
+    // rooted at `/jail` normalizes to `/etc`, and the root is not a root.
+    //
+    // `root_path` is "/" for a task rooted at the machine's own, which is every
+    // task until something chroots; the floor is then 0 and nothing changes.
+    size_t root_floor = 0;
+    if (root_path != NULL && strcmp(root_path, "/") != 0)
+        root_floor = strlen(root_path);
 
     if (at_path != NULL && strcmp(at_path, "/") != 0) {
         // [T-ish-pathnorm-overflow] The base path must leave room for at least
@@ -151,7 +172,7 @@ static int __path_normalize(const char *at_path, const char *root_path, const ch
                 continue;
             } else if (p[1] == '.' && (p[2] == '\0' || p[2] == '/')) {
                 // double dot path component, delete the last component
-                if (o != out) {
+                if (o != out && (size_t)(o - out) > root_floor) {
                     do {
                         o--;
                         n++;
@@ -274,22 +295,22 @@ int path_normalize(struct fd *at, const char *path, char *out, int flags) {
         assert(path_is_normalized(at_path));
     }
 
-    // Where an absolute symlink target starts from. Empty for a task whose root
-    // is the machine's, which is every task until something chroots.
+    // Where an absolute symlink target starts from, and the floor `..` cannot
+    // climb past. "/" for a task rooted at the machine's own, which is every
+    // task until something chroots.
     //
-    // The cache below needs no part of this: it is `__thread`, and a guest task
-    // has a thread of its own, so two tasks with different roots never share an
-    // entry.
-    char root_path[MAX_PATH] = "";
+    // Read under the lock rather than snapshotting the fd and reading after:
+    // `sys_chroot` closes the old root, so the pointer can be freed the moment
+    // the lock is dropped. `sys_getcwd` holds it across the same call.
+    char root_path[MAX_PATH] = "/";
     lock(&current->fs->lock);
-    struct fd *task_root = current->fs->root;
+    int root_err = current->fs->root != NULL
+        ? generic_getpath(current->fs->root, root_path)
+        : 0;
     unlock(&current->fs->lock);
-    if (task_root != NULL) {
-        int err = generic_getpath(task_root, root_path);
-        if (err < 0)
-            return err;
-        assert(path_is_normalized(root_path));
-    }
+    if (root_err < 0)
+        return root_err;
+    assert(path_is_normalized(root_path));
 
     // Build full input path for cache lookup
     char full_input[MAX_PATH];
@@ -301,7 +322,7 @@ int path_normalize(struct fd *at, const char *path, char *out, int flags) {
     }
 
     // Try cache lookup first
-    if (path_cache_get(full_input, flags, out) == 0) {
+    if (path_cache_get(full_input, root_path, flags, out) == 0) {
         // Cache hit - fast return
         return 0;
     }
@@ -311,7 +332,7 @@ int path_normalize(struct fd *at, const char *path, char *out, int flags) {
 
     // Store result in cache (even on error, we cache the error)
     if (result == 0) {
-        path_cache_set(full_input, flags, out);
+        path_cache_set(full_input, root_path, flags, out);
     }
 
     return result;
