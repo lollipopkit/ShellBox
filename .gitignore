@@ -10,6 +10,9 @@ subprojects/
 
 e2e_out/
 
+# Notes for the consumer, kept beside the work rather than in it.
+serverbox-issue.md
+
 # Legacy bench scripts (replaced by benchmark/)
 bench/
 tools/prebuilt_gadget_gen/__pycache__/
