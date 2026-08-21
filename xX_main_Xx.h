@@ -147,7 +147,9 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
         int err = fake_db_create(dev_fakefs_dir);
         if (err < 0) {
             fprintf(stderr, "warning: no /dev for the guest (%d)\n", err);
-            dev_fakefs_dir[0] = '\0';
+            // It fails after creating the directory as readily as before: the
+            // database is the last step. Remove whatever got made.
+            remove_dev_fakefs();
         } else {
             char source[PATH_MAX];
             snprintf(source, sizeof(source), "%s/data", dev_fakefs_dir);

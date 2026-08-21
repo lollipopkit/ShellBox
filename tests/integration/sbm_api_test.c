@@ -46,7 +46,6 @@
 #include "tests/unit/unit.h"
 
 #include <pthread.h>
-#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,58 +143,36 @@ static void guest_exited(struct task *task, int code) {
 
 static char devfs_dir[PATH_MAX];
 
-static const char *devfs_schema =
-    "create table meta (id integer unique default 0, db_inode integer);"
-    "insert into meta (db_inode) values (0);"
-    "create table stats (inode integer primary key, stat blob);"
-    "create table paths (path blob primary key, inode integer references stats(inode));"
-    "create index inode_to_path on paths (inode, path);"
-    "pragma user_version=3;";
-
-static int make_devfs_db(void) {
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/data", devfs_dir);
-    if (mkdir(path, 0755) < 0)
-        return -1;
-
-    snprintf(path, sizeof(path), "%s/meta.db", devfs_dir);
-    sqlite3 *db = NULL;
-    if (sqlite3_open(path, &db) != SQLITE_OK)
-        return -1;
-    int ok = sqlite3_exec(db, devfs_schema, NULL, NULL, NULL) == SQLITE_OK;
-    if (ok) {
-        // The root of this mount, stored as the empty blob the way fakefs
-        // stores "/".
-        struct ish_stat root = { .mode = S_IFDIR | 0755 };
-        sqlite3_stmt *stmt = NULL;
-        ok = sqlite3_prepare_v2(db, "insert into stats (inode, stat) values (1, ?)",
-                                -1, &stmt, NULL) == SQLITE_OK;
-        if (ok) {
-            sqlite3_bind_blob(stmt, 1, &root, sizeof(root), SQLITE_STATIC);
-            ok = sqlite3_step(stmt) == SQLITE_DONE;
-            sqlite3_finalize(stmt);
-        }
-        if (ok)
-            ok = sqlite3_exec(db, "insert into paths (path, inode) values (x'', 1);",
-                              NULL, NULL, NULL) == SQLITE_OK;
-    }
-    sqlite3_close(db);
-    return ok ? 0 : -1;
+// Every way out of this program is _exit — main's, so that a guest thread
+// inside the interpreter is not carried through exit handlers, and the timeout
+// path's — so no atexit handler runs and each of them has to call this.
+static void remove_devfs(void) {
+    if (devfs_dir[0] == '\0')
+        return;
+    char command[PATH_MAX + 16];
+    snprintf(command, sizeof(command), "rm -rf '%s'", devfs_dir);
+    if (system(command) != 0)
+        fprintf(stderr, "note: could not remove %s\n", devfs_dir);
+    devfs_dir[0] = '\0';
 }
 
+// Removed rather than kept: this file used to build the database by hand —
+// schema, root row, the lot — because there was no API for it. There is now,
+// added for the CLI's /dev in the same change, and a second copy of a schema is
+// a database two programs can disagree about.
 // The nodes a shell and the programs it runs expect to find. The same list the
 // CLI creates for a fakefs root, which is where it was taken from.
 static int make_dev(void) {
     snprintf(devfs_dir, sizeof(devfs_dir), "/tmp/ish-sbm-dev-%d", (int) getpid());
-    if (mkdir(devfs_dir, 0700) < 0)
-        return -1;
-    if (make_devfs_db() < 0)
-        return -1;
+    // Creates the directory, data/ and meta.db with its root row.
+    int err = fake_db_create(devfs_dir);
+    if (err < 0)
+        return err;
 
     char source[PATH_MAX];
     snprintf(source, sizeof(source), "%s/data", devfs_dir);
     generic_mkdirat(AT_PWD, "/dev", 0755);
-    int err = do_mount(&fakefs, source, "/dev", "", 0);
+    err = do_mount(&fakefs, source, "/dev", "", 0);
     if (err < 0)
         return err;
 
@@ -396,6 +373,7 @@ static int run(const char *command, char *out, size_t out_size, int timeout_ms) 
                         "is still running, so the rest of this test would be "
                         "meaningless\n", command, timeout_ms);
         fflush(stderr);
+        remove_devfs();
         _exit(2);
     }
     return code;
@@ -554,14 +532,7 @@ int main(int argc, char *argv[]) {
 
     int status = UNIT_REPORT();
 
-    // The fakefs backing /dev lives in /tmp and nothing else will remove it:
-    // _exit below runs no atexit handler, deliberately.
-    if (devfs_dir[0] != '\0') {
-        char command[PATH_MAX + 16];
-        snprintf(command, sizeof(command), "rm -rf '%s'", devfs_dir);
-        if (system(command) != 0)
-            fprintf(stderr, "note: could not remove %s\n", devfs_dir);
-    }
+    remove_devfs();
 
     // _exit, not return: init is still running on a thread of its own and
     // returning from main would take the whole process through exit handlers
