@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <sys/stat.h>
+#include <ftw.h>
 #include "kernel/init.h"
 #include "kernel/fs.h"
 #include "fs/devices.h"
@@ -22,17 +23,28 @@ void real_tty_reset_term(void);
 // Where the fakefs backing /dev lives, when one was needed. Empty otherwise.
 static char dev_fakefs_dir[PATH_MAX];
 
+static int unlink_entry(const char *path, const struct stat *info, int type, struct FTW *ftw) {
+    (void) info; (void) ftw;
+    if (remove(path) != 0 && type != FTW_NS)
+        fprintf(stderr, "note: could not remove %s\n", path);
+    return 0;
+}
+
 // A few kilobytes of sqlite in the system temp directory. Removed on the way
 // out rather than left for /tmp's own housekeeping — and removed here, in the
 // exit handler, because the process leaves through _exit and runs no atexit
 // handler. A run killed outright still leaves one behind; it is named for the
 // pid, so it is identifiable.
+//
+// nftw rather than system("rm -rf ..."): the path is built from TMPDIR, and a
+// TMPDIR holding a quote or a semicolon would have been a command rather than a
+// directory name. FTW_DEPTH visits a directory after its contents, which is the
+// order remove() needs; FTW_PHYS keeps it from following a symlink out of the
+// tree it is deleting.
 static void remove_dev_fakefs(void) {
     if (dev_fakefs_dir[0] == '\0')
         return;
-    char command[PATH_MAX + 16];
-    snprintf(command, sizeof(command), "rm -rf '%s'", dev_fakefs_dir);
-    if (system(command) != 0)
+    if (nftw(dev_fakefs_dir, unlink_entry, 8, FTW_DEPTH | FTW_PHYS) != 0)
         fprintf(stderr, "note: could not remove %s\n", dev_fakefs_dir);
     dev_fakefs_dir[0] = '\0';
 }
@@ -125,8 +137,10 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     // std::random_device with no /dev/urandom to open, apt could not start its
     // download methods, and every `2>/dev/null` left a file behind.
     if (fs == &realfs) {
-        snprintf(dev_fakefs_dir, sizeof(dev_fakefs_dir), "%s/ish-dev-%d",
-                 getenv("TMPDIR") != NULL ? getenv("TMPDIR") : "/tmp", getpid());
+        const char *tmp = getenv("TMPDIR");
+        if (tmp == NULL || tmp[0] == '\0')
+            tmp = "/tmp";
+        snprintf(dev_fakefs_dir, sizeof(dev_fakefs_dir), "%s/ish-dev-%d", tmp, getpid());
         // Trailing slashes in TMPDIR are ordinary on macOS and would give a
         // path with a double slash, which is harmless, and a mount source whose
         // basename fakefs checks, which is not.
@@ -156,6 +170,21 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
         generic_mknodat(AT_PWD, "/dev/tty", S_IFCHR|0666, dev_make(TTY_ALTERNATE_MAJOR, DEV_TTY_MINOR));
         generic_mknodat(AT_PWD, "/dev/console", S_IFCHR|0666, dev_make(TTY_ALTERNATE_MAJOR, DEV_CONSOLE_MINOR));
         generic_mknodat(AT_PWD, "/dev/ptmx", S_IFCHR|0666, dev_make(TTY_ALTERNATE_MAJOR, DEV_PTMX_MINOR));
+        // /dev/stdout and its siblings are symlinks into /proc, which is
+        // already mounted by the time this runs. Without them a shell
+        // redirecting to /dev/stdout does not write to its own output, it
+        // creates a file called stdout — the same shape of bug as the missing
+        // /dev this block exists for.
+        //
+        // They resolve when the descriptor behind them has a path: a tty, or a
+        // file the guest opened. They do not when it does not — a piped stdio
+        // reads back as `unknown:[…]` — because this procfs answers /proc/PID/fd
+        // with ordinary symlinks rather than Linux's re-openable magic ones.
+        // The redirect then fails, which is a better answer than the file named
+        // "stdout" it used to leave behind.
+        generic_symlinkat("/proc/self/fd/0", AT_PWD, "/dev/stdin");
+        generic_symlinkat("/proc/self/fd/1", AT_PWD, "/dev/stdout");
+        generic_symlinkat("/proc/self/fd/2", AT_PWD, "/dev/stderr");
     }
 
     char cwd[MAX_PATH + 1];
@@ -167,6 +196,9 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
         struct fd *pwd = generic_open(workdir, O_RDONLY_, 0);
         if (IS_ERR(pwd)) {
             fprintf(stderr, "error opening working dir: %ld\n", PTR_ERR(pwd));
+            // Past the mount, so the backing directory is this function's to
+            // clean up: nothing later runs on this path.
+            remove_dev_fakefs();
             return 1;
         }
         fs_chdir(current->fs, pwd);
@@ -176,8 +208,13 @@ static inline int xX_main_Xx(int argc, char *const argv[], const char *envp) {
     int i = optind;
     size_t p = 0;
     size_t exec_argc = 0;
-    if (argv[optind] == NULL)
-	    return _ENOENT;
+    if (argv[optind] == NULL) {
+        // Every failure from here to the end of this function has to clean up
+        // for itself: exit_hook, which is what removes this on a normal exit,
+        // is not installed until the last line.
+        remove_dev_fakefs();
+        return _ENOENT;
+    }
     // Inject V8 flags for node to work around scope corruption in emulation.
     // --jitless: disable JIT (avoids V8 code gen incompatible with our JIT)
     // --predictable: disable concurrent GC/compilation (avoids race conditions)
@@ -300,17 +337,23 @@ do_exec:
         envp_buf[ep] = '\0';
         err = do_execve(argv[optind], exec_argc, argv_copy, envp_buf);
     }
-    if (err < 0)
+    if (err < 0) {
+        remove_dev_fakefs();
         return err;
+    }
     tty_drivers[TTY_CONSOLE_MAJOR] = &real_tty_driver;
     if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
         err = create_stdio(console, TTY_CONSOLE_MAJOR, 1);
-        if (err < 0)
+        if (err < 0) {
+            remove_dev_fakefs();
             return err;
+        }
     } else {
         err = create_piped_stdio();
-        if (err < 0)
+        if (err < 0) {
+            remove_dev_fakefs();
             return err;
+        }
     }
     exit_hook = exit_handler;
     return 0;

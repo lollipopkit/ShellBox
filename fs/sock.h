@@ -293,6 +293,12 @@ static inline int sock_opt_to_real(int fake, int level) {
 #endif
         } break;
         case IPPROTO_IP: switch (fake) {
+#if defined(__linux__)
+            // Darwin has no error queue and no such option; on Linux it is the
+            // real thing, and passing it through is what makes the queue the
+            // guest asked for actually exist.
+            case IP_RECVERR_: return IP_RECVERR;
+#endif
             case IP_TOS_: return IP_TOS;
             case IP_TTL_: return IP_TTL;
             case IP_HDRINCL_: return IP_HDRINCL;

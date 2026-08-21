@@ -4,15 +4,20 @@
 #
 # Usage:  tests/integration/smoke.sh [-i <ish binary>] [-r <rootfs>]
 #
-# ## Offline on purpose
+# ## What it does and does not reach for
 #
-# Every case here runs against what the base rootfs already ships. Nothing
-# installs a package, and nothing reaches the network — a gate that depends on
-# dl-cdn.alpinelinux.org turns red when a mirror hiccups, and a red build that
-# means nothing is worse than no build at all. Installing toolchains and
+# Every *case* runs against what the base rootfs already ships: nothing installs
+# a package, and no case talks to the network. Installing toolchains and
 # compiling with them is the full tier's job (tests/integration/full.sh), where
 # a network failure is a person reading a log rather than a blocked pull
 # request.
+#
+# One network step remains, and calling this suite "offline" would be a lie
+# without saying so: the rootfs itself is fetched, once, by rootfs.sh. CI caches
+# the tarball on its pinned digest so an ordinary run does not repeat it, and
+# `-r` skips it entirely for a tree that is already on disk. A dl-cdn outage on
+# a cold cache is therefore still a red gate — smaller than a gate that installs
+# packages, not zero.
 #
 # The rootfs is Alpine because that is what ServerBox ships. The other two are
 # in the full tier.

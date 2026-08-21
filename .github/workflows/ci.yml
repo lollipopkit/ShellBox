@@ -20,6 +20,7 @@ jobs:
   # what is proved.
   build-mac:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -49,12 +50,22 @@ jobs:
   smoke:
     needs: build-mac
     runs-on: macos-15
+    # A guest that hangs would otherwise sit here until the runner's own limit,
+    # which is a job that never reports rather than a test that failed.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: ish-cli
           path: build
+      # Keyed on the pinned digests, so the one network step this gate has does
+      # not repeat on every run.
+      - name: Cache rootfs tarballs
+        uses: actions/cache@v4
+        with:
+          path: build/integration/*.tar.*
+          key: rootfs-${{ hashFiles('tests/integration/rootfs.sh') }}
       - name: Integration (smoke)
         run: |
           chmod +x build/ish build/sbm_api_test

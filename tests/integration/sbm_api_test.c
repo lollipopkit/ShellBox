@@ -25,6 +25,13 @@
 // What is deliberately not copied from ServerBox: profiles (its machine root
 // holds several trees; here the rootfs is the root), the change-event consumer,
 // and the crash handler.
+//
+// One thing this copies that is worth naming rather than fixing: nothing reaps
+// a finished session. Its task stays a zombie, because its parent is an init
+// that sleeps and never waits. ServerBox does the same — sbm_ish_close marks
+// the slot free and sends SIGHUP, and no one calls wait — so a harness that
+// reaped would be modelling something the embedder does not do. Over an app's
+// lifetime that is a task, a tgroup and a pid per session, never returned.
 
 #define ISH_INTERNAL
 #include "kernel/calls.h"
@@ -198,6 +205,7 @@ static int make_dev(void) {
     generic_mknodat(AT_PWD, "/dev/random", S_IFCHR | 0666, dev_make(MEM_MAJOR, DEV_RANDOM_MINOR));
     generic_mknodat(AT_PWD, "/dev/urandom", S_IFCHR | 0666, dev_make(MEM_MAJOR, DEV_URANDOM_MINOR));
     generic_mknodat(AT_PWD, "/dev/tty", S_IFCHR | 0666, dev_make(TTY_ALTERNATE_MAJOR, DEV_TTY_MINOR));
+    generic_mknodat(AT_PWD, "/dev/console", S_IFCHR | 0666, dev_make(TTY_ALTERNATE_MAJOR, DEV_CONSOLE_MINOR));
     generic_mknodat(AT_PWD, "/dev/ptmx", S_IFCHR | 0666, dev_make(TTY_ALTERNATE_MAJOR, DEV_PTMX_MINOR));
 
     // /dev/stdout and friends point into /proc, so they resolve only once it is
@@ -378,8 +386,18 @@ static int run(const char *command, char *out, size_t out_size, int timeout_ms) 
 
     if (overflowed)
         return _E2BIG;
-    if (!exited)
-        return _ETIMEDOUT;
+    if (!exited) {
+        // The task is still running, on its own thread, holding the tty this
+        // struct points at — and the next case memsets that struct and hands
+        // the same fields to a new session. Nothing here can stop a guest
+        // thread inside the interpreter, so carrying on would report results
+        // from two sessions at once. Say what happened and stop.
+        fprintf(stderr, "\nFAIL: `%s` did not finish within %dms; the guest task "
+                        "is still running, so the rest of this test would be "
+                        "meaningless\n", command, timeout_ms);
+        fflush(stderr);
+        _exit(2);
+    }
     return code;
 }
 

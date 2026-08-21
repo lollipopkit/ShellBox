@@ -67,7 +67,7 @@ static bool path_normalize(const char *path, char *out) {
     return true;
 }
 
-// The schema lives in fs/fake-db.c, which libfakefs and the kernel share; a
+// The schema lives in fs/fake-schema.c, which libfakefs and the kernel share; a
 // second copy here was a database two tools could disagree about.
 
 bool fakefs_import(const char *archive_path, const char *fs, struct fakefsify_error *err_out, struct progress p) {
