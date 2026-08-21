@@ -99,13 +99,28 @@ int do_mount(const struct fs_ops *fs, const char *source, const char *point, con
     return 0;
 }
 
-int mount_remove(struct mount *mount) {
-    if (mount->refcount != 0)
+// Takes mounts_lock on entry and releases it on every path out, including the
+// error ones — so that finding a mount and committing to removing it are one
+// step. Read outside the lock, the refcount said nothing: a lookup could pass
+// through mount_find after the check saw zero and before the unlink, and come
+// away with a reference to a mount whose umount was already running. For
+// fakefs that meant fake_db_deinit finalizing the prepared statements the new
+// operation was about to use, and then free() taking the struct holding them.
+//
+// Unlinked under the lock and unmounted after it, because a filesystem's
+// umount does file and database work that must not run with mounts_lock held.
+// Once it is off the list no lookup can reach it, and the refcount was zero,
+// so nothing already in flight can either.
+static int mount_remove_locked(struct mount *mount) {
+    if (mount->refcount != 0) {
+        unlock(&mounts_lock);
         return _EBUSY;
+    }
+    list_remove(&mount->mounts);
+    unlock(&mounts_lock);
 
     if (mount->fs->umount)
         mount->fs->umount(mount);
-    list_remove(&mount->mounts);
     free((void *) mount->info);
     free((void *) mount->source);
     free((void *) mount->point);
@@ -114,7 +129,16 @@ int mount_remove(struct mount *mount) {
     return 0;
 }
 
+int mount_remove(struct mount *mount) {
+    lock(&mounts_lock);
+    return mount_remove_locked(mount);
+}
+
 int do_umount(const char *point) {
+    // The walk is under the lock and stays under it through the removal: the
+    // mount found here could otherwise be removed and freed by a concurrent
+    // umount before this one looked at it.
+    lock(&mounts_lock);
     struct mount *mount;
     bool found = false;
     list_for_each_entry(&mounts, mount, mounts) {
@@ -123,9 +147,11 @@ int do_umount(const char *point) {
             break;
         }
     }
-    if (!found)
+    if (!found) {
+        unlock(&mounts_lock);
         return _EINVAL;
-    return mount_remove(mount);
+    }
+    return mount_remove_locked(mount);
 }
 
 // FIXME: this is shit
@@ -203,10 +229,11 @@ dword_t sys_umount2(addr_t target_addr, dword_t flags) {
     if (err < 0)
         return err;
 
-    lock(&mounts_lock);
-    err = do_umount(target);
-    unlock(&mounts_lock);
-    return err;
+    // do_umount takes mounts_lock itself — it has to, so that finding the
+    // mount and committing to removing it are one step — and releases it on
+    // every path out. Taking it here as well deadlocked the calling thread
+    // against itself on every umount(2): lock_t is not recursive.
+    return do_umount(target);
 }
 
 struct list mounts = {&mounts, &mounts};

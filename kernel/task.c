@@ -18,7 +18,9 @@ static bool pid_empty(struct pid *pid) {
 }
 
 struct pid *pid_get(dword_t id) {
-    if (id > sizeof(pids)/sizeof(pids[0]))
+    // >=, not >. The array has MAX_PID + 1 entries, so that count is one past
+    // the last valid index and the comparison let it through.
+    if (id >= sizeof(pids)/sizeof(pids[0]))
         return NULL;
     struct pid *pid = &pids[id];
     if (pid_empty(pid))
@@ -54,8 +56,14 @@ struct task *task_create_(struct task *parent) {
     list_init(&pid->pgroup);
 
     struct task *task = malloc(sizeof(struct task));
-    if (task == NULL)
+    if (task == NULL) {
+        // Held since the top of the function. Returning through it left the
+        // lock taken forever, so the next pid lookup or clone — in any thread
+        // — blocked on it and the emulator stopped. The pid slot itself needs
+        // no undoing: pid_empty() is true again once the lists are empty.
+        unlock(&pids_lock);
         return NULL;
+    }
     *task = (struct task) {};
     if (parent != NULL)
         *task = *parent;
@@ -96,6 +104,11 @@ struct task *task_create_(struct task *parent) {
     task->robust_list = 0;
     task->futex_pipe[0] = -1;
     task->futex_pipe[1] = -1;
+    // Not inherited: the parent's list belongs to the syscall the parent is
+    // in, and *task = *parent above copied the pointer.
+    task->syscall_refs = NULL;
+    task->syscall_refs_n = 0;
+    task->syscall_refs_cap = 0;
     task->did_exec = false;
     lock_init(&task->general_lock);
 
@@ -131,6 +144,7 @@ static void flush_deferred_frees(void) {
 }
 
 void task_destroy(struct task *task) {
+    syscall_refs_free(task);
     list_remove(&task->siblings);
     pid_get(task->pid)->task = NULL;
 
@@ -166,6 +180,23 @@ static void task_run_tlb_cleanup(void *arg) {
         mm_release(self->mm);
         self->mm = NULL;
         self->mem = NULL;
+    }
+    // The same handoff for the descriptor table. The valve cannot release it
+    // there: this thread was inside a host syscall holding a struct fd through
+    // an f_get reference, and dropping the last one closes the host descriptor
+    // the thread is blocked on and frees the struct it reads on return. Here
+    // the host thread is gone, so there is no syscall left to be inside.
+    if (self != NULL && self->files_release_deferred) {
+        self->files_release_deferred = false;
+        syscall_refs_release(self);
+        if (self->files != NULL) {
+            fdtable_release(self->files);
+            self->files = NULL;
+        }
+        if (self->fs != NULL) {
+            fs_info_release(self->fs);
+            self->fs = NULL;
+        }
     }
 }
 

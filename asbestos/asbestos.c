@@ -587,6 +587,12 @@ static struct fiber_block *fiber_block_compile_protected(struct asbestos *asbest
         fiber_block_free(NULL, block);
     }
 }
+#else
+// The W^X compile protection above is guest-arm64 only, so there are no
+// statistics to report here. Defined anyway, because kernel/exit.c and main.c
+// call it unconditionally: without this, -Dguest_arch=x86 did not link at all,
+// on any host. That is what the build-mac CI job builds.
+void dump_wx_stats(void) {}
 #endif
 
 // Remove all pointers to the block. It can't be freed yet because another

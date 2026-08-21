@@ -25,17 +25,36 @@
 #include "fs/tty.h"
 #include "util/fchdir.h"
 
+// Both host calls answer -1 with errno set, and -1 is the guest's EPERM, so
+// returning them raw told every caller "operation not permitted" whatever had
+// actually gone wrong.
 static int getpath(int fd, char *buf) {
 #if defined(__linux__)
-    char proc_fd[20];
-    sprintf(proc_fd, "/proc/self/fd/%d", fd);
+    // "/proc/self/fd/" is fourteen characters and an int is up to eleven, so
+    // twenty was never enough and sprintf had nowhere to say so.
+    char proc_fd[32];
+    snprintf(proc_fd, sizeof(proc_fd), "/proc/self/fd/%d", fd);
     ssize_t size = readlink(proc_fd, buf, MAX_PATH - 1);
-    if (size >= 0)
-        buf[size] = '\0';
-    return size;
+    if (size < 0)
+        return errno_map();
+    buf[size] = '\0';
+    return 0;
 #elif defined(__APPLE__)
-    return fcntl(fd, F_GETPATH, buf);
+    if (fcntl(fd, F_GETPATH, buf) < 0)
+        return errno_map();
+    return 0;
 #endif
+}
+
+// A prefix is only a *mount* match at a component boundary: "/var/app" does
+// not contain "/var/application", and strncmp alone said it did — the fd's
+// path was then rewritten to the middle of a word.
+static bool path_has_prefix(const char *path, const char *prefix, size_t prefix_len) {
+    if (strncmp(path, prefix, prefix_len) != 0)
+        return false;
+    if (prefix_len > 0 && prefix[prefix_len - 1] == '/')
+        return true; // the prefix carries its own boundary
+    return path[prefix_len] == '/' || path[prefix_len] == '\0';
 }
 
 #pragma clang diagnostic push
@@ -103,9 +122,16 @@ struct fd *realfs_open(struct mount *mount, const char *path, int flags, int mod
     /* Bind-mount change tracker: any open that may modify the file fires an
      * upsert event. The hook is intentionally agnostic about path layout —
      * we just emit whatever path realfs received. The Swift consumer
-     * decides whether the path is one it cares about. */
+     * decides whether the path is one it cares about.
+     *
+     * The path is also kept, so realfs_write can report the writes
+     * themselves. Opening is not modifying: a descriptor opened before the
+     * consumer was installed, or simply opened once and written to for the
+     * rest of the process' life, produced exactly one event and never
+     * another, and the consumer saw none of the changes. */
     if (flags & (O_CREAT_ | O_TRUNC_ | O_WRONLY_ | O_RDWR_ | O_APPEND_)) {
         fakefs_record_change(path, FAKEFS_CHANGE_OP_WRITE);
+        fd->change_path = strdup(path);
     }
     return fd;
 }
@@ -183,6 +209,8 @@ ssize_t realfs_write(struct fd *fd, const void *buf, size_t bufsize) {
     } while (res < 0 && errno == EINTR);
     if (res < 0)
         return errno_map();
+    if (fd->change_path != NULL)
+        fakefs_record_change(fd->change_path, FAKEFS_CHANGE_OP_WRITE);
     return res;
 }
 
@@ -203,6 +231,8 @@ ssize_t realfs_pwrite(struct fd *fd, const void *buf, size_t bufsize, off_t off)
     } while (res < 0 && errno == EINTR);
     if (res < 0)
         return errno_map();
+    if (fd->change_path != NULL)
+        fakefs_record_change(fd->change_path, FAKEFS_CHANGE_OP_WRITE);
     return res;
 }
 
@@ -345,11 +375,21 @@ int realfs_mmap(struct fd *fd, struct mem *mem, page_t start, pages_t pages, off
         // for its posix_fallocate + mmap(MAP_SHARED) extraction pattern.
         // We must NOT extend the file via ftruncate, because apk doesn't
         // truncate it back, leaving trailing null bytes that corrupt files.
-        if ((mmap_flags & MAP_SHARED) && (mmap_prot & PROT_WRITE)) {
+        // ...but only where the overhang is the tail of the file's last page.
+        // A whole page past EOF is mapped happily and faults with SIGBUS the
+        // moment the guest touches it, which is exactly what the anonymous
+        // path below exists to avoid: a one-page file mapped as two pages
+        // took this branch and killed the guest on the second.
+        off_t eof_page_end = (st.st_size + real_page_size - 1) / real_page_size * real_page_size;
+        if ((mmap_flags & MAP_SHARED) && (mmap_prot & PROT_WRITE) &&
+                (off_t)(real_offset + map_size) <= eof_page_end) {
             char *memory = mmap(NULL, map_size,
                     mmap_prot, mmap_flags, fd->real_fd, real_offset);
             if (memory != MAP_FAILED) {
-                return pt_map(mem, start, pages, memory, correction, prot);
+                int err = pt_map(mem, start, pages, memory, correction, prot);
+                if (err < 0)
+                    munmap(memory, map_size);
+                return err;
             }
             // mmap failed — fall through to anonymous path
         }
@@ -385,7 +425,15 @@ int realfs_mmap(struct fd *fd, struct mem *mem, page_t start, pages_t pages, off
         if (!(mmap_prot & PROT_WRITE) && file_map_size < map_size)
             mprotect(memory + file_map_size, map_size - file_map_size, mmap_prot);
 
-        return pt_map(mem, start, pages, memory, correction, prot);
+        // pt_map can fail after the host mapping succeeded — it allocates a
+        // struct data of its own. Returning its error straight out left the
+        // mapping behind with nothing holding a reference to it, so repeated
+        // attempts under memory pressure consumed host address space that
+        // could not be reclaimed before process exit.
+        int err = pt_map(mem, start, pages, memory, correction, prot);
+        if (err < 0)
+            munmap(memory, map_size);
+        return err;
     }
 
     char *memory = mmap(NULL, map_size,
@@ -393,7 +441,10 @@ int realfs_mmap(struct fd *fd, struct mem *mem, page_t start, pages_t pages, off
     if (memory == MAP_FAILED)
         return _ENOMEM;
 
-    return pt_map(mem, start, pages, memory, correction, prot);
+    int err = pt_map(mem, start, pages, memory, correction, prot);
+    if (err < 0)
+        munmap(memory, map_size);
+    return err;
 }
 
 ssize_t realfs_readlink(struct mount *mount, const char *path, char *buf, size_t bufsize) {
@@ -428,11 +479,11 @@ int realfs_getpath(struct fd *fd, char *buf) {
          * F_GETPATH resolves symlinks, so bind-mounted paths may point outside
          * mount->source when the bind mount table has been cleared (e.g. after
          * app restart before mountMinis re-registers the mounts). */
-        if (strncmp(buf, fd->mount->source, source_len) == 0) {
+        if (path_has_prefix(buf, fd->mount->source, source_len)) {
             memmove(buf, buf + source_len, MAX_PATH - source_len);
         } else if (strncmp(fd->mount->source, "/var/", 5) == 0 &&
                    strncmp(buf, "/private", 8) == 0 &&
-                   strncmp(buf + 8, fd->mount->source, source_len) == 0) {
+                   path_has_prefix(buf + 8, fd->mount->source, source_len)) {
             /* F_GETPATH returns /private/var/... but mount->source is /var/...
              * Strip /private prefix + mount->source from buf. */
             memmove(buf, buf + 8 + source_len, MAX_PATH - 8 - source_len);
@@ -489,7 +540,11 @@ int realfs_symlink(struct mount *mount, const char *target, const char *link) {
 int realfs_mknod(struct mount *mount, const char *path, mode_t_ mode, dev_t_ UNUSED(dev)) {
     int err;
     if (S_ISFIFO(mode)) {
-        lock_fchdir(mount->root_fd);
+        // mkfifo takes a path and not a directory fd, which is the only
+        // reason for the cwd dance. If it cannot be undone, don't do it:
+        // the path would otherwise resolve against whatever the cwd is.
+        if (lock_fchdir(mount->root_fd) < 0)
+            return errno_map();
         err = mkfifo(fix_path(path), mode & ~S_IFMT);
         unlock_fchdir();
     } else if (S_ISREG(mode)) {

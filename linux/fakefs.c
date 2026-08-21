@@ -412,11 +412,16 @@ static int fakefs_iterate(struct file *file, struct dir_context *ctx) {
         } else if (strcmp(ent.name, "..") == 0) {
             ent.ino = d_inode(file->f_path.dentry->d_parent)->i_ino;
         } else {
-            db_begin_read(&info->db);
+            // Checked before the transaction is opened, not inside it: this
+            // used to `continue` with the read transaction still open and
+            // db_begin_read's mutex still held, and that mutex is
+            // SQLITE_MUTEX_FAST — the next entry's db_begin_read deadlocked
+            // the thread against itself.
             if (dir_path_len + 1 + strlen(ent.name) + 1 > PATH_MAX)
-                continue; // a
+                continue;
             dir_path[dir_path_len] = '/';
             strcpy(&dir_path[dir_path_len + 1], ent.name);
+            db_begin_read(&info->db);
             ent.ino = path_get_inode(&info->db, dir_path);
             db_commit(&info->db);
         }
@@ -424,6 +429,10 @@ static int fakefs_iterate(struct file *file, struct dir_context *ctx) {
             break;
         ctx->pos = host_telldir(dir) + 1;
     }
+    // dentry_name hands back a __getname() buffer, and this was the one caller
+    // in the file that never gave it back — a PATH_MAX name-cache allocation
+    // lost on every readdir of a fakefs directory.
+    __putname(dir_path);
     return res;
 }
 
@@ -709,26 +718,44 @@ static int fakefs_get_tree(struct fs_context *fc) {
     struct fakefs_context *ctx = fc->fs_private;
 
     char *path = kmalloc(strlen(ctx->path) + 10, GFP_KERNEL);
+    if (path == NULL)
+        return -ENOMEM;
     strcpy(path, ctx->path);
     strcat(path, "/data");
     info->root_fd = host_open(path, O_RDONLY);
     if (info->root_fd < 0) {
+        int err = info->root_fd;
         kfree(path);
-        return info->root_fd;
+        return err;
     }
 
     strcpy(path, ctx->path);
     strcat(path, "/meta.db");
     int err = fake_db_init(&info->db, path, info->root_fd);
+    kfree(path);
     if (err < 0) {
-        kfree(path);
+        // fakefs_kill_sb is what normally closes this, and it only runs once
+        // there is a super block to kill.
+        host_close(info->root_fd);
+        info->root_fd = -1;
         return err;
     }
-    kfree(path);
 
     err = vfs_get_super(fc, vfs_get_keyed_super, fakefs_fill_super);
-    if (err < 0)
+    if (err < 0) {
+        // Only if nothing else took ownership. sget_fc moves s_fs_info to the
+        // super block and clears it here, so a failure after that point has
+        // already run fakefs_kill_sb — which deinits the same db and closes
+        // the same descriptor, and frees `info`. Cleaning up unconditionally
+        // would be a use-after-free rather than the leak it was meant to fix.
+        info = fc->s_fs_info;
+        if (info != NULL) {
+            fake_db_deinit(&info->db);
+            host_close(info->root_fd);
+            info->root_fd = -1;
+        }
         return err;
+    }
     return 0;
 }
 

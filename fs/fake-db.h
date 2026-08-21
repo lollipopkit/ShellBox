@@ -21,6 +21,7 @@ struct fakefs_db {
         sqlite3_stmt *path_link;
         sqlite3_stmt *path_unlink;
         sqlite3_stmt *path_rename;
+        sqlite3_stmt *path_delete_tree;
         sqlite3_stmt *path_from_inode;
         sqlite3_stmt *try_cleanup_inode;
     } stmt;
@@ -59,5 +60,9 @@ void inode_write_stat(struct fakefs_db *fs, inode_t inode, struct ish_stat *stat
 void path_link(struct fakefs_db *fs, const char *src, const char *dst);
 inode_t path_unlink(struct fakefs_db *fs, const char *path);
 void path_rename(struct fakefs_db *fs, const char *src, const char *dst);
+// Deletes the row for `path` and every row below it. Used when a bind mount's
+// host target changes or goes away, where the rows describe files that are no
+// longer there and would otherwise be reused for entirely different ones.
+void path_delete_tree(struct fakefs_db *fs, const char *path);
 
 #endif

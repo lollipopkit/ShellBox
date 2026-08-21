@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <sys/stat.h>
 #include "kernel/calls.h"
 #include "fs/poll.h"
@@ -13,8 +14,12 @@ fd_t sys_epoll_create(int_t flags) {
     if (fd == NULL)
         return _ENOMEM;
     struct poll *poll = poll_create();
-    if (IS_ERR(poll))
+    if (IS_ERR(poll)) {
+        // fd_create zeroes the struct, so epollfd.poll is NULL here and
+        // epoll_close has nothing to destroy.
+        fd_close(fd);
         return PTR_ERR(poll);
+    }
     fd->epollfd.poll = poll;
     return f_install(fd, flags);
 }
@@ -40,6 +45,11 @@ __attribute__((packed))
 #define EPOLLET_ (1 << 31)
 #define EPOLLONESHOT_ (1 << 30)
 
+// The most events one epoll_wait will return, and so the size of the array it
+// puts on the stack. Well past what any real event loop asks for — Node and
+// libuv use 1024, musl's own wrappers less.
+#define EPOLL_MAX_EVENTS 1024
+
 int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     STRACE("epoll_ctl(%d, %d, %d, %#x)", epoll_f, op, f, event_addr);
     struct fd *epoll = f_get(epoll_f);
@@ -51,6 +61,43 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     if (fd == NULL)
         return _EBADF;
 
+    // An epoll set inside an epoll set is not supported, and saying so is the
+    // point: epoll_ops has no .poll, so poll_wait's readiness scan read the
+    // inner set as never ready and the registration silently never fired. A
+    // guest that probes for nested epoll can fall back on an error; it cannot
+    // fall back on an event loop that just stops.
+    //
+    // TODO: support it. Two pieces are missing, and the second is the reason
+    // this is a refusal rather than a partial implementation:
+    //   - a .poll on epoll_ops that scans the inner set's members. On its own
+    //     this only gets readiness noticed on poll_wait's one-second slice,
+    //     since the inner set's descriptors are not in the outer host queue.
+    //   - propagating poll_wakeup up the nesting. That has to run outside
+    //     poll->lock: the readiness scan walks outer→inner, so waking
+    //     inner→outer with locks held gives two orders over the same pair.
+    // Cycle and depth rejection (Linux: EINVAL for self, ELOOP beyond four)
+    // comes with it, and is load-bearing rather than tidiness — a cycle would
+    // make either of the walks above recurse forever.
+    //
+    // An epoll fd passed to poll() or select() is a different case and is not
+    // rejected: epoll_ops has a .poll now, so those report readiness. It is
+    // this refusal that makes that safe, by keeping the nesting one level
+    // deep and free of cycles.
+    if (op == EPOLL_CTL_ADD_ && fd->ops == &epoll_ops) {
+        // Said once. A guest that probes for nested epoll does so from a loop,
+        // and the point of the message is that the refusal is deliberate —
+        // which one line makes as well as thousands. Exchanged rather than
+        // tested and set: epoll_ctl runs on every thread, and a plain bool
+        // read-then-write is a data race whose whole purpose is to be read
+        // concurrently.
+        static _Atomic bool said;
+        if (!atomic_exchange(&said, true)) {
+            printk("epoll_ctl: refusing to nest epoll set %d inside %d (pid=%d): "
+                   "unsupported, reported once\n", f, epoll_f, current->pid);
+        }
+        return _EINVAL;
+    }
+
     // Regular files (and directories) are not pollable: they are always
     // "ready", so Linux rejects adding them to an epoll set with EPERM. iSH
     // used to accept them, which makes bun's fs.WriteStream take its polling
@@ -61,6 +108,9 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
 
     if (op == EPOLL_CTL_DEL_)
         return poll_del_fd(epoll->epollfd.poll, fd, f);
+    // Anything that is not ADD, DEL or MOD used to fall through to MOD.
+    if (op != EPOLL_CTL_ADD_ && op != EPOLL_CTL_MOD_)
+        return _EINVAL;
 
     struct epoll_event_ event;
     if (user_get(event_addr, event))
@@ -68,8 +118,10 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     STRACE(" {events: %#x, data: %#x}", event.events, event.data);
 
     if (op == EPOLL_CTL_ADD_) {
-        if (poll_has_fd(epoll->epollfd.poll, fd, f))
-            return _EEXIST;
+        // poll_add_fd answers EEXIST itself, holding the poll lock across the
+        // check and the insertion. Asking poll_has_fd first and then adding
+        // let two threads registering the same descriptor both find it absent
+        // and both add it.
         return poll_add_fd(epoll->epollfd.poll, fd, f, event.events, (union poll_fd_info) event.data);
     } else {
         return poll_mod_fd(epoll->epollfd.poll, fd, f, event.events, (union poll_fd_info) event.data);
@@ -103,6 +155,12 @@ int_t sys_epoll_wait(fd_t epoll_f, addr_t events_addr, int_t max_events, int_t t
         timeout_ts.tv_sec = timeout / 1000;
         timeout_ts.tv_nsec = (timeout % 1000) * 1000000;
     }
+    // Clamped, not rejected: epoll_wait may always return fewer events than
+    // asked for, so a guest that passes a large max_events is answered
+    // correctly with a smaller batch. It sized a stack array before, with
+    // nothing but the guest's word for how big.
+    if (max_events > EPOLL_MAX_EVENTS)
+        max_events = EPOLL_MAX_EVENTS;
     if (max_events <= 0)
         return _EINVAL;
     struct epoll_event_ events[max_events];
@@ -153,10 +211,53 @@ int_t sys_epoll_pwait(fd_t epoll_f, addr_t events_addr, int_t max_events, int_t 
 }
 
 static int epoll_close(struct fd *fd) {
-    poll_destroy(fd->epollfd.poll);
+    // NULL when sys_epoll_create failed between making the fd and making the
+    // poll object.
+    if (fd->epollfd.poll != NULL)
+        poll_destroy(fd->epollfd.poll);
     return 0;
+}
+
+// An epoll set is readable when any of its registrations is ready. Linux
+// allows poll() and select() on an epoll fd; without this, epoll_ops had no
+// poll operation at all, so the wait loop's readiness scan read the set as
+// never ready and a guest waiting on one waited forever.
+//
+// Bounded at one level and free of cycles because epoll_ctl refuses to put an
+// epoll set inside another: the members poll_any_ready walks are never epoll
+// fds, so the only lock edge is outer poll to inner poll with no path back.
+//
+// TODO: nothing wakes the outer wait when the inner set becomes ready — the
+// inner members are not registered in the outer host queue. A poll whose only
+// event source is an epoll fd therefore notices on poll_wait's one-second
+// slice rather than at once; in a mixed set any other activity brings the scan
+// round and it is seen immediately.
+//
+// Closing that means poll_wakeup travelling up the nesting. Two things that
+// look like blockers are not:
+//   - Lock order works out. The house order is fd before poll, and the walk
+//     would be member->poll_lock, inner->lock, release inner, owner->poll_lock,
+//     outer->lock — which keeps it. The readiness scan's edge is outer->lock to
+//     inner->lock and it takes no fd lock, so the two do not close a cycle.
+//   - The owner cannot be freed underneath it. fd_close on an epoll fd reaches
+//     free() only through epoll_close and poll_destroy, and poll_destroy takes
+//     each member's poll_lock — the very lock the walk is holding.
+// What makes it a change of its own rather than a line here is cost and the
+// bookkeeping that avoids it. poll_wakeup runs on every socket write, pipe
+// write and tty byte, for every fd in every process. Propagating unconditionally
+// adds a lock round-trip per wakeup for every fd in any epoll set — which under
+// Node, bun or Python is all of them — to reach an epoll fd that is almost
+// never itself watched. Avoiding that needs a "this set is watched" flag kept
+// in step across poll_add_fd, poll_del_fd and poll_cleanup_fd, and a stale one
+// leaves a freed struct fd * in the hottest path in the emulator. That wants a
+// stress test, which this tree has no harness for.
+static int epoll_poll(struct fd *fd) {
+    if (fd->epollfd.poll == NULL)
+        return 0;
+    return poll_any_ready(fd->epollfd.poll) ? POLL_READ : 0;
 }
 
 static struct fd_ops epoll_ops = {
     .close = epoll_close,
+    .poll = epoll_poll,
 };

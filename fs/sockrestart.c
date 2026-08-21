@@ -71,6 +71,12 @@ struct saved_socket {
 
 static struct list saved_sockets = LIST_INITIALIZER(saved_sockets);
 
+// TODO: sockrestart_on_suspend and sockrestart_on_resume have no callers
+// anywhere in the tree, so nothing repairs a listening socket that iOS tore
+// down while the app was in the background — the only background hook exits
+// instead. Either wire them into the host's lifecycle or delete the pair; the
+// bugs fixed below were found by reading, not by anything running.
+
 // these should only be called from the main thread, but it's easiest to just lock for the whole time
 
 void sockrestart_on_suspend(void) {
@@ -94,6 +100,13 @@ void sockrestart_on_suspend(void) {
 }
 
 void sockrestart_on_resume(void) {
+    // The saved list is taken away whole, and the descriptors are released
+    // after the lock is dropped. fd_close on the last reference reaches
+    // sock_close, which calls sockrestart_end_listen and takes this same
+    // non-recursive lock — so releasing here deadlocked the resume path
+    // exactly when the retained reference was the final one, which is the
+    // case whenever the guest closed the socket while suspended.
+    struct list restarted = LIST_INITIALIZER(restarted);
     lock(&sockrestart_lock);
     struct saved_socket *saved, *tmp;
     list_for_each_entry_safe(&saved_sockets, saved, tmp, saved) {
@@ -106,12 +119,17 @@ void sockrestart_on_resume(void) {
         }
         if (bind(new_sock, (struct sockaddr *) &saved->name, saved->name_len) < 0) {
             printk("rebinding socket failed: %s\n", strerror(errno));
+            close(new_sock);
             goto thank_u_next;
         }
+        // dup2 duplicates it onto the descriptor the guest already holds; the
+        // original is then one host descriptor nobody names. Leaked, every
+        // suspend/resume cycle cost one, until socket() started failing.
         dup2(new_sock, saved->sock->real_fd);
+        close(new_sock);
 
 thank_u_next:
-        fd_close(saved->sock);
+        list_add(&restarted, &saved->saved);
     }
     struct task *task;
     list_for_each_entry(&listen_tasks, task, sockrestart.listen) {
@@ -119,4 +137,10 @@ thank_u_next:
         pthread_kill(task->thread, SIGUSR1);
     }
     unlock(&sockrestart_lock);
+
+    list_for_each_entry_safe(&restarted, saved, tmp, saved) {
+        list_remove(&saved->saved);
+        fd_close(saved->sock);
+        free(saved);
+    }
 }

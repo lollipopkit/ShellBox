@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -258,6 +259,22 @@ void path_rename(struct fakefs_db *fs, const char *src, const char *dst) {
     db_exec_reset(fs, fs->stmt.path_rename);
 }
 
+void path_delete_tree(struct fakefs_db *fs, const char *path) {
+    // delete from paths where (path >= ? [path plus /] and path < ? [path plus 0])
+    //  or path = ?
+    // The same half-open range path_rename uses: '/' is 0x2f and '0' is 0x30,
+    // so everything between them is exactly the children of `path`.
+    size_t len = strlen(path);
+    char extra[len + 1];
+    memcpy(extra, path, len);
+    extra[len] = '/';
+    sqlite3_bind_blob(fs->stmt.path_delete_tree, 1, extra, len + 1, SQLITE_TRANSIENT);
+    extra[len] = '0';
+    sqlite3_bind_blob(fs->stmt.path_delete_tree, 2, extra, len + 1, SQLITE_TRANSIENT);
+    sqlite3_bind_blob(fs->stmt.path_delete_tree, 3, extra, len, SQLITE_TRANSIENT);
+    db_exec_reset(fs, fs->stmt.path_delete_tree);
+}
+
 #if DEBUG_sql
 static int trace_callback(unsigned UNUSED(why), void *UNUSED(fuck), void *stmt, void *_sql) {
     char *sql = _sql;
@@ -283,11 +300,59 @@ static void sqlite_func_change_prefix(sqlite3_context *context, int argc, sqlite
 extern int fakefs_rebuild(struct fakefs_db *fs, int root_fd);
 extern int fakefs_migrate(struct fakefs_db *fs, int root_fd);
 
+// Undoes what fake_db_init did to the handle, and leaves *fs able to take
+// another one. Every path out of init that has an open handle goes through
+// here: sqlite3_close reports SQLITE_BUSY and closes *nothing* while a
+// prepared statement is still alive, so an init that failed partway through
+// PREPARE_OR_FAIL used to drop the last reference to an open database.
+// sqlite3_finalize(NULL) is a documented no-op, which is what lets one
+// function serve every partial state.
+//
+// The mutex is not freed here — fake_db_deinit holds it across this call.
+static int fake_db_close(struct fakefs_db *fs) {
+    sqlite3_finalize(fs->stmt.begin_deferred);
+    sqlite3_finalize(fs->stmt.begin_immediate);
+    sqlite3_finalize(fs->stmt.commit);
+    sqlite3_finalize(fs->stmt.rollback);
+    sqlite3_finalize(fs->stmt.path_get_inode);
+    sqlite3_finalize(fs->stmt.path_read_stat);
+    sqlite3_finalize(fs->stmt.path_create_stat);
+    sqlite3_finalize(fs->stmt.path_create_path);
+    sqlite3_finalize(fs->stmt.inode_read_stat);
+    sqlite3_finalize(fs->stmt.inode_write_stat);
+    sqlite3_finalize(fs->stmt.path_link);
+    sqlite3_finalize(fs->stmt.path_unlink);
+    sqlite3_finalize(fs->stmt.path_rename);
+    sqlite3_finalize(fs->stmt.path_delete_tree);
+    sqlite3_finalize(fs->stmt.path_from_inode);
+    sqlite3_finalize(fs->stmt.try_cleanup_inode);
+    memset(&fs->stmt, 0, sizeof(fs->stmt));
+
+    if (fs->db == NULL)
+        return SQLITE_OK;
+    int rc = sqlite3_close(fs->db);
+    if (rc != SQLITE_OK) {
+        // A statement prepared outside this file is still alive — a migration
+        // or a rebuild that failed partway. close_v2 hands the handle to
+        // sqlite to free when that statement goes, rather than leaving it
+        // open with nothing pointing at it.
+        printk("fakefs db: close reported %d, deferring to sqlite3_close_v2\n", rc);
+        sqlite3_close_v2(fs->db);
+    }
+    fs->db = NULL;
+    return rc;
+}
+
 int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
+    // Every failure below unwinds through fake_db_close, which reads the
+    // statement pointers and the mutex. struct mount is malloc'd, not zeroed,
+    // so they have to start out NULL rather than whatever was on the heap.
+    memset(fs, 0, sizeof(*fs));
+
     int err = sqlite3_open_v2(db_path, &fs->db, SQLITE_OPEN_READWRITE, NULL);
     if (err != SQLITE_OK) {
         printk("error opening database: %s\n", sqlite3_errmsg(fs->db));
-        sqlite3_close(fs->db);
+        fake_db_close(fs);
         return _EINVAL;
     }
     sqlite3_busy_timeout(fs->db, 5000);
@@ -331,15 +396,24 @@ int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
 #endif
 
     err = fakefs_migrate(fs, root_fd);
-    if (err < 0)
+    if (err < 0) {
+        fake_db_close(fs);
         return err;
+    }
 
     // after the filesystem is compressed, transmitted, and uncompressed, the
     // inode numbers will be different. to detect this, the inode of the
     // database file is stored inside the database and compared with the actual
     // database file inode, and if they're different we rebuild the database.
     struct stat statbuf;
-    if (stat(db_path, &statbuf) < 0) ERRNO_DIE("stat database");
+    if (stat(db_path, &statbuf) < 0) {
+        // This used to be ERRNO_DIE. A meta.db that went away underneath us —
+        // the container deleted while mounted, an iOS data-protection unlock
+        // that has not happened yet — is a mount that cannot be made, not a
+        // reason to abort the process.
+        printk("fakefs db init: stat %s failed: %s\n", db_path, strerror(errno));
+        goto init_fail;
+    }
     ino_t db_inode = statbuf.st_ino;
     sqlite3_stmt *statement = NULL;
     if (db_prepare_checked(fs, "select db_inode from meta", &statement) != SQLITE_OK) goto init_fail;
@@ -347,9 +421,10 @@ int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
         if ((uint64_t) sqlite3_column_int64(statement, 0) != db_inode) {
             sqlite3_finalize(statement);
             statement = NULL;
-            int err = fakefs_rebuild(fs, root_fd);
-            if (err < 0) {
-                return err;
+            int rebuild_err = fakefs_rebuild(fs, root_fd);
+            if (rebuild_err < 0) {
+                fake_db_close(fs);
+                return rebuild_err;
             }
         }
     }
@@ -371,6 +446,13 @@ int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
         goto init_fail;
 
     fs->lock = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
+    if (fs->lock == NULL) {
+        // sqlite3_mutex_enter/leave treat NULL as a no-op, so carrying on
+        // without one would run every transaction unserialized instead of
+        // failing anything.
+        printk("fakefs db init: could not allocate the transaction mutex\n");
+        goto init_fail;
+    }
     // [T-fakefs-db-init-no-die] Each cached statement must prepare successfully;
     // a NULL would crash later at runtime. On any failure, fail the mount.
 #define PREPARE_OR_FAIL(field, sql) \
@@ -387,6 +469,8 @@ int fake_db_init(struct fakefs_db *fs, const char *db_path, int root_fd) {
     PREPARE_OR_FAIL(inode_write_stat, "update stats set stat = ? where inode = ?");
     PREPARE_OR_FAIL(path_link, "insert or replace into paths (path, inode) values (?, ?)");
     PREPARE_OR_FAIL(path_unlink, "delete from paths where path = ?");
+    PREPARE_OR_FAIL(path_delete_tree, "delete from paths where "
+            "(path >= ? and path < ?) or path = ?");
     PREPARE_OR_FAIL(path_rename, "update or replace paths set path = change_prefix(path, ?, ?) "
             "where (path >= ? and path < ?) or path = ?");
     PREPARE_OR_FAIL(path_from_inode, "select path from paths where inode = ?");
@@ -399,31 +483,42 @@ init_fail:
     // whole app. Close the half-open db and return an error so the fakefs mount
     // fails gracefully (the caller handles a negative return).
     printk("fakefs db init: FAILED for %s — mount aborted (app kept alive)\n", db_path);
-    if (fs->db) {
-        sqlite3_close(fs->db);
-        fs->db = NULL;
+    if (fs->lock != NULL) {
+        // Nothing has been handed this fs yet, so no thread can be inside a
+        // transaction and the mutex can go without being taken.
+        sqlite3_mutex_free(fs->lock);
+        fs->lock = NULL;
     }
+    fake_db_close(fs);
     return _EIO;
 }
 
 int fake_db_deinit(struct fakefs_db *fs) {
-    if (fs->db) {
-        sqlite3_finalize(fs->stmt.begin_deferred);
-        sqlite3_finalize(fs->stmt.begin_immediate);
-        sqlite3_finalize(fs->stmt.commit);
-        sqlite3_finalize(fs->stmt.rollback);
-        sqlite3_finalize(fs->stmt.path_get_inode);
-        sqlite3_finalize(fs->stmt.path_read_stat);
-        sqlite3_finalize(fs->stmt.path_create_stat);
-        sqlite3_finalize(fs->stmt.path_create_path);
-        sqlite3_finalize(fs->stmt.inode_read_stat);
-        sqlite3_finalize(fs->stmt.inode_write_stat);
-        sqlite3_finalize(fs->stmt.path_link);
-        sqlite3_finalize(fs->stmt.path_unlink);
-        sqlite3_finalize(fs->stmt.path_rename);
-        sqlite3_finalize(fs->stmt.path_from_inode);
-        sqlite3_finalize(fs->stmt.try_cleanup_inode);
-        return sqlite3_close(fs->db);
+    if (fs->db == NULL && fs->lock == NULL)
+        return SQLITE_OK;
+
+    // What keeps this from racing a filesystem operation is upstream, in
+    // fs/mount.c: an operation holds a reference on the mount for its whole
+    // length (mount_find takes one, fd_close drops the fd's), and
+    // mount_remove checks that count and unlinks the mount under the same
+    // lock mount_find looks it up under. So by the time fakefs_umount calls
+    // this, nothing holds a reference and nothing can take one.
+    //
+    // The mutex is still taken, for the one caller that does not come through
+    // mount_remove: linux/fakefs.c hangs the same struct off a super block,
+    // whose lifetime is the Linux VFS's business rather than this refcount's.
+    // db_begin_read/db_begin_write hold it from `begin` through to `commit` or
+    // `rollback`, so taking it means no thread is part way through a
+    // transaction using the statements about to be finalized. fs->lock is
+    // cleared under it so a later db_begin_* cannot take a freed mutex.
+    sqlite3_mutex *lock = fs->lock;
+    fs->lock = NULL;
+    if (lock != NULL)
+        sqlite3_mutex_enter(lock);
+    int rc = fake_db_close(fs);
+    if (lock != NULL) {
+        sqlite3_mutex_leave(lock);
+        sqlite3_mutex_free(lock);
     }
-    return SQLITE_OK;
+    return rc;
 }

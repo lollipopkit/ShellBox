@@ -109,6 +109,10 @@ struct fd {
     struct mount *mount;
     int real_fd; // seeks on this fd require the lock TODO think about making a special lock just for that
     DIR *dir;
+    // The guest path this was opened at, kept only when the open was
+    // write-capable and only so realfs_write can name the file it changed.
+    // NULL otherwise, and freed by fd_close.
+    char *change_path;
     struct inode_data *inode;
     ino_t fake_inode;
     struct statbuf stat; // for adhoc fs
@@ -119,6 +123,7 @@ struct fd {
     cond_t cond;
 };
 
+struct task;
 typedef sdword_t fd_t;
 #define AT_FDCWD_ -100
 
@@ -195,6 +200,15 @@ void fdtable_do_cloexec(struct fdtable *table);
 struct fd *fdtable_get(struct fdtable *table, fd_t f);
 
 struct fd *f_get(fd_t f);
+// Releases every reference f_get took during the syscall that just finished.
+// Called from the syscall dispatcher, and from the paths that never return to
+// it — do_exit and the group-exit safety valve.
+void syscall_refs_drain(void);
+// The same, for a task that is not the caller. Only the group-exit safety
+// valve, which already takes a stuck thread's files and fs away from under
+// it; the same assumption covers this.
+void syscall_refs_release(struct task *task);
+void syscall_refs_free(struct task *task);
 // steals a reference to the fd, gives it to the table on success and destroys it on error
 // flags is checked for O_CLOEXEC and O_NONBLOCK
 fd_t f_install(struct fd *fd, int flags);

@@ -34,6 +34,12 @@ struct task {
     bool did_exec; // for that one annoying setsid edge case
 
     struct fdtable *files;
+    // References taken by f_get during the syscall now running, released in
+    // one place when it returns. See f_get in fs/fd.c for why they are taken
+    // at all, and syscall_refs_drain in kernel/calls.c for where they go.
+    struct fd **syscall_refs;
+    unsigned syscall_refs_n;
+    unsigned syscall_refs_cap;
     struct fs_info *fs;
 
     // locked by sighand->lock
@@ -105,6 +111,11 @@ struct task {
     // (whole guest address space) from leaking forever when the thread never
     // re-enters do_exit(). Cleared once released so it never double-frees.
     bool mm_release_deferred;
+    // Same handoff, for the descriptor table and the syscall-scoped references
+    // taken from it. Set by the do_exit_group safety valve when it orphans a
+    // thread stuck in a host syscall; acted on by that thread's own pthread
+    // cleanup handler, which runs only once the host thread has terminated.
+    bool files_release_deferred;
 
     // this structure is allocated on the stack of the parent's clone() call
     struct vfork_info {

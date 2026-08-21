@@ -1,3 +1,4 @@
+#include <string.h>
 #include "kernel/calls.h"
 #include "kernel/task.h"
 #include "kernel/personality.h"
@@ -169,10 +170,19 @@ int_t sys_setgroups(dword_t size, addr_t list) {
     STRACE("setgroups(%d, %#x)", size, list);
     if (size > MAX_GROUPS)
         return _EINVAL;
-    if (user_read(list, current->groups, size * sizeof(uid_t_)))
+    // Linux wants CAP_SETGID for this. Without the check any process could
+    // give itself whatever supplementary groups it liked, which is the whole
+    // of what setgroups controls.
+    if (!superuser())
+        return _EPERM;
+    // Read aside first: on EFAULT the guest's list is left as it was, rather
+    // than half overwritten with a group count that no longer describes it.
+    uid_t_ groups[MAX_GROUPS];
+    if (user_read(list, groups, size * sizeof(uid_t_)))
         return _EFAULT;
     for (unsigned i = 0; i < size; i++)
-        STRACE(" %d", current->groups[i]);
+        STRACE(" %d", groups[i]);
+    memcpy(current->groups, groups, size * sizeof(uid_t_));
     current->ngroups = size;
     return 0;
 }

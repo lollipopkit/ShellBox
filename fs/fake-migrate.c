@@ -4,6 +4,14 @@
 #include "fs/fake-db.h"
 #include "fs/sqlutil.h"
 
+// A migration that fails fails the mount, rather than the app: see the note in
+// sqlutil.h. Every macro below lands on the sql_err label at the end of
+// fakefs_migrate.
+#define HANDLE_ERR(db) do { \
+    printk("fakefs migrate: sqlite error: %s\n", sqlite3_errmsg(db)); \
+    goto sql_err; \
+} while (0)
+
 // The value of the user_version pragma is used to decide what needs migrating.
 
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
@@ -37,10 +45,22 @@ static struct migration {
 int fakefs_migrate(struct fakefs_db *fs, int UNUSED(root_fd)) {
     sqlite3 *db = fs->db;
     int err;
-    sqlite3_stmt *user_version = PREPARE("pragma user_version");
+    // Both are declared and cleared up here because HANDLE_ERR jumps forward
+    // to sql_err from any point in the function, including from above their
+    // first assignment.
+    sqlite3_stmt *user_version = NULL;
+    char *pragma_user_version = NULL;
+
+    user_version = PREPARE("pragma user_version");
     STEP(user_version);
     int version = sqlite3_column_int(user_version, 0);
-    FINALIZE(user_version);
+    // Handed over before the finalize, not after: FINALIZE checks its own
+    // result and jumps to sql_err on a bad one, and sql_err finalizes
+    // user_version again. Clearing it afterwards was too late for exactly the
+    // case the label exists for.
+    sqlite3_stmt *finishing = user_version;
+    user_version = NULL;
+    FINALIZE(finishing);
 
     EXEC("begin");
     int versions = sizeof(migrations)/sizeof(migrations[0]);
@@ -53,10 +73,23 @@ int fakefs_migrate(struct fakefs_db *fs, int UNUSED(root_fd)) {
         version++;
     }
     // for some reason placeholders aren't allowed in pragmas
-    char *pragma_user_version = sqlite3_mprintf("pragma user_version = %d", version);
+    pragma_user_version = sqlite3_mprintf("pragma user_version = %d", version);
+    if (pragma_user_version == NULL)
+        goto sql_err;
     EXEC(pragma_user_version);
     sqlite3_free(pragma_user_version);
+    pragma_user_version = NULL;
     EXEC("commit");
 
     return 0;
+
+sql_err:
+    // Anything half-applied goes back: a migration is a set of schema changes
+    // that only mean anything together, and user_version is only bumped once
+    // they have all run. The rollback is unconditional because the failure may
+    // have come from before `begin`, where it is a no-op.
+    sqlite3_free(pragma_user_version);
+    sqlite3_finalize(user_version);
+    sqlite3_exec(db, "rollback", NULL, NULL, NULL);
+    return _EIO;
 }

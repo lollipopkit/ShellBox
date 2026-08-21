@@ -334,17 +334,23 @@ void vec_single_fdiv32(NO_CPU, const float *src, float *dst) { *dst /= *src; }
 void vec_single_fsqrt64(NO_CPU, const double *src, double *dst) { *dst = sqrt(*src); }
 void vec_single_fsqrt32(NO_CPU, const float *src, float *dst) { *dst = sqrtf(*src); }
 
+// SSE MIN/MAX are defined as `dst = (dst OP src) ? dst : src`, which decides
+// the two cases a comparison cannot: an unordered operand and an equality tie
+// both take the *source*. Written as `src OP dst` plus explicit NaN tests, the
+// NaN half was right and the tie was not — MINSD of +0 and -0 kept the
+// destination's +0 where the ISA calls for the source's -0, observable through
+// signbit and any bitwise use of the result.
 void vec_single_fmax64(NO_CPU, const double *src, double *dst) {
-    if (*src > *dst || isnan(*src) || isnan(*dst)) *dst = *src;
+    if (!(*dst > *src)) *dst = *src;
 }
 void vec_single_fmin64(NO_CPU, const double *src, double *dst) {
-    if (*src < *dst || isnan(*src) || isnan(*dst)) *dst = *src;
+    if (!(*dst < *src)) *dst = *src;
 }
 void vec_single_fmax32(NO_CPU, const float *src, float *dst) {
-    if (*src > *dst || isnan(*src) || isnan(*dst)) *dst = *src;
+    if (!(*dst > *src)) *dst = *src;
 }
 void vec_single_fmin32(NO_CPU, const float *src, float *dst) {
-    if (*src < *dst || isnan(*src) || isnan(*dst)) *dst = *src;
+    if (!(*dst < *src)) *dst = *src;
 }
 
 void vec_single_ucomi32(struct cpu_state *cpu, const float *src, const float *dst) {
@@ -389,18 +395,38 @@ void vec_fcmp_p64(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t 
     }
 }
 
+// x86 answers the "integer indefinite" value for a source that is NaN or
+// outside the destination's range. C calls converting such a value undefined,
+// and this host's FCVTZS saturates to INT32_MAX instead, so the guest saw a
+// different number depending on what it was built against. The `!(in range)`
+// spelling is what makes NaN take the indefinite branch.
+static inline int32_t cvt_i32_from_double(double x) {
+    if (!(x >= -2147483648.0 && x < 2147483648.0))
+        return INT32_MIN;
+    return (int32_t) x;
+}
+static inline int32_t cvt_i32_from_float(float x) {
+    if (!(x >= -2147483648.0f && x < 2147483648.0f))
+        return INT32_MIN;
+    return (int32_t) x;
+}
+
 // come to the dark side of macros
-#define _ISNAN_int32_t(x) false
-#define _ISNAN_float(x) isnan(x)
-#define _ISNAN_double(x) isnan(x)
-#define _ISNAN(x, t) _ISNAN_##t(x)
+// One entry per (destination, source) pair the conversions below instantiate.
+// The NaN test used to be shared, and wrote INT32_MIN whatever the
+// destination's type was — so CVTSD2SS of a NaN produced -2147483648.0f
+// rather than a NaN.
+#define _CVT_int32_t_double(x) cvt_i32_from_double(x)
+#define _CVT_int32_t_float(x) cvt_i32_from_float(x)
+#define _CVT_double_int32_t(x) ((double) (x))
+#define _CVT_float_int32_t(x) ((float) (x))
+#define _CVT_float_double(x) ((float) (x))
+#define _CVT_double_float(x) ((double) (x))
+#define _CVT(dst_t, src_t, x) _CVT_##dst_t##_##src_t(x)
 #define _VEC_CVT(src, dst, src_t, dst_t, n) \
     do { \
         for (int i = 0; i < n; ++i) { \
-            if (_ISNAN(((src_t *)src)[i], src_t)) \
-                ((dst_t *)dst)[i] = INT32_MIN; \
-            else \
-                ((dst_t *)dst)[i] = ((src_t *)src)[i]; \
+            ((dst_t *)dst)[i] = _CVT(dst_t, src_t, ((src_t *)src)[i]); \
         } \
     } while (0)
 
@@ -487,31 +513,42 @@ void vec_unpackh_pd128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst) {
     dst->f64[1] = src->f64[1];
 }
 
+// The result is built aside and stored at the end. Writing dst->u32[0..1]
+// first and only then reading src->u16[] was wrong whenever the two operands
+// alias — PACKSSWB xmm0, xmm0 is a legal encoding — because by then src's low
+// eight bytes held the packed result rather than the original words. Same for
+// the two below.
 void vec_packss_w128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst) {
-    dst->u32[0] = (satsw(dst->u16[0]) << 0x00) | (satsw(dst->u16[1]) << 0x08) |
-                  (satsw(dst->u16[2]) << 0x10) | (satsw(dst->u16[3]) << 0x18);
-    dst->u32[1] = (satsw(dst->u16[4]) << 0x00) | (satsw(dst->u16[5]) << 0x08) |
-                  (satsw(dst->u16[6]) << 0x10) | (satsw(dst->u16[7]) << 0x18);
-    dst->u32[2] = (satsw(src->u16[0]) << 0x00) | (satsw(src->u16[1]) << 0x08) |
-                  (satsw(src->u16[2]) << 0x10) | (satsw(src->u16[3]) << 0x18);
-    dst->u32[3] = (satsw(src->u16[4]) << 0x00) | (satsw(src->u16[5]) << 0x08) |
-                  (satsw(src->u16[6]) << 0x10) | (satsw(src->u16[7]) << 0x18);
+    union xmm_reg res;
+    res.u32[0] = (satsw(dst->u16[0]) << 0x00) | (satsw(dst->u16[1]) << 0x08) |
+                 (satsw(dst->u16[2]) << 0x10) | (satsw(dst->u16[3]) << 0x18);
+    res.u32[1] = (satsw(dst->u16[4]) << 0x00) | (satsw(dst->u16[5]) << 0x08) |
+                 (satsw(dst->u16[6]) << 0x10) | (satsw(dst->u16[7]) << 0x18);
+    res.u32[2] = (satsw(src->u16[0]) << 0x00) | (satsw(src->u16[1]) << 0x08) |
+                 (satsw(src->u16[2]) << 0x10) | (satsw(src->u16[3]) << 0x18);
+    res.u32[3] = (satsw(src->u16[4]) << 0x00) | (satsw(src->u16[5]) << 0x08) |
+                 (satsw(src->u16[6]) << 0x10) | (satsw(src->u16[7]) << 0x18);
+    *dst = res;
 }
 void vec_packss_d128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst) {
-    dst->u32[0] = satud(dst->u32[0]) | (satud(dst->u32[1]) << 16);
-    dst->u32[1] = satud(dst->u32[2]) | (satud(dst->u32[3]) << 16);
-    dst->u32[2] = satud(src->u32[0]) | (satud(src->u32[1]) << 16);
-    dst->u32[3] = satud(src->u32[2]) | (satud(src->u32[3]) << 16);
+    union xmm_reg res;
+    res.u32[0] = satud(dst->u32[0]) | (satud(dst->u32[1]) << 16);
+    res.u32[1] = satud(dst->u32[2]) | (satud(dst->u32[3]) << 16);
+    res.u32[2] = satud(src->u32[0]) | (satud(src->u32[1]) << 16);
+    res.u32[3] = satud(src->u32[2]) | (satud(src->u32[3]) << 16);
+    *dst = res;
 }
 void vec_packsu_w128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst) {
-    dst->u32[0] = (satub(dst->u16[0]) << 0x00) | (satub(dst->u16[1]) << 0x08) |
-                  (satub(dst->u16[2]) << 0x10) | (satub(dst->u16[3]) << 0x18);
-    dst->u32[1] = (satub(dst->u16[4]) << 0x00) | (satub(dst->u16[5]) << 0x08) |
-                  (satub(dst->u16[6]) << 0x10) | (satub(dst->u16[7]) << 0x18);
-    dst->u32[2] = (satub(src->u16[0]) << 0x00) | (satub(src->u16[1]) << 0x08) |
-                  (satub(src->u16[2]) << 0x10) | (satub(src->u16[3]) << 0x18);
-    dst->u32[3] = (satub(src->u16[4]) << 0x00) | (satub(src->u16[5]) << 0x08) |
-                  (satub(src->u16[6]) << 0x10) | (satub(src->u16[7]) << 0x18);
+    union xmm_reg res;
+    res.u32[0] = (satub(dst->u16[0]) << 0x00) | (satub(dst->u16[1]) << 0x08) |
+                 (satub(dst->u16[2]) << 0x10) | (satub(dst->u16[3]) << 0x18);
+    res.u32[1] = (satub(dst->u16[4]) << 0x00) | (satub(dst->u16[5]) << 0x08) |
+                 (satub(dst->u16[6]) << 0x10) | (satub(dst->u16[7]) << 0x18);
+    res.u32[2] = (satub(src->u16[0]) << 0x00) | (satub(src->u16[1]) << 0x08) |
+                 (satub(src->u16[2]) << 0x10) | (satub(src->u16[3]) << 0x18);
+    res.u32[3] = (satub(src->u16[4]) << 0x00) | (satub(src->u16[5]) << 0x08) |
+                 (satub(src->u16[6]) << 0x10) | (satub(src->u16[7]) << 0x18);
+    *dst = res;
 }
 
 void vec_shuffle_lw128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
@@ -532,15 +569,24 @@ void vec_shuffle_d128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint
     for (int i = 0; i < 4; i++)
         dst->u32[i] = src_copy.u32[(encoding >> (i*2)) % 4];
 }
+// Both selections read from copies, as the shuffles above already do. Two
+// ways this went wrong without them: the second low lane could select the
+// first, which had just been overwritten, whatever the operands were; and
+// with `src == dst` — `SHUFPS xmm0, xmm0, imm` is a legal encoding — the high
+// lanes read a source whose low half was already the result.
 void vec_shuffle_ps128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    dst->u32[0] = dst->u32[(encoding >> 0) & 3];
-    dst->u32[1] = dst->u32[(encoding >> 2) & 3];
-    dst->u32[2] = src->u32[(encoding >> 4) & 3];
-    dst->u32[3] = src->u32[(encoding >> 6) & 3];
+    union xmm_reg src_copy = *src;
+    union xmm_reg dst_copy = *dst;
+    dst->u32[0] = dst_copy.u32[(encoding >> 0) & 3];
+    dst->u32[1] = dst_copy.u32[(encoding >> 2) & 3];
+    dst->u32[2] = src_copy.u32[(encoding >> 4) & 3];
+    dst->u32[3] = src_copy.u32[(encoding >> 6) & 3];
 }
 void vec_shuffle_pd128(NO_CPU, const union xmm_reg *src, union xmm_reg *dst, uint8_t encoding) {
-    dst->qw[0] = dst->qw[(encoding >> 0) & 1];
-    dst->qw[1] = src->qw[(encoding >> 1) & 1];
+    union xmm_reg src_copy = *src;
+    union xmm_reg dst_copy = *dst;
+    dst->qw[0] = dst_copy.qw[(encoding >> 0) & 1];
+    dst->qw[1] = src_copy.qw[(encoding >> 1) & 1];
 }
 
 void vec_movmask_b128(NO_CPU, const union xmm_reg *src, uint32_t *dst) {
