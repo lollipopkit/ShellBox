@@ -23,7 +23,16 @@ void do_uname(struct uname *uts) {
 
     memset(uts, 0, sizeof(struct uname));
     strcpy(uts->system, "Linux");
-    strcpy(uts->hostname, hostname);
+    // Bounded, unlike the literals around it: this string comes from the host
+    // — the machine's nodename, or whatever an embedder set as the override —
+    // and the field is 65 bytes. A host called something longer than 64
+    // characters used to end the process outright: macOS compiles strcpy to
+    // __builtin___strcpy_chk against the field's known size, and the overflow
+    // trapped in __chk_fail_overflow before the guest saw anything. A CI runner
+    // was named exactly that long, and every guest command on it died.
+    //
+    // Linux truncates here, so truncating matches it.
+    snprintf(uts->hostname, sizeof(uts->hostname), "%s", hostname);
     strcpy(uts->release, "4.20.69-ish");
     snprintf(uts->version, sizeof(uts->version), "%s %s %s", uname_version, __DATE__, __TIME__);
     strcpy(uts->arch, "aarch64");

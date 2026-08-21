@@ -32,10 +32,31 @@ jobs:
       - name: Test
         run: meson test -C build --print-errorlogs
 
-      # A guest that boots and answers correctly. Offline — see the header of
-      # smoke.sh for why the gate does not install packages.
+      # Handed to the smoke job rather than run here, so that a guest that
+      # fails to boot is its own red check instead of "build-mac failed".
+      - name: Upload ish
+        uses: actions/upload-artifact@v4
+        with:
+          name: ish-cli
+          path: build/ish
+          retention-days: 1
+
+  # A guest that boots and answers correctly. Offline — see the header of
+  # smoke.sh for why the gate does not install packages. The full matrix, which
+  # does reach the network, is integration.yml: manual and nightly.
+  smoke:
+    needs: build-mac
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ish-cli
+          path: build
       - name: Integration (smoke)
-        run: tests/integration/smoke.sh -i build/ish
+        run: |
+          chmod +x build/ish
+          tests/integration/smoke.sh -i build/ish
 
   # What ServerBox links, built the way it builds it: a cross build for the
   # device SDK, of the three library targets and nothing else. `tools/fakefsify`
