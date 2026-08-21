@@ -52,15 +52,18 @@ static struct rlimit_ init_rlimits[16] = {
     [RLIMIT_RTTIME_]     = {RLIM_INFINITY_, RLIM_INFINITY_},
 };
 
-// TODO error propagation
 static struct task *construct_task(struct task *parent) {
     struct task *task = task_create_(parent);
     if (task == NULL)
         return ERR_PTR(_ENOMEM);
+    // Every failure below used to return straight out, leaving the task in the
+    // pid table and its siblings list and leaking whatever had been built so
+    // far. The labels below undo it in reverse.
+    int err = _ENOMEM;
 
     struct tgroup *group = malloc(sizeof(struct tgroup));
     if (group == NULL)
-        return ERR_PTR(_ENOMEM);
+        goto fail_task;
     *group = (struct tgroup) {};
     list_init(&group->threads);
     lock_init(&group->lock);
@@ -86,18 +89,24 @@ static struct task *construct_task(struct task *parent) {
     // a failed mm_new dereferenced NULL rather than reporting ENOMEM.
     struct mm *mm = mm_new();
     if (mm == NULL)
-        return ERR_PTR(_ENOMEM);
+        goto fail_group;
     task_set_mm(task, mm);
     task->sighand = sighand_new();
     if (task->sighand == NULL)
-        return ERR_PTR(_ENOMEM);
+        goto fail_mm;
+    // fdtable_new answers with an ERR_PTR, not NULL, so the old `== NULL`
+    // check passed an encoded errno through as a table and every later f_get
+    // read fields off it.
     task->files = fdtable_new(3); // why is there a 3 here
-    if (task->files == NULL)
-        return ERR_PTR(_ENOMEM);
+    if (IS_ERR(task->files)) {
+        err = PTR_ERR(task->files);
+        task->files = NULL;
+        goto fail_sighand;
+    }
 
     task->fs = fs_info_new();
     if (task->fs == NULL)
-        return ERR_PTR(_ENOMEM);
+        goto fail_files;
     task->fs->umask = 0022;
     // we'll need to have current set to do the open call
     struct task *old_current = current;
@@ -107,11 +116,45 @@ static struct task *construct_task(struct task *parent) {
     // pointing at this half-built task, so whatever ran next on this thread
     // did so as a process with no root and no group.
     current = old_current;
-    if (IS_ERR(task->fs->root))
-        return ERR_PTR(PTR_ERR(task->fs->root));
+    if (IS_ERR(task->fs->root)) {
+        err = PTR_ERR(task->fs->root);
+        task->fs->root = NULL;
+        goto fail_fs;
+    }
     task->fs->pwd = fd_retain(task->fs->root);
 
     return task;
+
+fail_fs:
+    fs_info_release(task->fs);
+    task->fs = NULL;
+fail_files:
+    fdtable_release(task->files);
+    task->files = NULL;
+fail_sighand:
+    sighand_release(task->sighand);
+    task->sighand = NULL;
+fail_mm:
+    // Cleared by hand rather than through task_set_mm, which dereferences the
+    // mm it is given to reach ->mem.
+    mm_release(task->mm);
+    task->mm = NULL;
+    task->mem = NULL;
+    task->cpu.mmu = NULL;
+fail_group:
+    // task_setsid put the group in the session tables, so it has to come out
+    // before the memory goes.
+    task_leave_session(task);
+    list_remove(&task->group_links);
+    free(task->group);
+    task->group = NULL;
+fail_task:
+    // task_create_ linked it into the pid table and the parent's children;
+    // task_destroy is what takes it back out, and it wants pids_lock.
+    lock(&pids_lock);
+    task_destroy(task);
+    unlock(&pids_lock);
+    return ERR_PTR(err);
 }
 
 int become_first_process(void) {

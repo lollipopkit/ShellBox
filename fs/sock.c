@@ -1729,14 +1729,28 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
         if (scm != NULL) {
             uint8_t msg_control[sizeof(struct cmsghdr_) + scm->num_fds * sizeof(fd_t)];
             struct cmsghdr_ *cmsg = (void *) msg_control;
-            cmsg->len = sizeof(msg_control);
             cmsg->level = SOL_SOCKET_;
             cmsg->type = SCM_RIGHTS_;
             fd_t *fds = (void *) cmsg->data;
+            unsigned installed = 0;
             for (unsigned i = 0; i < scm->num_fds; i++) {
-                fds[i] = f_install(scm->fds[i], 0);
-                STRACE(" receiving fd %d", fds[i]);
+                fd_t f = f_install(scm->fds[i], 0);
+                if (f < 0) {
+                    // The fd table is full. Report the ones that made it and
+                    // flag the control message truncated, which is what
+                    // Linux's scm_detach_fds does — the negative errno used to
+                    // go into the array and reach the guest as a descriptor
+                    // number. f_install released this one's reference on the
+                    // way out; the ones after it are still held here.
+                    for (unsigned j = i + 1; j < scm->num_fds; j++)
+                        fd_close(scm->fds[j]);
+                    msg_fake.msg_flags |= MSG_CTRUNC_;
+                    break;
+                }
+                fds[installed++] = f;
+                STRACE(" receiving fd %d", f);
             }
+            cmsg->len = sizeof(struct cmsghdr_) + installed * sizeof(fd_t);
             // f_install took the references; scm_free would close them.
             free(scm);
 
