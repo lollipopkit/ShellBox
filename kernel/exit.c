@@ -578,6 +578,12 @@ static bool reap_if_needed(struct task *task, struct siginfo_ *info_out, struct 
         // making GDB think we support events (we don't). I can't remember what
         // it fixed but until then commenting it out for now.
         info_out->child.status = /* task->ptrace.trap_event << 16 |*/ task->ptrace.signal << 8 | 0x7f;
+        // A ptrace stop and an ordinary group stop pack into the same status
+        // word, and only this branch knows which one this is. waitid reports
+        // them differently — CLD_TRAPPED against CLD_STOPPED — so say so here,
+        // while the tracee is still around to ask; waitid_decode_status keeps
+        // the answer. wait4 ignores si_code and is unaffected.
+        info_out->code = CLD_TRAPPED_;
         task->ptrace.signal = 0;
         unlock(&task->ptrace.lock);
         return true;
@@ -611,6 +617,9 @@ retry:
                     continue;
                 no_children = false;
                 info->child.pid = task->pid;
+                // Must be read before reap_if_needed: reaping runs
+                // task_destroy, which memsets the task struct.
+                info->child.uid = task->uid;
                 if (reap_if_needed(task, info, rusage, options))
                     goto found_something;
             }
@@ -627,13 +636,16 @@ retry:
             goto error;
         task = task->group->leader;
         info->child.pid = id;
+        info->child.uid = task->uid;
         if (reap_if_needed(task, info, rusage, options))
             goto found_something;
     }
 
     // WNOHANG leaves the info in an implementation-defined state. set the pid
-    // to 0 so wait4 can pass that along correctly.
+    // to 0 so wait4 can pass that along correctly. Clear uid alongside it so a
+    // "no child ready" result doesn't report the uid of a candidate we scanned.
     info->child.pid = 0;
+    info->child.uid = 0;
     if (options & WNOHANG_) {
         info->sig = SIGCHLD_;
         goto found_something;
@@ -649,10 +661,16 @@ retry:
     current->blocking = true;
     {
         struct timespec waitpid_timeout = {.tv_sec = 1, .tv_nsec = 0};
-        if (wait_for(&current->group->child_exit, &pids_lock, &waitpid_timeout)) {
-            // Signal received during wait
+        // wait_for returns _EINTR (signal), _ETIMEDOUT (deadline expired), or
+        // 0 (child_exit was signalled). Only a real signal may set got_signal:
+        // treating _ETIMEDOUT as one made every wait for a child that ran
+        // longer than the timeout fail with EINTR, which broke gcc (cc1 easily
+        // exceeds 1s under emulation) and every other fork+wait caller.
+        // On _ETIMEDOUT and 0 alike we just fall through to retry, which
+        // rescans for a zombie and reaps it if the child has since exited.
+        int wait_err = wait_for(&current->group->child_exit, &pids_lock, &waitpid_timeout);
+        if (wait_err == _EINTR)
             got_signal = true;
-        }
     }
     current->blocking = false;
     {
@@ -678,12 +696,68 @@ error:
     return err;
 }
 
+// Convert the raw wait(2) status word that do_wait produces into the
+// (si_code, si_status) pair waitid(2) is specified to return. The encodings
+// come from the places that write child.status:
+//   sys_exit/sys_exit_group  do_exit(status << 8)   -> low byte 0
+//   deliver SIGNAL_KILL      do_exit_group(sig)     -> low byte is the signal
+//   deliver SIGNAL_STOP      sig << 8 | 0x7f
+//   ptrace stop              signal << 8 | 0x7f
+// Nothing in iSH sets the 0x80 core-dump bit today, so CLD_DUMPED is
+// unreachable in practice; it is handled anyway so this stays correct if
+// core dumps are ever implemented.
+// Not static: tests/unit/waitid_test.c drives it directly. Reaching it through
+// sys_waitid would mean a real child in a real process for each of the six
+// encodings, and two of them (continued, dumped) cannot be produced at all.
+void waitid_decode_status(struct siginfo_ *info) {
+    dword_t status = info->child.status;
+    info->sig = SIGCHLD_;
+    if ((status & 0xff) == 0x7f) {
+        // stopped: WIFSTOPPED, signal in the high byte. A ptrace stop packs
+        // identically and cannot be told apart from the word alone, so do_wait
+        // marks it CLD_TRAPPED_ as it reads it; anything else is a group stop.
+        if (info->code != CLD_TRAPPED_)
+            info->code = CLD_STOPPED_;
+        info->child.status = (status >> 8) & 0xff;
+    } else if (status == 0xffff) {
+        // continued: WIFCONTINUED. Nothing produces this yet (SIGCONT does not
+        // set group_exit_code), but decode it so the case is not silently
+        // misreported as an exit if WCONTINUED support lands.
+        info->code = CLD_CONTINUED_;
+        info->child.status = SIGCONT_;
+    } else if ((status & 0x7f) != 0) {
+        // terminated by a signal: WIFSIGNALED, signal in the low 7 bits
+        info->code = (status & 0x80) ? CLD_DUMPED_ : CLD_KILLED_;
+        info->child.status = status & 0x7f;
+    } else {
+        // normal exit: WIFEXITED, exit code in the high byte
+        info->code = CLD_EXITED_;
+        info->child.status = (status >> 8) & 0xff;
+    }
+}
+
 dword_t sys_waitid(int_t idtype, pid_t_ id, addr_t info_addr, int_t options) {
     STRACE("waitid(%d, %d, %#x, %#x)", idtype, id, info_addr, options);
     struct siginfo_ info = {};
     int_t res = do_wait(idtype, id, &info, NULL, options);
-    if (res < 0 || (res == 0 && info.child.pid == 0))
+    if (res < 0)
         return res;
+    if (res == 0 && info.child.pid == 0) {
+        // WNOHANG with nothing to report. Linux still writes the siginfo_t,
+        // zeroed: si_pid == 0 is how the caller is meant to tell "no child was
+        // ready" from "a child was reaped", and POSIX leaves the buffer
+        // untouched only if the implementation says so. Returning without
+        // writing left whatever the caller's stack held, so a caller that did
+        // not pre-zero read a stale pid as a real one.
+        struct siginfo_ empty = {};
+        if (info_addr != 0 && user_put(info_addr, empty))
+            return _EFAULT;
+        return res;
+    }
+    // do_wait hands back the raw wait(2)-encoded status, which is what wait4
+    // wants but not what waitid does: waitid must report the decoded value in
+    // si_status and say which kind of event it was in si_code.
+    waitid_decode_status(&info);
     if (info_addr != 0 && user_put(info_addr, info))
         return _EFAULT;
     return 0;

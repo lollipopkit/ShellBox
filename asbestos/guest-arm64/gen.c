@@ -552,6 +552,9 @@ extern void gadget_fcvtps_int_vec(void);   // FCVTPS (toward +inf, signed)
 extern void gadget_fcvtpu_int_vec(void);   // FCVTPU (toward +inf, unsigned)
 extern void gadget_fcvtas_int_vec(void);   // FCVTAS (ties away, signed)
 extern void gadget_fcvtau_int_vec(void);   // FCVTAU (ties away, unsigned)
+extern void gadget_fcvtn_vec(void);        // FCVTN/FCVTN2 (narrow: 4S->4H, 2D->2S)
+extern void gadget_fcvtl_vec(void);        // FCVTL/FCVTL2 (widen: 4H->4S, 2S->2D)
+extern void gadget_fcvtxn_vec(void);       // FCVTXN/FCVTXN2 (narrow 2D->2S, round to odd)
 extern void gadget_frintn_vec_vec(void);   // FRINTN (round to nearest, ties to even)
 extern void gadget_frinta_vec_vec(void);   // FRINTA (round to nearest, ties away)
 extern void gadget_frintp_vec_vec(void);   // FRINTP (round toward +inf)
@@ -5503,6 +5506,42 @@ skip_three_different:
         gen(state, (unsigned long) gadget_rbit_vec);
         gen(state, rd | (rn << 8) | (Q << 16));
         return 1;
+    }
+
+    // AdvSIMD vector FP lane narrow/widen: FCVTN{2}, FCVTL{2}, FCVTXN{2}
+    // Format: 0 Q U 01110 sz 10000 opcode 10 Rn Rd, opcode 0x16 (N) / 0x17 (L, XN)
+    // These are handled before the generic two-register-misc block below because
+    // that block rejects sz=1 with Q=0, which is legal for all three of these
+    // (FCVTN Vd.2s, FCVTL Vd.2d and FCVTXN Vd.2s are all Q=0 forms).
+    if ((insn & 0xbfbff800) == 0x0e216800 ||   // FCVTN{2}   (U=0, opcode 0x16)
+        (insn & 0xbfbff800) == 0x0e217800 ||   // FCVTL{2}   (U=0, opcode 0x17)
+        (insn & 0xbfbff800) == 0x2e216800) {   // FCVTXN{2}  (U=1, opcode 0x16)
+        uint32_t Q = (insn >> 30) & 1;
+        uint32_t U = (insn >> 29) & 1;
+        uint32_t opcode = (insn >> 12) & 0x1f;
+        uint32_t sz = (insn >> 22) & 1;
+        uint32_t rn = (insn >> 5) & 0x1f;
+        uint32_t rd = insn & 0x1f;
+
+        void *gadget = NULL;
+        if (opcode == 0x16 && U == 0) {
+            gadget = gadget_fcvtn_vec;
+        } else if (opcode == 0x17 && U == 0) {
+            gadget = gadget_fcvtl_vec;
+        } else if (opcode == 0x16 && U == 1) {
+            // FCVTXN only narrows double->single; sz=0 is unallocated.
+            if (sz == 0) {
+                gen_interrupt(state, INT_UNDEFINED);
+                return 0;
+            }
+            gadget = gadget_fcvtxn_vec;
+        }
+
+        if (gadget) {
+            gen(state, (unsigned long) gadget);
+            gen(state, rd | (rn << 8) | (sz << 16) | (Q << 24));
+            return 1;
+        }
     }
 
     // AdvSIMD two-register misc: FP conversions, rounding, unary, compare-with-zero

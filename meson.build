@@ -1746,10 +1746,10 @@ endforeach
 # Unit tests. Cross builds get none of them: the test binary would be built for
 # a phone and run on this machine.
 #
-# TODO: there is no end-to-end test any more. tests/e2e drove an x86 Alpine
-# through the CLI and went with the x86 guest; an aarch64 replacement has to be
-# written rather than repointed, because three of its five cases (fpu, sse2,
-# qemu) tested x86 instruction semantics and the harness installs python2.
+# The end-to-end tests are not here: `tests/regress/run.sh` needs an aarch64
+# guest cross-compiler and a rootfs, neither of which is in the repository, so
+# it would be a test that skips on every machine that has not been set up for
+# it. Run it by hand — it pins the fs and wait fixes taken from upstream.
 if not meson.is_cross_build()
     sock_test = executable('sock_test',
         ['tests/unit/sock_test.c'],
@@ -1768,4 +1768,19 @@ if not meson.is_cross_build()
         ['tests/unit/fchdir_test.c'],
         dependencies: ish)
     test('fchdir', fchdir_test)
+
+    openflags_test = executable('openflags_test',
+        ['tests/unit/openflags_test.c'],
+        dependencies: ish)
+    test('openflags', openflags_test)
+
+    waitid_test = executable('waitid_test',
+        ['tests/unit/waitid_test.c'],
+        dependencies: ish)
+    test('waitid', waitid_test)
+
+    fakefs_stat_test = executable('fakefs_stat_test',
+        ['tests/unit/fakefs_stat_test.c'],
+        dependencies: ish)
+    test('fakefs_stat', fakefs_stat_test)
 endif

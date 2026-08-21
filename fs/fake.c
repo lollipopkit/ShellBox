@@ -502,6 +502,7 @@ static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, 
         if (flags & O_TRUNC_) real_flags |= O_TRUNC;
         if (flags & O_APPEND_) real_flags |= O_APPEND;
         if (flags & O_NONBLOCK_) real_flags |= O_NONBLOCK;
+        if (flags & O_NOFOLLOW_) real_flags |= O_NOFOLLOW;
         int fd_no = open(host_abs, real_flags, 0666);
         if (fd_no < 0) {
             return ERR_PTR(errno_map());
@@ -826,7 +827,13 @@ static int fakefs_stat(struct mount *mount, const char *path, struct statbuf *fa
             return errno_map();
         }
         memset(fake_stat, 0, sizeof(*fake_stat));
+        /* Must match what fakefs_fstat gets via realfs.fstat/copy_stat, or
+         * coreutils' psame_inode(stat, fstat) sees dev mismatch and reports
+         * "file was replaced while being copied". */
+        fake_stat->dev = dev_fake_from_real(host_stat.st_dev);
         fake_stat->inode = (ino_t)host_stat.st_ino;
+        fake_stat->nlink = host_stat.st_nlink;
+        fake_stat->blksize = host_stat.st_blksize;
         /* Pick a sensible mode: keep host's S_IFMT, default to 0644/0755. */
         mode_t_ type = host_stat.st_mode & S_IFMT;
         fake_stat->mode = type | (S_ISDIR(host_stat.st_mode) ? 0755 : 0644);
@@ -881,9 +888,19 @@ static int fakefs_stat(struct mount *mount, const char *path, struct statbuf *fa
             db_commit(fs);
             return errno_map();
         }
-        /* Copy basic fields from real stat */
+        /* Copy basic fields from real stat. dev, blksize and blocks are here
+         * for the same reason they are on the hook-routed path above: this is
+         * the answer fakefs_fstat gets from realfs.fstat/copy_stat for the same
+         * file, and coreutils compares the two — psame_inode(stat, fstat) on a
+         * dev that one call fills and the other leaves alone reports "the file
+         * was replaced while being copied". The fields below that are
+         * overwritten from meta.db (inode, mode, uid, gid, rdev) are the ones
+         * fakefs is entitled to disagree with the host about. */
+        fake_stat->dev = dev_fake_from_real(real_stat.st_dev);
         fake_stat->size = real_stat.st_size;
         fake_stat->nlink = real_stat.st_nlink;
+        fake_stat->blksize = real_stat.st_blksize;
+        fake_stat->blocks = real_stat.st_blocks;
         fake_stat->atime = HOST_STAT_ATIME(real_stat).tv_sec;
         fake_stat->mtime = HOST_STAT_MTIME(real_stat).tv_sec;
         fake_stat->ctime = HOST_STAT_CTIME(real_stat).tv_sec;
