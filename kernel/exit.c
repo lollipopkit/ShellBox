@@ -112,6 +112,10 @@ noreturn void do_exit(int status) {
         fs_info_release(current->fs);
         current->fs = NULL;
     }
+    // Reached here means the thread the safety valve gave up on unblocked
+    // after all and is exiting properly, so the pthread cleanup handler must
+    // not release a second time.
+    current->files_release_deferred = false;
     // Close per-thread futex wakeup pipe
     if (current->futex_pipe[0] != -1) {
         close(current->futex_pipe[0]);
@@ -360,19 +364,26 @@ noreturn void do_exit_group(int status) {
                     // unblocks and re-enters do_exit(), that mm_release()s and
                     // clears the flag, so cleanup won't double-free.
                     task->mm_release_deferred = true;
-                    // Before the table, and for the same reason: this thread
-                    // is never coming back to the dispatcher, so the
-                    // references its last f_get took are released here or not
-                    // at all — and each one holds a description open.
-                    syscall_refs_release(task);
-                    if (task->files != NULL) {
-                        fdtable_release(task->files);
-                        task->files = NULL;
-                    }
-                    if (task->fs != NULL) {
-                        fs_info_release(task->fs);
-                        task->fs = NULL;
-                    }
+                    // Deferred for exactly the reason the mm above is, which
+                    // this used to release immediately: the thread is inside a
+                    // host syscall, and a syscall holds its struct fd through
+                    // a reference taken by f_get. Releasing that here drops
+                    // the last one — running fd->ops->close, which closes the
+                    // *host* descriptor the thread is blocked on, and freeing
+                    // the struct the syscall reads when it returns. Closing a
+                    // descriptor another thread is blocked in is also how its
+                    // number gets reused underneath that thread.
+                    //
+                    // So the same handoff: the thread's own pthread cleanup
+                    // handler does it, after the host thread has terminated
+                    // and nothing can still be inside the syscall. If it
+                    // instead unblocks and reaches do_exit, that releases and
+                    // clears the flag, so the handler does not double-release.
+                    //
+                    // The cost is that a pipe whose only other end is held by
+                    // this thread does not see EOF until the thread dies. That
+                    // is a wait; the alternative was a use-after-free.
+                    task->files_release_deferred = true;
                     leaked++;
                 }
             }
@@ -442,13 +453,27 @@ static void halt_system(void) {
         }
     }
 
-    // unmount all filesystems
-    lock(&mounts_lock);
-    struct mount *mount, *tmp;
-    list_for_each_entry_safe(&mounts, mount, tmp, mounts) {
-        mount_remove(mount);
+    // Unmount all filesystems. mount_remove takes mounts_lock itself now — it
+    // has to, so that the refcount check and the unlink are one step against
+    // mount_find. It also unlinks the mount it removes, so the list is walked
+    // from the head each time rather than with a saved `next` that the removal
+    // may have freed.
+    for (;;) {
+        lock(&mounts_lock);
+        if (list_empty(&mounts)) {
+            unlock(&mounts_lock);
+            break;
+        }
+        struct mount *mount = list_first_entry(&mounts, struct mount, mounts);
+        unlock(&mounts_lock);
+        // A mount still in use answers EBUSY and stays on the list, which
+        // would spin here. This runs on the way out of the process, so give
+        // up on it rather than refusing to halt.
+        if (mount_remove(mount) < 0) {
+            printk("halt_system: %s is busy, leaving it mounted\n", mount->point);
+            break;
+        }
     }
-    unlock(&mounts_lock);
 
     // Restore host terminal settings before exiting.
     // _exit() does not call atexit handlers, so we must do this explicitly.

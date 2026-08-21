@@ -181,6 +181,23 @@ static void task_run_tlb_cleanup(void *arg) {
         self->mm = NULL;
         self->mem = NULL;
     }
+    // The same handoff for the descriptor table. The valve cannot release it
+    // there: this thread was inside a host syscall holding a struct fd through
+    // an f_get reference, and dropping the last one closes the host descriptor
+    // the thread is blocked on and frees the struct it reads on return. Here
+    // the host thread is gone, so there is no syscall left to be inside.
+    if (self != NULL && self->files_release_deferred) {
+        self->files_release_deferred = false;
+        syscall_refs_release(self);
+        if (self->files != NULL) {
+            fdtable_release(self->files);
+            self->files = NULL;
+        }
+        if (self->fs != NULL) {
+            fs_info_release(self->fs);
+            self->fs = NULL;
+        }
+    }
 }
 
 void task_run_current(void) {

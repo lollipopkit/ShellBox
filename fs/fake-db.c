@@ -497,16 +497,20 @@ int fake_db_deinit(struct fakefs_db *fs) {
     if (fs->db == NULL && fs->lock == NULL)
         return SQLITE_OK;
 
-    // db_begin_read/db_begin_write hold this mutex from `begin` through to
-    // `commit` or `rollback`, so taking it here means no thread is part way
-    // through a transaction using the statements about to be finalized.
-    // Clearing fs->lock under it stops a later db_begin_* from taking a freed
-    // mutex — it would get NULL, which sqlite treats as "no mutex".
+    // What keeps this from racing a filesystem operation is upstream, in
+    // fs/mount.c: an operation holds a reference on the mount for its whole
+    // length (mount_find takes one, fd_close drops the fd's), and
+    // mount_remove checks that count and unlinks the mount under the same
+    // lock mount_find looks it up under. So by the time fakefs_umount calls
+    // this, nothing holds a reference and nothing can take one.
     //
-    // TODO: that is a narrower window, not a closed one. A caller reaching
-    // this mount after umount still uses freed statements; closing it needs a
-    // refcount on struct mount, held for the length of an operation, which is
-    // a change to fs/mount.c rather than to this file.
+    // The mutex is still taken, for the one caller that does not come through
+    // mount_remove: linux/fakefs.c hangs the same struct off a super block,
+    // whose lifetime is the Linux VFS's business rather than this refcount's.
+    // db_begin_read/db_begin_write hold it from `begin` through to `commit` or
+    // `rollback`, so taking it means no thread is part way through a
+    // transaction using the statements about to be finalized. fs->lock is
+    // cleared under it so a later db_begin_* cannot take a freed mutex.
     sqlite3_mutex *lock = fs->lock;
     fs->lock = NULL;
     if (lock != NULL)
