@@ -1249,23 +1249,6 @@ static void free_iovecs(struct iovec *iov, size_t n) {
         free(iov[i].iov_base);
 }
 
-// The most bytes one sendmsg/recvmsg may name across all its vectors. Linux
-// caps the total at MAX_RW_COUNT and answers EINVAL past it. Here it matters
-// more than there: Linux hands the user pages to the socket, while this copies
-// every vector into a malloc of the guest's chosen size, so 1024 vectors of
-// four gigabytes each was 1024 unbounded allocations for one syscall.
-#define IOV_TOTAL_MAX ((size_t) INT_MAX)
-
-// Accumulates into *total and answers false once the running sum would pass
-// the cap. Checked per vector as the array is walked, so nothing is allocated
-// on the strength of a length that is already out of bounds.
-static bool iov_len_ok(uint64_t len, size_t *total) {
-    if (len > IOV_TOTAL_MAX || *total > IOV_TOTAL_MAX - (size_t) len)
-        return false;
-    *total += (size_t) len;
-    return true;
-}
-
 // Held from queuing an SCM onto the peer until the sendmsg carrying it
 // returns. The receiver takes the head of the peer's list when it sees a
 // SCM_RIGHTS control message, so the queue order has to be the order the

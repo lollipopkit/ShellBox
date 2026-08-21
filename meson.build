@@ -1835,5 +1835,40 @@ if not meson.is_cross_build() and guest_arch == 'x86' and host_machine.cpu_famil
     test('float80', float80_test)
 endif
 
+# Unit tests. Unlike float80's, these do not depend on the host's long double,
+# only on the x86 vector sources being part of the build — so they run on an
+# arm64 host with -Dguest_arch=x86, which is the ordinary way to build this on
+# an Apple Silicon machine.
+if not meson.is_cross_build() and guest_arch == 'x86'
+    vec_test = executable('vec_test',
+        ['emu/arch/x86/vec.c', 'tests/unit/vec_test.c'],
+        dependencies: [libm],
+        include_directories: includes)
+    test('vec', vec_test)
+endif
+
+if not meson.is_cross_build()
+    sock_test = executable('sock_test',
+        ['tests/unit/sock_test.c'],
+        include_directories: includes)
+    test('sock', sock_test)
+
+endif
+
+# These reach into the rest of the kernel — fake_db_init wants printk and
+# fix_path, lock_fchdir's lock_t is util/sync.c, which wants the task state —
+# so they link the whole thing, which is only assembled on the ish kernel path.
+if not meson.is_cross_build() and get_option('kernel') == 'ish'
+    fakedb_test = executable('fakedb_test',
+        ['tests/unit/fakedb_test.c'],
+        dependencies: ish)
+    test('fakedb', fakedb_test)
+
+    fchdir_test = executable('fchdir_test',
+        ['tests/unit/fchdir_test.c'],
+        dependencies: ish)
+    test('fchdir', fchdir_test)
+endif
+
 e2e_test = find_program('tests/e2e/e2e.bash')
 test('e2e', e2e_test, args: ['-y'], timeout: 180)

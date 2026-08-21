@@ -1,6 +1,7 @@
 #ifndef SYS_SOCK_H
 #define SYS_SOCK_H
 
+#include <limits.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -34,6 +35,26 @@ int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, ad
 // Linux's UIO_MAXIOV. sendmsg/recvmsg size stack arrays from msg_iovlen, so
 // the guest's count needs the same ceiling Linux puts on it.
 #define UIO_MAXIOV_ 1024
+
+// The most bytes one sendmsg/recvmsg may name across all its vectors. Linux
+// caps the total at MAX_RW_COUNT and answers EINVAL past it. Here it matters
+// more than there: Linux hands the user's pages to the socket, while this
+// copies every vector into a malloc of the guest's chosen size, so 1024
+// vectors of four gigabytes each was 1024 unbounded allocations for one
+// syscall.
+#define IOV_TOTAL_MAX ((size_t) INT_MAX)
+
+// Accumulates into *total and answers false once the running sum would pass
+// the cap. Checked per vector as the array is walked, so nothing is allocated
+// on the strength of a length that is already out of bounds. Written so the
+// sum itself cannot overflow: the subtraction is on the cap, which is a
+// constant, rather than on the operands.
+static inline bool iov_len_ok(uint64_t len, size_t *total) {
+    if (len > IOV_TOTAL_MAX || *total > IOV_TOTAL_MAX - (size_t) len)
+        return false;
+    *total += (size_t) len;
+    return true;
+}
 
 struct sockaddr_ {
     uint16_t family;
