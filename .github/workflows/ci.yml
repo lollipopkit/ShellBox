@@ -21,7 +21,7 @@ jobs:
   build-mac:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           brew install llvm lld ninja libarchive meson
@@ -32,6 +32,11 @@ jobs:
       - name: Test
         run: meson test -C build --print-errorlogs
 
+      # A guest that boots and answers correctly. Offline — see the header of
+      # smoke.sh for why the gate does not install packages.
+      - name: Integration (smoke)
+        run: tests/integration/smoke.sh -i build/ish
+
   # What ServerBox links, built the way it builds it: a cross build for the
   # device SDK, of the three library targets and nothing else. `tools/fakefsify`
   # links the host's libarchive and cannot be built for a phone, so `ninja` with
@@ -39,7 +44,7 @@ jobs:
   build-ios-libs:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: brew install llvm lld ninja libarchive meson
       - name: Build

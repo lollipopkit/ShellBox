@@ -1,0 +1,60 @@
+# The integration matrix: install real software in a real userland and use it.
+#
+# Not on pull requests. Every case here reaches the network — three package
+# mirrors, and whatever the toolchains fetch — so a red run here is as often a
+# mirror as it is this repository. The gate that must stay honest is the smoke
+# tier in ci.yml, which is offline.
+#
+# Nightly and on demand. `distros` and `suites` are passed through to
+# tests/integration/full.sh, so a single case can be re-run from the Actions tab
+# without editing anything.
+name: Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      distros:
+        description: "comma-separated: alpine,rocky,ubuntu"
+        default: "alpine,rocky,ubuntu"
+      suites:
+        description: "comma-separated: cc,node,go,rust"
+        default: "cc,node,go,rust"
+  schedule:
+    # 03:00 UTC. Nothing depends on the hour; it is off the top of the hour so
+    # this does not join the crowd that GitHub delays.
+    - cron: "0 3 * * *"
+
+jobs:
+  matrix:
+    runs-on: macos-15
+    # Go's toolchain install alone took ~2 minutes under emulation on an
+    # M-series machine, and dnf is Python. The cap is generous on purpose: a
+    # suite that is killed halfway reports nothing about the case it was in.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install llvm lld ninja libarchive meson
+
+      # Release, unlike the gate's debug build: this runs guest workloads for
+      # minutes at a time and -O0 shows.
+      - name: Build
+        run: |
+          meson setup build-arm64-release --buildtype=release
+          ninja -C build-arm64-release
+
+      # Keyed on the pinned digests, so a rootfs is downloaded once and reused
+      # until tests/integration/rootfs.sh names a different one.
+      - name: Cache rootfs tarballs
+        uses: actions/cache@v4
+        with:
+          path: build/integration/*.tar.*
+          key: rootfs-${{ hashFiles('tests/integration/rootfs.sh') }}
+
+      - name: Full matrix
+        run: |
+          tests/integration/full.sh \
+            -i build-arm64-release/ish \
+            -d "${{ inputs.distros || 'alpine,rocky,ubuntu' }}" \
+            -s "${{ inputs.suites || 'cc,node,go,rust' }}"
