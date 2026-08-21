@@ -61,8 +61,13 @@ struct poll *poll_create(void) {
     if (poll == NULL)
         return ERR_PTR(_ENOMEM);
     int err = real_poll_init(&poll->real);
-    if (err < 0)
-        return ERR_PTR(errno_map());
+    if (err < 0) {
+        // errno_map() reads errno, so it goes first: free() is not required to
+        // leave errno alone.
+        int mapped = errno_map();
+        free(poll);
+        return ERR_PTR(mapped);
+    }
     poll->waiters = 0;
     poll->notify_pipe[0] = -1;
     poll->notify_pipe[1] = -1;
@@ -159,10 +164,14 @@ int poll_add_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union po
     if (poll_fd_is_real(poll_fd)) {
         err = poll_real_refresh(poll, fd);
         if (err < 0) {
+            err = errno_map();
             list_remove(&poll_fd->polls);
             list_remove(&poll_fd->fds);
             poll_fd_free(poll_fd);
-            err = errno_map();
+            // A failed update leaves the description unregistered, including
+            // for the registrations that were already there — the host
+            // registration is shared. Rebuild it from what is left.
+            poll_real_refresh(poll, fd);
             goto out;
         }
     }
@@ -191,12 +200,16 @@ int poll_del_fd(struct poll *poll, struct fd *fd, int fd_no) {
 
     // Refresh (or delete, if this was the last registration) the shared host
     // registration to the union of the remaining registrations.
+    //
+    // The removal itself cannot fail and has already happened, so this answers
+    // 0 either way: reporting an error would tell the guest the descriptor is
+    // still in the set when it is not, and EPOLL_CTL_DEL has nowhere to put
+    // that. A host registration left behind costs a spurious wakeup, which the
+    // readiness scan at the top of poll_wait discards.
     if (is_real) {
-        err = poll_real_refresh(poll, fd);
-        if (err < 0) {
-            err = errno_map();
-            goto out;
-        }
+        if (poll_real_refresh(poll, fd) < 0)
+            printk("poll_del_fd: host registration for real_fd %d not updated: %s\n",
+                   fd->real_fd, strerror(errno));
     }
 
     err = 0;
@@ -216,6 +229,11 @@ int poll_mod_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union po
         goto out;
     }
 
+    int old_types = poll_fd->types;
+    union poll_fd_info old_info = poll_fd->info;
+    int old_triggered = poll_fd->triggered_types;
+    bool old_oneshot = poll_fd->oneshot_fired;
+
     poll_fd->types = types;
     poll_fd->info = info;
     poll_fd->triggered_types &= types;
@@ -225,6 +243,16 @@ int poll_mod_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union po
         err = poll_real_refresh(poll, fd);
         if (err < 0) {
             err = errno_map();
+            // These four fields are what poll_real_refresh reads, so leaving
+            // the new ones in place would describe a host registration that
+            // was never made. Put them back and re-apply — the failed update
+            // took the description's registration out entirely, including the
+            // part that belonged to the other registrations sharing it.
+            poll_fd->types = old_types;
+            poll_fd->info = old_info;
+            poll_fd->triggered_types = old_triggered;
+            poll_fd->oneshot_fired = old_oneshot;
+            poll_real_refresh(poll, fd);
             goto out;
         }
     }
@@ -285,6 +313,18 @@ void poll_wakeup(struct fd *fd, int events) {
     unlock(&fd->poll_lock);
 }
 
+// Give up this thread's claim on the notify pipe, closing it if it was the
+// last. poll->lock must be held.
+static void poll_release_wait(struct poll *poll) {
+    if (--poll->waiters == 0) {
+        real_poll_update(&poll->real, poll->notify_pipe[0], 0, NULL);
+        safe_close(poll->notify_pipe[0]);
+        safe_close(poll->notify_pipe[1]);
+        poll->notify_pipe[0] = -1;
+        poll->notify_pipe[1] = -1;
+    }
+}
+
 int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struct timespec *timeout) {
     lock(&poll_->lock);
 
@@ -302,7 +342,20 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         }
         fcntl(poll_->notify_pipe[0], F_SETFL, O_NONBLOCK);
         fcntl(poll_->notify_pipe[1], F_SETFL, O_NONBLOCK);
-        real_poll_update(&poll_->real, poll_->notify_pipe[0], POLL_READ, NULL);
+        if (real_poll_update(&poll_->real, poll_->notify_pipe[0], POLL_READ, NULL) < 0) {
+            // This registration is the only thing that turns a poll_wakeup
+            // into a wakeup. Ignoring a failure here left the wait blind to
+            // every notification, so it only ever came round on its one-second
+            // slice — a poll that answers late rather than one that fails.
+            int mapped = errno_map();
+            safe_close(poll_->notify_pipe[0]);
+            safe_close(poll_->notify_pipe[1]);
+            poll_->notify_pipe[0] = -1;
+            poll_->notify_pipe[1] = -1;
+            poll_->waiters--;
+            unlock(&poll_->lock);
+            return mapped;
+        }
     }
 
     // The guest's timeout as a deadline, fixed once. Each pass below waits at
@@ -481,6 +534,15 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
                         if (ish_exec_trace())
                             printk("SAFETY-VALVE[poll]: pid=%d idle %llds, %d threads → exit_group\n",
                                    current->pid, (long long)idle_s, thread_count);
+                        // do_exit_group does not come back, so this wait has
+                        // to be given up here. Leaving it counted kept the
+                        // notify pipe open for the life of the poll object,
+                        // and the next poll_wait on it tripped the assert
+                        // that the pipe is -1 when the first waiter arrives.
+                        // The lock has to go too — exit runs fd closes, and
+                        // one of them may be this poll.
+                        poll_release_wait(poll_);
+                        unlock(&poll_->lock);
                         do_exit_group(0);
                     }
                 }
@@ -524,13 +586,7 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
     }
 
     // release the pipe
-    if (--poll_->waiters == 0) {
-        real_poll_update(&poll_->real, poll_->notify_pipe[0], 0, NULL);
-        safe_close(poll_->notify_pipe[0]);
-        safe_close(poll_->notify_pipe[1]);
-        poll_->notify_pipe[0] = -1;
-        poll_->notify_pipe[1] = -1;
-    }
+    poll_release_wait(poll_);
 
     unlock(&poll_->lock);
     return res;
@@ -539,12 +595,45 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
 void poll_destroy(struct poll *poll) {
     struct poll_fd *poll_fd;
     struct poll_fd *tmp;
-    list_for_each_entry_safe(&poll->poll_fds, poll_fd, tmp, fds) {
-        lock(&poll_fd->fd->poll_lock);
-        list_remove(&poll_fd->polls);
-        list_remove(&poll_fd->fds);
-        unlock(&poll_fd->fd->poll_lock);
-        free(poll_fd);
+
+    // The lock order is fd, then poll, so the member list cannot be walked
+    // with poll->lock held — and walking it with no lock at all is what this
+    // used to do, while poll_cleanup_fd removed entries from the same list
+    // under poll->lock. Instead: read the head under poll->lock, drop it, take
+    // the two in order, and look the entry up again, since it may be gone.
+    //
+    // No poll_wait can be running: the epoll fd's refcount reached zero to get
+    // here, and a thread inside epoll_wait holds a syscall reference to it.
+    //
+    // TODO: one window is left. If the member fd's last reference goes between
+    // the unlock and the lock below, poll_cleanup_fd runs and frees it, and
+    // fd->poll_lock is taken on freed memory. Closing that needs a reference
+    // held across the gap, which needs struct fd's refcount to be atomic —
+    // it is a plain int today.
+    for (;;) {
+        lock(&poll->lock);
+        if (list_empty(&poll->poll_fds)) {
+            unlock(&poll->lock);
+            break;
+        }
+        poll_fd = list_first_entry(&poll->poll_fds, struct poll_fd, fds);
+        struct fd *fd = poll_fd->fd;
+        int fd_no = poll_fd->fd_no;
+        unlock(&poll->lock);
+
+        lock(&fd->poll_lock);
+        lock(&poll->lock);
+        poll_fd = poll_find_fd(poll, fd, fd_no);
+        if (poll_fd != NULL) {
+            list_remove(&poll_fd->polls);
+            list_remove(&poll_fd->fds);
+            // Onto the freelist rather than freed here, so there is one place
+            // below that frees, and so a stale pointer finds 0xba rather than
+            // a live registration.
+            poll_fd_free(poll_fd);
+        }
+        unlock(&poll->lock);
+        unlock(&fd->poll_lock);
     }
 
     list_for_each_entry_safe(&poll->pollfd_freelist, poll_fd, tmp, fds) {
@@ -639,7 +728,19 @@ static int real_poll_update(struct real_poll *real, int fd, int types, void *dat
             continue;
         if (!(e[i].flags & EV_ADD) || e[i].filter == EVFILT_EXCEPT)
             continue;
-        errno = (int) receipts[i].data;
+        int failed_errno = (int) receipts[i].data;
+        // kevent applies each change independently, so the filters that did
+        // succeed are registered even though this call is about to report
+        // failure — and the caller reads that as "nothing is registered".
+        // There is no earlier state to put back, because the changes that
+        // applied have already overwritten it; take all three out so the
+        // description really is unregistered, which is what the caller's own
+        // rollback then rebuilds from.
+        struct kevent undo[3], undo_receipts[3];
+        for (int j = 0; j < 3; j++)
+            EV_SET(&undo[j], fd, e[j].filter, EV_DELETE | EV_RECEIPT, 0, 0, NULL);
+        kevent(real->fd, undo, 3, undo_receipts, 3, NULL);
+        errno = failed_errno;
         return -1;
     }
     return n;

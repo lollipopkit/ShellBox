@@ -13,8 +13,12 @@ fd_t sys_epoll_create(int_t flags) {
     if (fd == NULL)
         return _ENOMEM;
     struct poll *poll = poll_create();
-    if (IS_ERR(poll))
+    if (IS_ERR(poll)) {
+        // fd_create zeroes the struct, so epollfd.poll is NULL here and
+        // epoll_close has nothing to destroy.
+        fd_close(fd);
         return PTR_ERR(poll);
+    }
     fd->epollfd.poll = poll;
     return f_install(fd, flags);
 }
@@ -55,6 +59,32 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     struct fd *fd = f_get(f);
     if (fd == NULL)
         return _EBADF;
+
+    // An epoll set inside an epoll set is not supported, and saying so is the
+    // point: epoll_ops has no .poll, so poll_wait's readiness scan read the
+    // inner set as never ready and the registration silently never fired. A
+    // guest that probes for nested epoll can fall back on an error; it cannot
+    // fall back on an event loop that just stops.
+    //
+    // TODO: support it. Two pieces are missing, and the second is the reason
+    // this is a refusal rather than a partial implementation:
+    //   - a .poll on epoll_ops that scans the inner set's members. On its own
+    //     this only gets readiness noticed on poll_wait's one-second slice,
+    //     since the inner set's descriptors are not in the outer host queue.
+    //   - propagating poll_wakeup up the nesting. That has to run outside
+    //     poll->lock: the readiness scan walks outer→inner, so waking
+    //     inner→outer with locks held gives two orders over the same pair.
+    // Cycle and depth rejection (Linux: EINVAL for self, ELOOP beyond four)
+    // comes with it, and is load-bearing rather than tidiness — a cycle would
+    // make either of the walks above recurse forever.
+    //
+    // The same gap applies to an epoll fd passed to poll() or select(); those
+    // go through the same missing .poll and are not rejected here.
+    if (op == EPOLL_CTL_ADD_ && fd->ops == &epoll_ops) {
+        printk("epoll_ctl: refusing to nest epoll set %d inside %d (pid=%d): unsupported\n",
+               f, epoll_f, current->pid);
+        return _EINVAL;
+    }
 
     // Regular files (and directories) are not pollable: they are always
     // "ready", so Linux rejects adding them to an epoll set with EPERM. iSH
@@ -169,7 +199,10 @@ int_t sys_epoll_pwait(fd_t epoll_f, addr_t events_addr, int_t max_events, int_t 
 }
 
 static int epoll_close(struct fd *fd) {
-    poll_destroy(fd->epollfd.poll);
+    // NULL when sys_epoll_create failed between making the fd and making the
+    // poll object.
+    if (fd->epollfd.poll != NULL)
+        poll_destroy(fd->epollfd.poll);
     return 0;
 }
 
