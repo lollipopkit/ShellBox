@@ -194,6 +194,11 @@ struct tgroup {
     struct list pgroup;
 
     bool stopped;
+    // Set when SIGCONT restarts a stopped group, and cleared by the wait that
+    // reports it. WCONTINUED had nothing to find without it: do_wait accepted
+    // the flag and no path ever produced the event, so the wait either reported
+    // nothing or retried forever.
+    bool continued;
     cond_t stopped_cond;
 
     struct tty *tty;

@@ -458,6 +458,202 @@ static void test_waitid_siginfo(void) {
 // The probe is waitpid, not /proc: this procfs answers for live tasks only, so
 // a zombie is already invisible there and the obvious test passes against the
 // bug.
+// ---------------------------------------------------------------------------
+// What a SIGCHLD handler is handed, and what the guest's siginfo_t looks like.
+//
+// #15: si_code was SI_KERNEL (128) and si_status the raw wait(2) word — 7936
+// for a child that exited 31 — because do_exit built the siginfo by hand while
+// waitid had been taught to decode it. #16: si_utime and si_stime were 32-bit
+// at offsets 28 and 32, where an AArch64 guest reads 64-bit ones at 32 and 40,
+// so a handler read si_stime as si_utime. The two hid each other: the field was
+// at the wrong offset and nothing filled it.
+static volatile sig_atomic_t chld_seen;
+static int chld_code, chld_status, chld_pid;
+static long chld_utime;
+
+static void on_sigchld(int sig, siginfo_t *si, void *ctx) {
+    (void) sig; (void) ctx;
+    chld_code = si->si_code;
+    chld_status = si->si_status;
+    chld_pid = si->si_pid;
+    chld_utime = (long) si->si_utime;
+    chld_seen = 1;
+}
+
+static void test_sigchld_siginfo(void) {
+    section("SIGCHLD siginfo: CLD_* code, decoded status, 64-bit times");
+
+    struct sigaction sa, saved;
+    check(sigaction(SIGCHLD, NULL, &saved) == 0, "read the SIGCHLD disposition");
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = on_sigchld;
+    sa.sa_flags = SA_SIGINFO;
+    check(sigaction(SIGCHLD, &sa, NULL) == 0, "install an SA_SIGINFO handler");
+
+    chld_seen = 0;
+    pid_t p = fork();
+    if (p == 0) {
+        volatile double x = 0;
+        for (long i = 0; i < 2000000; i++)
+            x += (double) i;
+        _exit(31);
+    }
+    check(p > 0, "fork for the SIGCHLD case");
+    for (int i = 0; i < 150 && !chld_seen; i++)
+        usleep(20000);
+    check(chld_seen, "the handler ran");
+    if (chld_seen) {
+        check(chld_pid == p, "si_pid is the child");
+        check(chld_code == CLD_EXITED, "si_code is CLD_EXITED, not SI_KERNEL");
+        check(chld_status == 31, "si_status is 31, not the raw 31<<8");
+        // The child spent real time; reading zero means the offset is wrong
+        // again, since do_exit does fill this one.
+        check(chld_utime > 0, "si_utime is where the guest reads it");
+    }
+    int st = 0;
+    waitpid(p, &st, 0);
+
+    // 128 bytes, which is what the guest's libc allocates. A short write leaves
+    // the caller's own bytes in the tail.
+    check(sizeof(siginfo_t) == 128, "the guest siginfo_t is 128 bytes");
+
+    check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
+}
+
+// ---------------------------------------------------------------------------
+// #17: signal 64 is SIGRTMAX on AArch64, and NUM_SIGS made the range 1..63.
+static void test_sigrtmax(void) {
+    section("signal 64 (SIGRTMAX) is usable");
+
+    check(SIGRTMAX == 64, "the guest libc says SIGRTMAX is 64");
+    for (int sig = 62; sig <= SIGRTMAX; sig++) {
+        struct sigaction sa, saved;
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = SIG_IGN;
+        char msg[64];
+        snprintf(msg, sizeof msg, "sigaction(%d)", sig);
+        int ok = sigaction(sig, NULL, &saved) == 0 && sigaction(sig, &sa, NULL) == 0;
+        check(ok, msg);
+        snprintf(msg, sizeof msg, "kill(self, %d)", sig);
+        check(kill(getpid(), sig) == 0, msg);
+        if (ok)
+            sigaction(sig, &saved, NULL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// #18: what waitid is required to reject, report and preserve.
+// ---------------------------------------------------------------------------
+// #11: an absolute path makes the dirfd irrelevant.
+//
+// Linux ignores dirfd when the path is absolute rather than validating it.
+// Every *at syscall here checked the descriptor first, so `openat(-1, "/", ...)`
+// answered EBADF where Linux opens the root. rpm's file-state machine does
+// exactly that, and every package in a dnf transaction failed to unpack.
+static void test_at_ignores_dirfd_for_absolute_paths(void) {
+    section("*at syscalls ignore dirfd for an absolute path");
+
+    int fd = openat(-1, "/", O_RDONLY | O_DIRECTORY);
+    check(fd >= 0, "openat(-1, \"/\", O_DIRECTORY)");
+    if (fd >= 0)
+        close(fd);
+
+    // A descriptor that is merely closed, rather than -1.
+    int closed = open("/", O_RDONLY | O_DIRECTORY);
+    if (closed >= 0)
+        close(closed);
+    fd = openat(closed, "/etc", O_RDONLY | O_DIRECTORY);
+    check(fd >= 0, "openat(<closed fd>, \"/etc\", O_DIRECTORY)");
+    if (fd >= 0)
+        close(fd);
+
+    // And the rule is not open()'s alone.
+    struct stat st;
+    check(fstatat(-1, "/", &st, 0) == 0, "fstatat(-1, \"/\")");
+
+    // A *relative* path with a bad descriptor is still EBADF.
+    errno = 0;
+    check(openat(-1, "etc", O_RDONLY | O_DIRECTORY) == -1 && errno == EBADF,
+          "openat(-1, \"etc\") is still EBADF");
+}
+
+static void test_waitid_conformance(void) {
+    section("waitid: option and id validation, WNOWAIT, WCONTINUED, si_utime");
+
+    siginfo_t si;
+    pid_t p = fork();
+    if (p == 0) _exit(3);
+    check(p > 0, "fork");
+    nap(0.3);
+
+    // An option set that selects no event is EINVAL, not a wait.
+    memset(&si, 0, sizeof si);
+    errno = 0;
+    check(waitid(P_PID, p, &si, WNOHANG) == -1 && errno == EINVAL,
+          "waitid with no WEXITED/WSTOPPED/WCONTINUED is EINVAL");
+
+    // P_ALL takes no id, and P_PID takes a real one.
+    errno = 0;
+    check(waitid(P_ALL, 12345, &si, WEXITED | WNOHANG) == -1 && errno == EINVAL,
+          "waitid(P_ALL) with an id is EINVAL");
+    errno = 0;
+    check(waitid(P_PID, 0, &si, WEXITED | WNOHANG) == -1 && errno == EINVAL,
+          "waitid(P_PID, 0) is EINVAL");
+
+    // The child is still there, and WNOWAIT leaves it there.
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PID, p, &si, WEXITED | WNOWAIT) == 0 && si.si_status == 3,
+          "WNOWAIT reports the exited child");
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PID, p, &si, WEXITED) == 0 && si.si_status == 3,
+          "and leaves it for the next wait");
+
+    // P_PGID with id 0 means the caller's own group.
+    p = fork();
+    if (p == 0) _exit(5);
+    nap(0.3);
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PGID, 0, &si, WEXITED | WNOHANG) == 0 && si.si_pid == p,
+          "waitid(P_PGID, 0) means this process group");
+
+    // The times, which waitid reports in the siginfo rather than a rusage.
+    p = fork();
+    if (p == 0) {
+        volatile double x = 0;
+        for (long i = 0; i < 2000000; i++)
+            x += (double) i;
+        _exit(0);
+    }
+    nap(0.7);
+    memset(&si, 0, sizeof si);
+    waitid(P_PID, p, &si, WEXITED);
+    check((long) si.si_utime > 0, "waitid fills si_utime");
+
+    // A stop, reported twice under WNOWAIT, and then a continue.
+    p = fork();
+    if (p == 0) { for (;;) pause(); }
+    nap(0.3);
+    kill(p, SIGSTOP);
+    nap(0.3);
+    memset(&si, 0, sizeof si);
+    int r1 = waitid(P_PID, p, &si, WSTOPPED | WNOWAIT | WNOHANG);
+    int first = si.si_status;
+    memset(&si, 0, sizeof si);
+    int r2 = waitid(P_PID, p, &si, WSTOPPED | WNOHANG);
+    check(r1 == 0 && first == SIGSTOP && r2 == 0 && si.si_status == SIGSTOP,
+          "WNOWAIT leaves a stop for the next wait");
+
+    kill(p, SIGCONT);
+    nap(0.4);
+    memset(&si, 0, sizeof si);
+    check(waitid(P_PID, p, &si, WCONTINUED | WNOHANG) == 0 &&
+          si.si_code == CLD_CONTINUED,
+          "WCONTINUED reports a continued child");
+    kill(p, SIGKILL);
+    waitpid(p, NULL, 0);
+}
+
 static void *regress_worker(void *arg) {
     (void) arg;
     usleep(400000);
@@ -598,6 +794,10 @@ int main(int argc, char **argv) {
     test_waitpid_across_timeout();
     test_signal_still_interrupts();
     test_waitid_siginfo();
+    test_at_ignores_dirfd_for_absolute_paths();
+    test_waitid_conformance();
+    test_sigchld_siginfo();
+    test_sigrtmax();
     test_no_zombies_when_parent_will_not_wait();
 
     printf("\n================ RESULT ================\n");

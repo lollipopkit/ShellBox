@@ -3,6 +3,16 @@
 
 #define AT_PWD (struct fd *) -2
 
+// The directory a relative path is resolved against, or AT_PWD. `path` decides
+// whether the descriptor is looked at at all: Linux ignores dirfd for an
+// absolute path rather than validating it, so `openat(-1, "/", O_DIRECTORY)`
+// opens the root there and answered EBADF here. rpm's file-state machine does
+// exactly that, and every package in a dnf transaction failed to unpack.
+//
+// path_normalize starts from the root for a leading slash and never looks at
+// `at`, so what this returns in that case only has to be valid.
+struct fd *at_fd(fd_t f, const char *path);
+
 #define N_SYMLINK_FOLLOW 1
 #define N_SYMLINK_NOFOLLOW 2
 #define N_PARENT_DIR_WRITE 4

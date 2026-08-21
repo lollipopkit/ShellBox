@@ -134,6 +134,10 @@ void send_signal(struct task *task, int sig, struct siginfo_ info) {
 
     if (sig == SIGCONT_ || sig == SIGKILL_) {
         lock(&task->group->lock);
+        // Only a group that was actually stopped has been continued; SIGCONT
+        // to a running one is not an event a waiter should see.
+        if (task->group->stopped && sig == SIGCONT_)
+            task->group->continued = true;
         task->group->stopped = false;
         notify(&task->group->stopped_cond);
         unlock(&task->group->lock);
@@ -701,7 +705,7 @@ void sighand_release(struct sighand *sighand) {
 }
 
 static int do_sigaction(int sig, const struct sigaction_ *action, struct sigaction_ *oldaction) {
-    if (sig >= NUM_SIGS)
+    if (sig > MAX_SIG)
         return _EINVAL;
     if (!signal_is_blockable(sig))
         return _EINVAL;
@@ -992,7 +996,7 @@ static int kill_everything(dword_t sig) {
 
 static int do_kill(pid_t_ pid, dword_t sig, pid_t_ tgid) {
     STRACE("kill(%d, %d)", pid, sig);
-    if (sig >= NUM_SIGS)
+    if (sig > MAX_SIG)
         return _EINVAL;
     if (pid == 0)
         pid = -current->group->pgid;

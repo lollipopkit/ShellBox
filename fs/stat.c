@@ -69,11 +69,8 @@ int generic_statat(struct fd *at, const char *path_raw, struct statbuf *stat, bo
 }
 
 // TODO get rid of this and maybe everything else in the file
-static struct fd *at_fd(fd_t f) {
-    if (f == AT_FDCWD_)
-        return AT_PWD;
-    return f_get(f);
-}
+// at_fd lives in kernel/fs.c now. This file had a copy of it that predated the
+// absolute-path rule, so fstatat kept answering EBADF after openat stopped.
 
 static dword_t sys_stat_path(fd_t at_f, addr_t path_addr, addr_t statbuf_addr, bool follow_links) {
     int err;
@@ -81,7 +78,7 @@ static dword_t sys_stat_path(fd_t at_f, addr_t path_addr, addr_t statbuf_addr, b
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
     STRACE("stat(at=%d, path=\"%s\", statbuf=0x%x, follow_links=%d)", at_f, path, statbuf_addr, follow_links);
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
     struct statbuf stat = {};
@@ -124,7 +121,7 @@ dword_t sys_statx(fd_t at_f, addr_t path_addr, int_t flags, uint_t mask, addr_t 
     char path[MAX_PATH];
     if (user_read_string(path_addr, path, sizeof(path)))
         return _EFAULT;
-    struct fd *at = at_fd(at_f);
+    struct fd *at = at_fd(at_f, path);
     if (at == NULL)
         return _EBADF;
 
