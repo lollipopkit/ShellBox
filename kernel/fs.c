@@ -815,9 +815,26 @@ dword_t sys_getcwd(addr_t buf_addr, dword_t size) {
     struct fd *wd = current->fs->pwd;
     char pwd[MAX_PATH + 1];
     int err = generic_getpath(wd, pwd);
+    char root[MAX_PATH + 1] = "";
+    if (err >= 0 && current->fs->root != NULL)
+        err = generic_getpath(current->fs->root, root);
     unlock(&current->fs->lock);
     if (err < 0)
         return err;
+
+    // What a task sees is relative to its own root, the way it is for a
+    // chrooted process on Linux: `generic_getpath` answers in the machine's
+    // terms, and a task rooted at a subtree would otherwise be told its working
+    // directory is a path it cannot name — `/alpine` for what is its own `/`.
+    //
+    // Nothing to do for a task whose root is the machine's, since the prefix is
+    // then empty.
+    size_t root_len = strlen(root);
+    if (root_len > 0 && strncmp(pwd, root, root_len) == 0) {
+        memmove(pwd, pwd + root_len, strlen(pwd) - root_len + 1);
+        if (pwd[0] == '\0')
+            strcpy(pwd, "/");
+    }
 
     if (strlen(pwd) + 1 > size)
         return _ERANGE;

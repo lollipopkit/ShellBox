@@ -101,7 +101,11 @@ static void path_cache_set(const char *full_path, int flags, const char *normali
     entry->valid = true;
 }
 
-static int __path_normalize(const char *at_path, const char *path, char *out, int flags, int levels) {
+/// [root_path] is the machine-absolute path of the task's own root, empty when
+/// that is the machine's own. It exists for one case: a symlink whose target is
+/// absolute is absolute *inside the guest*, so it has to be resolved against
+/// that root and not against the machine's — see the restart below.
+static int __path_normalize(const char *at_path, const char *root_path, const char *path, char *out, int flags, int levels) {
     // you must choose one
     if (flags & N_SYMLINK_FOLLOW)
         assert(!(flags & N_SYMLINK_NOFOLLOW));
@@ -201,16 +205,27 @@ static int __path_normalize(const char *at_path, const char *path, char *out, in
                     return _ELOOP;
                 // readlink does not null terminate
                 c[res] = '\0';
-                // if we should restart from the root, copy down
-                if (*c == '/')
+                // An absolute target restarts from a root — and the root it
+                // means is the *task's*, the way a chrooted process on Linux
+                // resolves one. Restarting from the machine's walked out of the
+                // filesystem the task can see: with a task rooted at a subtree,
+                // Alpine's `/bin/sh -> /bin/busybox` resolved to a `/bin` that
+                // is not the guest's, and every busybox applet link with it.
+                //
+                // Identical when the task's root is the machine's, since
+                // [root_path] is then empty and prefixing it adds nothing.
+                const char *restart_at = NULL;
+                if (*c == '/') {
                     memmove(out, c, strlen(c) + 1);
+                    restart_at = root_path;
+                }
                 char *expanded_path = possible_symlink;
                 strcpy(expanded_path, out);
                 if (strcmp(p, "") != 0) {
                     strcat(expanded_path, "/");
                     strcat(expanded_path, p);
                 }
-                return __path_normalize(NULL, expanded_path, out, flags, levels + 1);
+                return __path_normalize(restart_at, root_path, expanded_path, out, flags, levels + 1);
             }
 
             // if there's a slash after this component, ensure that if it
@@ -259,6 +274,23 @@ int path_normalize(struct fd *at, const char *path, char *out, int flags) {
         assert(path_is_normalized(at_path));
     }
 
+    // Where an absolute symlink target starts from. Empty for a task whose root
+    // is the machine's, which is every task until something chroots.
+    //
+    // The cache below needs no part of this: it is `__thread`, and a guest task
+    // has a thread of its own, so two tasks with different roots never share an
+    // entry.
+    char root_path[MAX_PATH] = "";
+    lock(&current->fs->lock);
+    struct fd *task_root = current->fs->root;
+    unlock(&current->fs->lock);
+    if (task_root != NULL) {
+        int err = generic_getpath(task_root, root_path);
+        if (err < 0)
+            return err;
+        assert(path_is_normalized(root_path));
+    }
+
     // Build full input path for cache lookup
     char full_input[MAX_PATH];
     if (at != NULL && strcmp(at_path, "/") != 0) {
@@ -275,7 +307,7 @@ int path_normalize(struct fd *at, const char *path, char *out, int flags) {
     }
 
     // Cache miss - do full normalization
-    int result = __path_normalize(at != NULL ? at_path : NULL, path, out, flags, 0);
+    int result = __path_normalize(at != NULL ? at_path : NULL, root_path, path, out, flags, 0);
 
     // Store result in cache (even on error, we cache the error)
     if (result == 0) {
