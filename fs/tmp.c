@@ -78,6 +78,15 @@ DEFINE_REFCOUNT_STATIC(tmp_dirent)
 static void tmp_dirent_cleanup(struct tmp_dirent *dirent) {
     list_remove(&dirent->dir); // TODO locking thinking emoji
     tmp_inode_release(dirent->inode);
+    // The other half of the retain in tmpfs_dir_link. Without it a directory
+    // kept a reference for every entry ever linked into it and could not reach
+    // zero, so nothing below the root was ever freed and unmounting had
+    // nothing it could take apart.
+    //
+    // The root has no parent. A child releasing the last reference recurses
+    // into its parent's cleanup, which is bounded by the depth of the tree.
+    if (dirent->parent != NULL)
+        tmp_dirent_release(dirent->parent);
     free(dirent);
 }
 
@@ -86,6 +95,11 @@ static void tmp_dirent_init(struct tmp_dirent *dirent) {
     list_init(&dirent->children);
     dirent->next_index = 0;
     lock_init(&dirent->lock);
+    // `dir` is the link into whichever directory holds this one, and
+    // tmpfs_dir_link overwrites it. The root is never linked into anything,
+    // and its cleanup would otherwise run list_remove over whatever malloc
+    // left behind.
+    list_init(&dirent->dir);
 }
 
 // Frees the child inode on failure, so you don't need to! But be careful you don't free it yourself.
@@ -224,27 +238,34 @@ static int tmpfs_mount(struct mount *mount) {
     return 0;
 }
 
-#if 0
-// This is the only place where a tmpfs directory tree is recursively freed.
-static void tmpfs_unmount_tree(struct tmp_inode *tree) {
-    assert(refcount_get(tree) == 1); // otherwise mount_remove should have returned EBUSY
-    if (S_ISDIR(tree->stat.mode)) {
-        struct tmp_dirent *dirent, *tmp;
-        list_for_each_entry_safe(&tree->dir.entries, dirent, tmp, dir) {
-            if (dirent->inode != NULL)
-                tmpfs_unmount_tree(dirent->inode);
-            tmp_dirent_release(dirent);
-        }
+/// Releases a directory and everything under it.
+///
+/// Children first, because a child holds a reference on the directory that
+/// names it: releasing the directory first would only take it down to the
+/// number of entries it still has.
+///
+/// The extra reference is held across the walk. Releasing the last child
+/// releases this dirent too — that is what tmp_dirent_cleanup now does — and
+/// the loop is still reading its list of children when that happens.
+static void tmpfs_release_tree(struct tmp_dirent *dirent) {
+    tmp_dirent_retain(dirent);
+    struct tmp_dirent *child, *next;
+    list_for_each_entry_safe(&dirent->children, child, next, dir) {
+        tmpfs_release_tree(child);
     }
-    tmp_inode_release(tree);
+    // The reference the tree itself holds, and then the one taken above.
+    tmp_dirent_release(dirent);
+    tmp_dirent_release(dirent);
 }
-#endif
 
-static int tmpfs_umount(struct mount *UNUSED(mount)) {
-    // big fat fuckin TODO
-    // struct tmp_inode *root = mount->data;
-    // tmpfs_unmount_tree(root);
-    TODO("tmpfs umount");
+static int tmpfs_umount(struct mount *mount) {
+    // Anything still holding this mount was answered `_EBUSY` by
+    // mount_remove_locked before this ran, so the tree is this call's to take
+    // apart. It used to be `TODO("tmpfs umount")`, which is `die()` — an
+    // embedder that installs a die_handler saw its thread parked instead, and
+    // one that does not saw the process abort.
+    tmpfs_release_tree(mount->data);
+    mount->data = NULL;
     return 0;
 }
 
