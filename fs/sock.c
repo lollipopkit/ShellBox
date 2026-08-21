@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <string.h>
@@ -154,15 +155,6 @@ out:
     return err;
 }
 
-// Dan Bernstein's simple and decently effective hash function
-static uint32_t str_hash(const char *str) {
-    uint32_t hash = 5381;
-    for (int i = 0; str[i] != '\0'; i++) {
-        hash = 33 * hash ^ str[i];
-    }
-    return hash;
-}
-
 // The abstract socket namespace is a lot simpler than it sounds: if the first
 // byte of the path is a null byte, then it gets looked up in this hashtable
 // instead of the filesystem.
@@ -172,17 +164,33 @@ struct unix_abstract {
     uint32_t hash;
     uint32_t socket_id;
     struct list links;
-    // The name itself, and not only its hash. Two abstract names that
-    // collide in str_hash are different sockets: keyed by hash alone, the
-    // second bind answered EEXIST and a connect reached the wrong one.
+    // An abstract name is a byte string of a known length, not a C string:
+    // Linux takes exactly addrlen - offsetof(sun_path) bytes and they may
+    // contain NULs. Keyed with strlen/strcmp, "\0log\0v1" and "\0log\0v2" were
+    // one name, so a bind of the second answered EEXIST and a connect to it
+    // reached the first.
+    uint32_t name_len;
+    // The name itself, and not only its hash. Two names that collide in the
+    // hash are different sockets: keyed by hash alone, the second bind
+    // answered EEXIST and a connect reached the wrong one.
     char name[];
 };
 #define ABSTRACT_HASH_SIZE 1024
 static struct list abstract_hash[ABSTRACT_HASH_SIZE];
 static lock_t unix_abstract_lock = LOCK_INITIALIZER;
 
-static int unix_abstract_get(const char *name, struct fd *bind_fd, uint32_t *socket_id) {
-    uint32_t hash = str_hash(name);
+// Dan Bernstein's simple and decently effective hash function, over a byte
+// range rather than a C string.
+static uint32_t mem_hash(const void *p, size_t len) {
+    const uint8_t *bytes = p;
+    uint32_t hash = 5381;
+    for (size_t i = 0; i < len; i++)
+        hash = 33 * hash ^ bytes[i];
+    return hash;
+}
+
+static int unix_abstract_get(const char *name, size_t name_len, struct fd *bind_fd, uint32_t *socket_id) {
+    uint32_t hash = mem_hash(name, name_len);
     lock(&unix_abstract_lock);
     struct unix_abstract *sock_tmp;
     struct unix_abstract *sock = NULL;
@@ -190,8 +198,9 @@ static int unix_abstract_get(const char *name, struct fd *bind_fd, uint32_t *soc
     if (list_null(bucket))
         list_init(bucket);
     list_for_each_entry(bucket, sock_tmp, links) {
-        // The hash is the bucket's business; the name decides identity.
-        if (sock_tmp->hash == hash && strcmp(sock_tmp->name, name) == 0) {
+        // The hash is the bucket's business; the bytes decide identity.
+        if (sock_tmp->hash == hash && sock_tmp->name_len == name_len &&
+                memcmp(sock_tmp->name, name, name_len) == 0) {
             sock = sock_tmp;
             break;
         }
@@ -207,7 +216,6 @@ static int unix_abstract_get(const char *name, struct fd *bind_fd, uint32_t *soc
     }
 
     if (sock == NULL) {
-        size_t name_len = strlen(name);
         sock = malloc(sizeof(struct unix_abstract) + name_len + 1);
         if (sock == NULL) {
             unlock(&unix_abstract_lock);
@@ -220,7 +228,9 @@ static int unix_abstract_get(const char *name, struct fd *bind_fd, uint32_t *soc
         sock->refcount = 1;
         sock->hash = hash;
         sock->socket_id = unix_socket_next_id();
-        memcpy(sock->name, name, name_len + 1);
+        sock->name_len = (uint32_t) name_len;
+        memcpy(sock->name, name, name_len);
+        sock->name[name_len] = '\0'; // only so STRACE can print it
         list_add(bucket, &sock->links);
     }
 
@@ -282,8 +292,11 @@ static int sockaddr_read_bind(addr_t sockaddr_addr, void *sockaddr, uint_t *sock
                 STRACE(" unix socket %s", path);
                 err = unix_socket_get(path, bind_fd, &socket_id);
             } else {
+                // path_size - 1 bytes, not strlen: an abstract name is
+                // whatever the guest passed after the leading NUL, NULs and
+                // all.
                 STRACE(" unix abstract socket %s", path + 1);
-                err = unix_abstract_get(path + 1, bind_fd, &socket_id);
+                err = unix_abstract_get(path + 1, path_size - 1, bind_fd, &socket_id);
             }
             if (err < 0)
                 return err;
@@ -381,6 +394,92 @@ int_t sys_bind(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
     return 0;
 }
 
+// The AF_LOCAL peer handshake.
+//
+// Two iSH sockets that connect to each other have to find each other's struct
+// fd, and the only channel between them is the host socket. What used to go
+// over it was the address of the connecting struct fd, which the accepting
+// side then dereferenced and wrote through as given. The host socket lives at
+// /tmp/ishsock<pid>.<id>, so on a build where that is a real path, anything on
+// the host that connects to it picks the pointer. It was also read with a
+// single read() whose short return was ignored, so a peer that sent fewer than
+// eight bytes had them silently swallowed out of the stream.
+//
+// What goes over it now is a magic number and an id. The id names an entry in
+// a table that sys_connect adds to for as long as its handshake is
+// outstanding, so an id that is not in the table is a peer that is not an iSH
+// socket — nothing to dereference. Both fields are fixed-width and
+// little-endian on every platform this builds for.
+//
+// TODO: a foreign peer that connects and sends nothing still blocks accept in
+// the read below, holding no lock but making no progress either. Bounding that
+// needs a receive timeout on the accepted socket, which changes what a
+// legitimate slow peer sees.
+#define UNIX_HANDSHAKE_MAGIC UINT64_C(0x2a72656550487349) // "iSHPeer*"
+struct unix_handshake {
+    uint64_t magic;
+    uint64_t id;
+};
+
+struct unix_pending {
+    uint64_t id;
+    struct fd *fd;
+    struct list links;
+};
+// Both guarded by peer_lock.
+static struct list unix_pending_list;
+static uint64_t unix_pending_next_id;
+
+// peer_lock must be held.
+static struct fd *unix_pending_take(uint64_t id) {
+    if (list_null(&unix_pending_list))
+        return NULL;
+    struct unix_pending *p, *tmp;
+    list_for_each_entry_safe(&unix_pending_list, p, tmp, links) {
+        if (p->id != id)
+            continue;
+        struct fd *fd = p->fd;
+        list_remove(&p->links);
+        free(p);
+        return fd;
+    }
+    return NULL;
+}
+
+// peer_lock must be held. Called when a socket goes away with a handshake
+// still outstanding: without this the entry outlives the fd it names, and the
+// accept that finally claims the id writes through freed memory.
+static void unix_pending_remove_fd(struct fd *fd) {
+    if (list_null(&unix_pending_list))
+        return;
+    struct unix_pending *p, *tmp;
+    list_for_each_entry_safe(&unix_pending_list, p, tmp, links) {
+        if (p->fd == fd) {
+            list_remove(&p->links);
+            free(p);
+        }
+    }
+}
+
+// read()/write() until the whole buffer is done, EOF, or a real error. A
+// stream socket is free to split a sixteen-byte message.
+static ssize_t sock_io_full(int fd, void *buf, size_t n, bool writing) {
+    size_t done = 0;
+    while (done < n) {
+        ssize_t res = writing ? write(fd, (char *) buf + done, n - done)
+                              : read(fd, (char *) buf + done, n - done);
+        if (res < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        if (res == 0)
+            break; // EOF; the peer is gone or is not one of ours
+        done += (size_t) res;
+    }
+    return (ssize_t) done;
+}
+
 static void fill_cred(struct ucred_ *cred) {
     cred->pid = current->pid;
     cred->uid = current->euid;
@@ -413,15 +512,33 @@ int_t sys_connect(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
     if (sock->socket.domain == AF_LOCAL_) {
         fill_cred(&sock->socket.unix_cred);
         assert(sock->socket.unix_peer == NULL);
-        // Send a pointer to ourselves to the other end so they can set up the peer pointers.
-        ssize_t res = write(sock->real_fd, &sock, sizeof(struct fd *));
-        if (res == sizeof(struct fd *)) {
+
+        // Publish an id for ourselves, and send that — not our address. See
+        // the comment on struct unix_handshake.
+        struct unix_pending *pending = malloc(sizeof(*pending));
+        if (pending == NULL)
+            return _ENOMEM;
+        lock(&peer_lock);
+        if (list_null(&unix_pending_list))
+            list_init(&unix_pending_list);
+        pending->id = ++unix_pending_next_id;
+        pending->fd = sock;
+        list_add(&unix_pending_list, &pending->links);
+        struct unix_handshake hs = {.magic = UNIX_HANDSHAKE_MAGIC, .id = pending->id};
+        unlock(&peer_lock);
+
+        if (sock_io_full(sock->real_fd, &hs, sizeof(hs), true) == sizeof(hs)) {
             // Wait for acknowledgement that it happened.
             lock(&peer_lock);
             while (sock->socket.unix_peer == NULL)
                 wait_for_ignore_signals(&sock->socket.unix_got_peer, &peer_lock, NULL);
             unlock(&peer_lock);
         }
+        // Whether the accept side claimed it or the write failed outright, the
+        // entry has done its job; taking it again is a no-op if it is gone.
+        lock(&peer_lock);
+        unix_pending_take(hs.id);
+        unlock(&peer_lock);
     }
 
     return err;
@@ -497,17 +614,26 @@ int_t sys_accept(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr) {
     }
 
     if (sock->socket.domain == AF_LOCAL_) {
-        lock(&peer_lock);
         struct fd *client_fd = f_get(client_f);
         fill_cred(&client_fd->socket.unix_cred);
-        struct fd *peer;
-        ssize_t res = read(client, &peer, sizeof(peer));
-        if (res == sizeof(peer)) {
-            client_fd->socket.unix_peer = peer;
-            peer->socket.unix_peer = client_fd;
-            notify(&peer->socket.unix_got_peer);
+        // Outside peer_lock: this can block, and f_get takes the fd table's
+        // lock of its own.
+        struct unix_handshake hs;
+        ssize_t res = sock_io_full(client, &hs, sizeof(hs), false);
+        if (res == sizeof(hs) && hs.magic == UNIX_HANDSHAKE_MAGIC) {
+            lock(&peer_lock);
+            // NULL for an id that is not outstanding — a peer that is not an
+            // iSH socket, or one whose connect has already given up. The
+            // connection still works; it just has no peer credentials and no
+            // SCM_RIGHTS.
+            struct fd *peer = unix_pending_take(hs.id);
+            if (peer != NULL) {
+                client_fd->socket.unix_peer = peer;
+                peer->socket.unix_peer = client_fd;
+                notify(&peer->socket.unix_got_peer);
+            }
+            unlock(&peer_lock);
         }
-        unlock(&peer_lock);
     }
 
     return client_f;
@@ -1123,12 +1249,40 @@ static void free_iovecs(struct iovec *iov, size_t n) {
         free(iov[i].iov_base);
 }
 
+// The most bytes one sendmsg/recvmsg may name across all its vectors. Linux
+// caps the total at MAX_RW_COUNT and answers EINVAL past it. Here it matters
+// more than there: Linux hands the user pages to the socket, while this copies
+// every vector into a malloc of the guest's chosen size, so 1024 vectors of
+// four gigabytes each was 1024 unbounded allocations for one syscall.
+#define IOV_TOTAL_MAX ((size_t) INT_MAX)
+
+// Accumulates into *total and answers false once the running sum would pass
+// the cap. Checked per vector as the array is walked, so nothing is allocated
+// on the strength of a length that is already out of bounds.
+static bool iov_len_ok(uint64_t len, size_t *total) {
+    if (len > IOV_TOTAL_MAX || *total > IOV_TOTAL_MAX - (size_t) len)
+        return false;
+    *total += (size_t) len;
+    return true;
+}
+
+// Held from queuing an SCM onto the peer until the sendmsg carrying it
+// returns. The receiver takes the head of the peer's list when it sees a
+// SCM_RIGHTS control message, so the queue order has to be the order the
+// messages reach the wire — two threads sending descriptors on one socket
+// could otherwise queue in one order and send in the other, handing each
+// message the other's descriptors. Not one of the fd locks: the receiver holds
+// the peer's while it pops, and a sendmsg blocking on a full buffer with that
+// held would wait for a reader that is waiting for it.
+static lock_t scm_send_lock = LOCK_INITIALIZER;
+
 int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     int err;
     // Declared before the first `goto out_free_iov` below, which the cleanup
     // reads them at.
     struct scm *scm = NULL;
     struct fd *scm_peer = NULL; // the peer scm was queued onto, if it was
+    bool scm_send_locked = false;
     STRACE("sendmsg(%d, %#x, %d)", sock_fd, msghdr_addr, flags);
     struct fd *sock = sock_getfd(sock_fd);
     if (sock == NULL)
@@ -1179,7 +1333,12 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     memset(msg_iov, 0, sizeof(msg_iov));
     msg.msg_iov = msg_iov;
     msg.msg_iovlen = msg_fake.msg_iovlen;
+    size_t iov_total = 0;
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
+        if (!iov_len_ok(msg_iov_fake64[i].len, &iov_total)) {
+            err = _EINVAL;
+            goto out_free_iov;
+        }
         msg_iov[i].iov_len = (size_t)msg_iov_fake64[i].len;
         msg_iov[i].iov_base = malloc(msg_iov[i].iov_len ? msg_iov[i].iov_len : 1);
         if (msg_iov[i].iov_base == NULL) {
@@ -1198,7 +1357,12 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     memset(msg_iov, 0, sizeof(msg_iov));
     msg.msg_iov = msg_iov;
     msg.msg_iovlen = sizeof(msg_iov) / sizeof(msg_iov[0]);
+    size_t iov_total = 0;
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
+        if (!iov_len_ok(msg_iov_fake[i].len, &iov_total)) {
+            err = _EINVAL;
+            goto out_free_iov;
+        }
         msg_iov[i].iov_len = msg_iov_fake[i].len;
         msg_iov[i].iov_base = malloc(msg_iov_fake[i].len ? msg_iov_fake[i].len : 1);
         if (msg_iov[i].iov_base == NULL) {
@@ -1287,6 +1451,11 @@ int_t sys_sendmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
                     scm->num_fds = fd_i;
                 }
             }
+            // Taken before the queue and dropped after the sendmsg, so the
+            // order of this peer's SCM queue is the order the messages reach
+            // the wire. See the comment on scm_send_lock.
+            lock(&scm_send_lock);
+            scm_send_locked = true;
             lock(&peer_lock);
             struct fd *peer = sock->socket.unix_peer;
             if (peer == NULL) {
@@ -1335,6 +1504,10 @@ out_free_scm:
         scm_free(scm);
     }
 out_free_iov:
+    // Held from before the queue to after the sendmsg on every path out,
+    // including the ones that never took it.
+    if (scm_send_locked)
+        unlock(&scm_send_lock);
     // Reached from the success path too, which is where the reference taken
     // alongside scm_peer would otherwise be left held.
     if (scm_peer != NULL)
@@ -1411,7 +1584,12 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     msg.msg_iov = msg_iov;
     msg.msg_iovlen = msg_fake.msg_iovlen;
     addr_t msg_iov_bases[msg_fake.msg_iovlen]; // save guest base addrs for writeback
+    size_t iov_total = 0;
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
+        if (!iov_len_ok(msg_iov_fake64[i].len, &iov_total)) {
+            free_iovecs(msg_iov, msg.msg_iovlen);
+            return _EINVAL;
+        }
         msg_iov_bases[i] = (addr_t)msg_iov_fake64[i].base;
         msg_iov[i].iov_len = (size_t)msg_iov_fake64[i].len;
         msg_iov[i].iov_base = malloc(msg_iov[i].iov_len ? msg_iov[i].iov_len : 1);
@@ -1428,7 +1606,12 @@ int_t sys_recvmsg(fd_t sock_fd, addr_t msghdr_addr, int_t flags) {
     memset(msg_iov, 0, sizeof(msg_iov));
     msg.msg_iov = msg_iov;
     msg.msg_iovlen = sizeof(msg_iov) / sizeof(msg_iov[0]);
+    size_t iov_total = 0;
     for (size_t i = 0; i < (size_t) msg.msg_iovlen; i++) {
+        if (!iov_len_ok(msg_iov_fake[i].len, &iov_total)) {
+            free_iovecs(msg_iov, msg.msg_iovlen);
+            return _EINVAL;
+        }
         msg_iov[i].iov_len = msg_iov_fake[i].len;
         msg_iov[i].iov_base = malloc(msg_iov_fake[i].len ? msg_iov_fake[i].len : 1);
         if (msg_iov[i].iov_base == NULL) {
@@ -1622,6 +1805,34 @@ int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, ad
     if (vec_len > UIO_MAXIOV_)
         return _EINVAL;
     STRACE("recvmmsg(%d, %#x, %d, %d)", sock_fd, msg_vec, vec_len, flags);
+
+    // The timeout used to be accepted and dropped, so a guest asking to wait
+    // at most n milliseconds for a batch waited as long as the socket did.
+    //
+    // It bounds the whole call, and is checked after each datagram — which is
+    // exactly as far as Linux takes it, quirk included: if vlen-1 datagrams
+    // arrive before it expires and then nothing does, the receive of the last
+    // one blocks past it. recvmmsg(2) documents that. Linux does not write the
+    // remaining time back either.
+    bool timed = timeout_addr != 0;
+    uint64_t deadline_ns = 0;
+    if (timed) {
+        struct timespec_ timeout;
+        if (user_get(timeout_addr, timeout))
+            return _EFAULT;
+        // Widened first: struct timespec_ is signed on the 64-bit guest layout
+        // and unsigned on the 32-bit one, so comparing the fields directly is
+        // a tautology on one of the two builds.
+        int64_t t_sec = (int64_t) timeout.sec;
+        int64_t t_nsec = (int64_t) timeout.nsec;
+        if (t_sec < 0 || t_nsec < 0 || t_nsec >= 1000000000)
+            return _EINVAL;
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        deadline_ns = (uint64_t) now.tv_sec * 1000000000ULL + (uint64_t) now.tv_nsec
+            + (uint64_t) t_sec * 1000000000ULL + (uint64_t) t_nsec;
+    }
+
     int num_recv = 0;
 #ifdef GUEST_ARM64
     size_t mmsghdr_size = sizeof(struct mmsghdr64_);
@@ -1646,6 +1857,13 @@ int_t sys_recvmmsg(fd_t sock_fd, addr_t msg_vec, uint_t vec_len, int_t flags, ad
         num_recv++;
         if (res == 0)
             break;
+        if (timed) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            uint64_t now_ns = (uint64_t) now.tv_sec * 1000000000ULL + (uint64_t) now.tv_nsec;
+            if (now_ns >= deadline_ns)
+                break; // fewer than vec_len datagrams, which is a valid answer
+        }
     }
     return num_recv;
 }
@@ -1778,6 +1996,7 @@ static int sock_close(struct fd *fd) {
     struct fd *peer = fd->socket.unix_peer;
     if (peer != NULL)
         peer->socket.unix_peer = NULL;
+    unix_pending_remove_fd(fd);
     unlock(&peer_lock);
     if (fd->socket.domain == AF_LOCAL_) {
         lock(&fd->lock);
@@ -1830,8 +2049,11 @@ static struct socket_call {
     {(syscall_t) sys_getsockopt, 5},
     {(syscall_t) sys_sendmsg, 3},
     {(syscall_t) sys_recvmsg, 3},
-    {NULL}, // accept4
-    {NULL}, // recvmmsg
+    // Both of these were NULL, so a 32-bit guest reaching accept4 or recvmmsg
+    // through socketcall — which is how i386 musl and glibc issue them — got
+    // ENOSYS for a call this kernel implements.
+    {(syscall_t) sys_accept4, 4},
+    {(syscall_t) sys_recvmmsg, 5},
     {(syscall_t) sys_sendmmsg, 4},
 };
 
