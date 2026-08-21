@@ -3,11 +3,19 @@
 #include <sqlite3.h>
 
 // Some nice sqlite macros for anything outside of fs/fake.c
+//
+// Each macro assumes `sqlite3 *db` and `int err` are in scope, and reports a
+// failure by expanding HANDLE_ERR(db) — which the file including this header
+// has to define, before its first use of any of them. There is deliberately no
+// default: this used to be die(), so a meta.db that was corrupt, busy, or on a
+// volume iOS had not unlocked yet took the whole app down from inside a
+// migration. What a caller should do instead depends on what it can unwind,
+// which only the caller knows.
+//
+//   fs/fake-migrate.c, fs/fake-rebuild.c  goto sql_err, roll back, return _EIO
+//   tools/fakefs.c                        fill in a struct error and return false
 
 #define Q(...) #__VA_ARGS__
-
-#define HANDLE_ERR(db) \
-    die("sqlite error while rebuilding: %s\n", sqlite3_errmsg(db))
 
 #define CHECK_ERR() \
     if (err != SQLITE_OK && err != SQLITE_ROW && err != SQLITE_DONE) \

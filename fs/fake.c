@@ -1586,8 +1586,14 @@ static int fakefs_mount(struct mount *mount) {
         return err;
 
     err = fake_db_init(&mount->fakefs, db_path, mount->root_fd);
-    if (err < 0)
+    if (err < 0) {
+        /* realfs.mount opened this, and do_mount frees the struct on a failed
+         * mount without calling any umount — so nothing else ever closes it.
+         * realfs has no umount op to defer to. */
+        close(mount->root_fd);
+        mount->root_fd = -1;
         return err;
+    }
 
     /* Store global reference for bind mount API */
     lock(&g_bind_lock);
