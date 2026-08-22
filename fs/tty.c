@@ -35,13 +35,18 @@ struct tty *tty_alloc(struct tty_driver *driver, int type, int num) {
 
     tty->termios.iflags = ICRNL_ | IXON_;
     tty->termios.oflags = OPOST_ | ONLCR_;
-    tty->termios.cflags = 0;
+    // A pty has no line, but a zero cflags says B0 — which means "hang up" —
+    // and no character size at all. Programs that read CSIZE before deciding
+    // how to talk to a terminal get an answer that is not one. B38400 is what
+    // Linux reports for a pty, and it is the same rate the `2` forms carry in
+    // ispeed/ospeed below: two views of one terminal have to agree.
+    tty->termios.cflags = B38400_ | CS8_ | CREAD_;
     tty->termios.lflags = ISIG_ | ICANON_ | ECHO_ | ECHOE_ | ECHOK_ | ECHOCTL_ | ECHOKE_ | IEXTEN_;
     // from include/asm-generic/termios.h
     memcpy(tty->termios.cc, "\003\034\177\025\004\0\1\0\021\023\032\0\022\017\027\026\0\0\0", 19);
     memset(&tty->winsize, 0, sizeof(tty->winsize));
-    // 38400, which is what a Linux pty reports and what B38400 in cflags
-    // above would decode to. Zero reads as "hang up" to some callers.
+    // The same rate B38400_ in cflags above decodes to. Zero would read as a
+    // hang-up, and disagreeing with cflags would be worse than either.
     tty->ispeed = tty->ospeed = 38400;
 
     lock_init(&tty->lock);

@@ -40,6 +40,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -60,6 +61,13 @@ static const struct tty_driver_ops test_tty_ops = {
 };
 
 DEFINE_TTY_DRIVER(test_pty, &test_tty_ops, TTY_PSEUDO_SLAVE_MAJOR, 4);
+
+static void cleanup(const char *tmpdir) {
+    char cmd[PATH_MAX + 16];
+    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", tmpdir);
+    if (system(cmd) != 0)
+        fprintf(stderr, "warning: could not remove %s\n", tmpdir);
+}
 
 static struct fd *open_pty(void) {
     struct tty *tty = pty_open_fake(&test_pty);
@@ -97,10 +105,15 @@ TEST(tcgets2_answers_rather_than_enotty) {
     CHECK_EQ(got.lflags, plain.lflags);
     CHECK_EQ_INT(memcmp(got.cc, plain.cc, sizeof(plain.cc)), 0);
 
-    // Zero reads as "hang up" to some callers, so a pty reports a rate even
-    // though it has none.
-    CHECK(got.ispeed != 0);
-    CHECK(got.ospeed != 0);
+    // The two views have to agree about the line. A pty has none, so what is
+    // reported is what Linux reports for one: 38400, and cflags saying the
+    // same thing rather than B0, which means "hang up".
+    CHECK_EQ(got.cflags, plain.cflags);
+    CHECK_EQ(got.cflags & CSIZE_, CS8_);
+    CHECK(got.cflags & CREAD_);
+    CHECK_EQ(got.cflags & CBAUD_MASK_, B38400_);
+    CHECK_EQ(got.ispeed, 38400u);
+    CHECK_EQ(got.ospeed, 38400u);
 
     fd_close(fd);
 }
@@ -170,31 +183,58 @@ TEST(the_size_table_admits_the_new_commands) {
     }
 }
 
-TEST(the_struct_is_the_size_the_ioctl_number_encodes) {
-    // 0x802c542a carries its argument size in bits 16..29: 0x2c, 44 bytes. A
-    // struct of any other size would have the kernel copying the wrong number
-    // of bytes to and from the guest.
+TEST(the_commands_are_the_numbers_linux_uses) {
+    // Written out rather than derived from the header's own macros. A guest
+    // issues the number its kernel headers gave it, so what matters is that
+    // these equal Linux's — and a test that checked TCGETS2_ against fields
+    // of TCGETS2_ would pass just as happily with the direction, type or
+    // number changed. Only the size would have been pinned, which is the one
+    // part a wrong constant is least likely to get wrong.
+    CHECK_EQ(TCGETS2_, 0x802c542a);
+    CHECK_EQ(TCSETS2_, 0x402c542b);
+    CHECK_EQ(TCSETSW2_, 0x402c542c);
+    CHECK_EQ(TCSETSF2_, 0x402c542d);
+
+    // And the struct is the size those numbers encode, since the kernel copies
+    // that many bytes to and from the guest.
     CHECK_EQ(sizeof(struct termios2_), 44u);
-    CHECK_EQ((TCGETS2_ >> 16) & 0x3fff, sizeof(struct termios2_));
-    CHECK_EQ((TCSETS2_ >> 16) & 0x3fff, sizeof(struct termios2_));
+}
+
+TEST(termios2_is_termios_with_the_speeds_appended) {
+    // Layout, not just total size: a struct that packed differently could be
+    // 44 bytes and still put every field somewhere the guest does not expect.
+    CHECK_EQ(offsetof(struct termios2_, iflags), offsetof(struct termios_, iflags));
+    CHECK_EQ(offsetof(struct termios2_, oflags), offsetof(struct termios_, oflags));
+    CHECK_EQ(offsetof(struct termios2_, cflags), offsetof(struct termios_, cflags));
+    CHECK_EQ(offsetof(struct termios2_, lflags), offsetof(struct termios_, lflags));
+    CHECK_EQ(offsetof(struct termios2_, line), offsetof(struct termios_, line));
+    CHECK_EQ(offsetof(struct termios2_, cc), offsetof(struct termios_, cc));
+    // Linux puts them at 36 and 40, immediately after cc[19] plus its padding.
+    CHECK_EQ(offsetof(struct termios2_, ispeed), 36u);
+    CHECK_EQ(offsetof(struct termios2_, ospeed), 40u);
 }
 
 int main(void) {
     // A root, because opening a pty reaches the filesystem and mount_find
     // asserts on an empty mount table. Nothing here reads or writes it.
-    char tmpdir[PATH_MAX];
-    snprintf(tmpdir, sizeof(tmpdir), "/tmp/ish-termios2-test-%d", getpid());
-    if (mkdir(tmpdir, 0755) < 0) {
-        perror("mkdir");
+    // mkdtemp, not a name built from the pid: a run interrupted before its
+    // cleanup would otherwise leave a directory that makes the next run with
+    // the same pid fail at mkdir. Removed on every path out, including the
+    // two setup failures below, which used to return leaving it behind.
+    char tmpdir[] = "/tmp/ish-termios2-test-XXXXXX";
+    if (mkdtemp(tmpdir) == NULL) {
+        perror("mkdtemp");
         return 2;
     }
     int err = mount_root(&realfs, tmpdir);
     if (err < 0) {
         fprintf(stderr, "mount_root: %d\n", err);
+        cleanup(tmpdir);
         return 2;
     }
     if ((err = become_first_process()) < 0) {
         fprintf(stderr, "become_first_process: %d\n", err);
+        cleanup(tmpdir);
         return 2;
     }
 
@@ -202,11 +242,9 @@ int main(void) {
     RUN(tcsets2_round_trips_what_it_was_given);
     RUN(the_flush_and_drain_forms_are_accepted_too);
     RUN(the_size_table_admits_the_new_commands);
-    RUN(the_struct_is_the_size_the_ioctl_number_encodes);
+    RUN(the_commands_are_the_numbers_linux_uses);
+    RUN(termios2_is_termios_with_the_speeds_appended);
 
-    char cmd[PATH_MAX + 16];
-    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", tmpdir);
-    if (system(cmd) != 0)
-        fprintf(stderr, "warning: could not remove %s\n", tmpdir);
+    cleanup(tmpdir);
     return UNIT_REPORT();
 }

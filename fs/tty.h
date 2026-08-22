@@ -78,6 +78,16 @@ struct termios2_ {
 #define ONOCR_ (1 << 4)
 #define ONLRET_ (1 << 5)
 
+// cflags. Only what a pty has any business reporting: a line rate, eight bits,
+// and a receiver that is enabled. Values are Linux's, in octal as its headers
+// write them.
+#define B38400_ 0000017
+#define CSIZE_  0000060
+#define CS8_    0000060
+#define CREAD_  0000200
+// The bits within cflags that carry the line rate.
+#define CBAUD_MASK_ 0010017
+
 #define TCGETS_ 0x5401
 // The `2` forms, which glibc has used for tcgetattr/tcsetattr since it grew
 // support for arbitrary baud rates. Without them `isatty` answers ENOTTY on
