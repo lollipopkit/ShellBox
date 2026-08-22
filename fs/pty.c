@@ -25,6 +25,12 @@ static int pty_master_init(struct tty *tty) {
     tty->termios.lflags = 0;
 
     struct tty *slave = tty_alloc(&pty_slave, TTY_PSEUDO_SLAVE_MAJOR, tty->num);
+    // tty_alloc can fail, and its caller in tty.c checks. Not checking here
+    // dereferenced NULL while the slave's table slot still held PTY_RESERVED,
+    // so the crash landed before ptmx_open could run the rollback that
+    // releases the reservation. An error return lets that rollback happen.
+    if (slave == NULL)
+        return _ENOMEM;
     slave->refcount = 1;
     pty_slave.ttys[tty->num] = slave;
     tty->pty.other = slave;
