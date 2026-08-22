@@ -798,7 +798,10 @@ static void test_pselect6_null_sigmask(void) {
     long rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
     check(rc >= 0, "pselect6 accepts a null sigmask");
 
-    // And with one, which has to keep working.
+    // A packed struct whose *inner* pointer is null. A distinct path from the
+    // one above — the argument is read, and only then found to carry no mask —
+    // and not a mask case: the kernel skips user_get_sigset entirely, as Linux
+    // does. test_pselect6_sigmask below is what covers a mask being applied.
     struct {
         const void *mask;
         unsigned long size;
@@ -807,7 +810,7 @@ static void test_pselect6_null_sigmask(void) {
     FD_SET(p[0], &r);
     ts = (struct timespec) {0, 0};
     rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, &sig);
-    check(rc >= 0, "pselect6 still accepts a sigmask argument");
+    check(rc >= 0, "pselect6 accepts a packed struct holding a null mask");
 
     // A readable descriptor is reported, so the call is doing its job and not
     // just returning 0 for everything.
@@ -820,6 +823,100 @@ static void test_pselect6_null_sigmask(void) {
 
     close(p[0]);
     close(p[1]);
+}
+
+// A no-op handler. SIG_IGN would not do: an ignored signal does not interrupt
+// a wait either, so the control case below could not tell a mask that works
+// from one that was never applied.
+static void pselect_sigusr1(int sig) { (void) sig; }
+
+// Sends SIGUSR1 to this process after a fifth of a second. Returns the child,
+// or -1, which every caller checks — an unnoticed fork failure here would make
+// both cases below wait out their full timeout and the control one would then
+// "fail" for a reason that has nothing to do with masks.
+static pid_t pselect_signal_soon(void) {
+    pid_t parent = getpid();
+    pid_t p = fork();
+    if (p != 0)
+        return p;
+    struct timespec t = {0, 200 * 1000 * 1000};
+    nanosleep(&t, NULL);
+    kill(parent, SIGUSR1);
+    _exit(0);
+}
+
+// The mask in the 6th argument is applied for the duration of the wait.
+//
+// Separate from the null-sigmask cases above because it asserts the opposite
+// thing: those are about the argument being *optional*, this is about it being
+// *used*. A test that only checked a masked call returns >= 0 would pass on a
+// kernel that ignored the mask entirely, so each case here is paired with its
+// control and the two must come out differently.
+//
+// Real timeouts rather than the zero-length ones above, so this also covers a
+// wait that has to actually elapse — which is the shape apt uses.
+static void test_pselect6_sigmask(void) {
+    section("pselect6 applies the mask it is given");
+
+    struct sigaction sa, old;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = pselect_sigusr1;    // no SA_RESTART: the wait must report EINTR
+    if (sigaction(SIGUSR1, &sa, &old) != 0) {
+        check(0, "install a SIGUSR1 handler");
+        return;
+    }
+
+    int p[2];
+    if (pipe(p) != 0) {
+        check(0, "pipe for the sigmask test");
+        sigaction(SIGUSR1, &old, NULL);
+        return;
+    }
+
+    fd_set r;
+    long rc;
+
+    // Control: no mask, so the signal must cut the wait short.
+    pid_t killer = pselect_signal_soon();
+    if (killer < 0) {
+        check(0, "fork the signal sender (control)");
+    } else {
+        FD_ZERO(&r);
+        FD_SET(p[0], &r);
+        struct timespec ts = {5, 0};
+        double t0 = now_sec();
+        rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
+        double waited = now_sec() - t0;
+        check(rc < 0 && errno == EINTR, "an unmasked signal interrupts pselect6");
+        check(waited < 2.0, "the interrupted wait returned early");
+        waitpid(killer, NULL, 0);
+    }
+
+    // The same again with SIGUSR1 blocked through the packed argument. The
+    // wait has to survive the signal and run to its own timeout.
+    killer = pselect_signal_soon();
+    if (killer < 0) {
+        check(0, "fork the signal sender (masked)");
+    } else {
+        uint64_t mask = 1ull << (SIGUSR1 - 1);  // the guest's sigset is one word
+        struct {
+            const void *mask;
+            unsigned long size;
+        } sig = {&mask, sizeof(mask)};
+        FD_ZERO(&r);
+        FD_SET(p[0], &r);
+        struct timespec ts = {1, 0};
+        double t0 = now_sec();
+        rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, &sig);
+        double waited = now_sec() - t0;
+        check(rc == 0, "a masked signal does not interrupt pselect6");
+        check(waited > 0.8, "the masked wait ran to its own timeout");
+        waitpid(killer, NULL, 0);
+    }
+
+    close(p[0]);
+    close(p[1]);
+    sigaction(SIGUSR1, &old, NULL);
 }
 
 int main(int argc, char **argv) {
@@ -859,6 +956,7 @@ int main(int argc, char **argv) {
     test_sigrtmax();
     test_no_zombies_when_parent_will_not_wait();
     test_pselect6_null_sigmask();
+    test_pselect6_sigmask();
 
     printf("\n================ RESULT ================\n");
     printf("  PASS: %d    FAIL: %d\n", pass, fail);
