@@ -40,6 +40,9 @@ struct tty *tty_alloc(struct tty_driver *driver, int type, int num) {
     // from include/asm-generic/termios.h
     memcpy(tty->termios.cc, "\003\034\177\025\004\0\1\0\021\023\032\0\022\017\027\026\0\0\0", 19);
     memset(&tty->winsize, 0, sizeof(tty->winsize));
+    // 38400, which is what a Linux pty reports and what B38400 in cflags
+    // above would decode to. Zero reads as "hang up" to some callers.
+    tty->ispeed = tty->ospeed = 38400;
 
     lock_init(&tty->lock);
     lock_init(&tty->fds_lock);
@@ -612,6 +615,8 @@ static ssize_t tty_ioctl_size(int cmd) {
     switch (cmd) {
         case TCGETS_: case TCSETS_: case TCSETSF_: case TCSETSW_:
             return sizeof(struct termios_);
+        case TCGETS2_: case TCSETS2_: case TCSETSF2_: case TCSETSW2_:
+            return sizeof(struct termios2_);
         case TIOCGWINSZ_: case TIOCSWINSZ_:
             return sizeof(struct winsize_);
         case TIOCGPGRP_: case TIOCSPGRP_:
@@ -709,6 +714,30 @@ static int tty_mode_ioctl(struct tty *in_tty, int cmd, void *arg) {
         case TCSETS_:
             tty->termios = *(struct termios_ *) arg;
             break;
+
+        // The same four, in the shape glibc now uses. The speeds are kept
+        // rather than acted on: a pty has no line rate, and answering the
+        // guest with what it last set beats answering with zero, which some
+        // callers read as "hang up".
+        case TCGETS2_: {
+            struct termios2_ *out = arg;
+            memcpy(out, &tty->termios, sizeof(struct termios_));
+            out->ispeed = tty->ispeed;
+            out->ospeed = tty->ospeed;
+            break;
+        }
+        case TCSETSF2_:
+            tty->bufsize = 0;
+            notify(&tty->consumed);
+            fallthrough;
+        case TCSETSW2_:
+        case TCSETS2_: {
+            const struct termios2_ *in = arg;
+            memcpy(&tty->termios, in, sizeof(struct termios_));
+            tty->ispeed = in->ispeed;
+            tty->ospeed = in->ospeed;
+            break;
+        }
 
         case TIOCGWINSZ_:
             *(struct winsize_ *) arg = tty->winsize;

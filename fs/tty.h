@@ -21,6 +21,24 @@ struct termios_ {
     byte_t cc[19];
 };
 
+/// What `TCGETS2` answers with: `termios_` plus the two line speeds.
+///
+/// A separate call because `termios_`'s `cflags` encodes speed as one of a
+/// fixed set of `B*` constants, and there is no constant for an arbitrary
+/// baud rate. Neither speed means anything to a pseudo-terminal, which is all
+/// this kernel has — they are carried so the struct is the size and shape the
+/// guest expects, and so a `TCSETS2` round-trips whatever it was given.
+struct termios2_ {
+    dword_t iflags;
+    dword_t oflags;
+    dword_t cflags;
+    dword_t lflags;
+    byte_t line;
+    byte_t cc[19];
+    dword_t ispeed;
+    dword_t ospeed;
+};
+
 #define VINTR_ 0
 #define VQUIT_ 1
 #define VERASE_ 2
@@ -61,6 +79,14 @@ struct termios_ {
 #define ONLRET_ (1 << 5)
 
 #define TCGETS_ 0x5401
+// The `2` forms, which glibc has used for tcgetattr/tcsetattr since it grew
+// support for arbitrary baud rates. Without them `isatty` answers ENOTTY on
+// any distribution whose glibc is new enough, and a shell that cannot tell it
+// has a terminal never enters interactive mode — no prompt, no job control.
+#define TCGETS2_ 0x802c542a
+#define TCSETS2_ 0x402c542b
+#define TCSETSW2_ 0x402c542c
+#define TCSETSF2_ 0x402c542d
 #define TCSETS_ 0x5402
 #define TCSETSW_ 0x5403
 #define TCSETSF_ 0x5404
@@ -121,6 +147,10 @@ struct tty {
 
     struct winsize_ winsize;
     struct termios_ termios;
+    /// What a `TCSETS2` last set, answered by `TCGETS2`. Meaningless to a
+    /// pseudo-terminal; kept so the round-trip is honest.
+    dword_t ispeed;
+    dword_t ospeed;
     int type;
     int num;
 
