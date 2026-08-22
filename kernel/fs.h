@@ -161,7 +161,10 @@ struct fs_ops {
     int (*fstat)(struct fd *fd, struct statbuf *stat); // required
     int (*setattr)(struct mount *mount, const char *path, struct attr attr);
     int (*fsetattr)(struct fd *fd, struct attr attr);
-    int (*utime)(struct mount *mount, const char *path, struct timespec atime, struct timespec mtime);
+    // `follow_links` is the guest's AT_SYMLINK_NOFOLLOW, inverted. An
+    // implementation that resolves the last component itself has to honour it:
+    // stamping a symlink is not the same as stamping what it points at.
+    int (*utime)(struct mount *mount, const char *path, struct timespec atime, struct timespec mtime, bool follow_links);
     // Returns the path of the file descriptor, null terminated, buf must be at least MAX_PATH+1
     int (*getpath)(struct fd *fd, char *buf); // required
 

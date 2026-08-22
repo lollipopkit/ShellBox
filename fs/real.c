@@ -634,9 +634,17 @@ int realfs_fsetattr(struct fd *fd, struct attr attr) {
     return err;
 }
 
-int realfs_utime(struct mount *mount, const char *path, struct timespec atime, struct timespec mtime) {
+int realfs_utime(struct mount *mount, const char *path, struct timespec atime, struct timespec mtime, bool follow_links) {
     struct timespec times[2] = {atime, mtime};
-    int err = utimensat(mount->root_fd, fix_path(path), times, 0);
+    // AT_SYMLINK_NOFOLLOW has to reach the host call. `path_normalize` leaves
+    // the final component unresolved when the guest asked for NOFOLLOW, but
+    // passing 0 here made the host follow it anyway — so a symlink was never
+    // the thing stamped, and a *dangling* one answered ENOENT for a call that
+    // should have succeeded. rpm lays down `/usr/lib/.build-id/**` as symlinks
+    // and stamps each one that way, which is why no package carrying a build
+    // id could be installed.
+    int err = utimensat(mount->root_fd, fix_path(path), times,
+                        follow_links ? 0 : AT_SYMLINK_NOFOLLOW);
     if (err < 0)
         return errno_map();
     return 0;
