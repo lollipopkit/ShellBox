@@ -737,6 +737,14 @@ ssize_t realfs_ioctl_size(int cmd) {
         return sizeof(struct termios_);
     if (cmd == TCSETS_ || cmd == TCSETSW_ || cmd == TCSETSF_)
         return sizeof(struct termios_);
+    // The `2` forms, for the same reason the originals are here: this path
+    // exists so isatty succeeds on a real host tty, and glibc's isatty asks
+    // with TCGETS2. Handling one libc's spelling and not the other's would
+    // leave the comment above true only for musl.
+    if (cmd == TCGETS2_)
+        return sizeof(struct termios2_);
+    if (cmd == TCSETS2_ || cmd == TCSETSW2_ || cmd == TCSETSF2_)
+        return sizeof(struct termios2_);
     if (cmd == TIOCGWINSZ_)
         return sizeof(struct winsize_);
     return -1;
@@ -753,17 +761,27 @@ int realfs_ioctl(struct fd *fd, int cmd, void *arg) {
             *(dword_t *) arg = nread;
             return 0;
         case TCGETS_:
+        case TCGETS2_:
             // For piped stdio fds backed by a real host TTY, return a
-            // plausible termios so that musl isatty() succeeds.
+            // plausible termios so that isatty() succeeds — musl's asks with
+            // TCGETS and glibc's with TCGETS2, and the answer is the same
+            // either way but for the two speeds the larger struct carries.
             if (isatty(fd->real_fd)) {
                 struct termios host_termios;
                 if (tcgetattr(fd->real_fd, &host_termios) == 0) {
                     struct termios_ *guest = (struct termios_ *)arg;
-                    memset(guest, 0, sizeof(*guest));
+                    memset(guest, 0,
+                           cmd == TCGETS2_ ? sizeof(struct termios2_)
+                                           : sizeof(struct termios_));
                     guest->iflags = host_termios.c_iflag;
                     guest->oflags = host_termios.c_oflag;
                     guest->cflags = host_termios.c_cflag;
                     guest->lflags = host_termios.c_lflag;
+                    if (cmd == TCGETS2_) {
+                        struct termios2_ *wide = (struct termios2_ *)arg;
+                        wide->ispeed = (dword_t) cfgetispeed(&host_termios);
+                        wide->ospeed = (dword_t) cfgetospeed(&host_termios);
+                    }
                     return 0;
                 }
             }
@@ -786,6 +804,9 @@ int realfs_ioctl(struct fd *fd, int cmd, void *arg) {
         case TCSETS_:
         case TCSETSW_:
         case TCSETSF_:
+        case TCSETS2_:
+        case TCSETSW2_:
+        case TCSETSF2_:
             if (ish_exec_trace())
                 fprintf(stderr, "TCSETS_DBG: fd=%d cmd=0x%x real_fd=%d isatty=%d\n",
                         fd->real_fd, cmd, fd->real_fd, isatty(fd->real_fd));
