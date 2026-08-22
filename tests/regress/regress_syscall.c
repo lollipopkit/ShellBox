@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
@@ -838,19 +839,42 @@ static volatile sig_atomic_t pselect_usr1_count;
 
 static void pselect_sigusr1(int sig) { (void) sig; pselect_usr1_count++; }
 
-// Sends SIGUSR1 to this process after a fifth of a second. Returns the child,
-// or -1, which every caller checks — an unnoticed fork failure here would make
-// both cases below wait out their full timeout and the control one would then
-// "fail" for a reason that has nothing to do with masks.
-static pid_t pselect_signal_soon(void) {
+// Sends SIGUSR1 to this process, but not before the caller says it is about to
+// wait. `*go_fd` is the write end to say it on. Returns the child, or -1, which
+// every caller checks — an unnoticed fork failure would make both cases below
+// wait out their full timeout, and the control one would then "fail" for a
+// reason that has nothing to do with masks.
+//
+// A bare sleep was a race rather than a barrier. Nothing stopped the child
+// reaching kill() while the parent was still between fork() and the syscall,
+// and a signal landing there is delivered *unmasked*: the wait that follows is
+// then never challenged, times out, and every assertion in the masked case
+// passes having tested nothing. The caller also asserts none arrived before
+// entry, which is what closes the remaining gap between the two.
+static pid_t pselect_signal_on_go(int *go_fd) {
+    int ready[2];
+    if (pipe(ready) != 0)
+        return -1;
     pid_t parent = getpid();
     pid_t p = fork();
-    if (p != 0)
-        return p;
-    struct timespec t = {0, 200 * 1000 * 1000};
-    nanosleep(&t, NULL);
-    kill(parent, SIGUSR1);
-    _exit(0);
+    if (p < 0) {
+        close(ready[0]);
+        close(ready[1]);
+        return -1;
+    }
+    if (p == 0) {
+        close(ready[1]);
+        char go;
+        while (read(ready[0], &go, 1) < 0 && errno == EINTR)
+            continue;
+        struct timespec t = {0, 200 * 1000 * 1000};
+        nanosleep(&t, NULL);
+        kill(parent, SIGUSR1);
+        _exit(0);
+    }
+    close(ready[0]);
+    *go_fd = ready[1];
+    return p;
 }
 
 // The mask in the 6th argument is applied for the duration of the wait.
@@ -897,31 +921,48 @@ static void test_pselect6_sigmask(void) {
         return;
     }
 
+    // The go-ahead below is a write to a pipe the sender is reading. If that
+    // sender ever dies first the write raises SIGPIPE, whose default action
+    // would take the whole regression binary down — no result line, no failed
+    // assertion, just an exit status. A test harness should report a broken
+    // fixture, not disappear because of one.
+    struct sigaction pipe_ign, pipe_old;
+    memset(&pipe_ign, 0, sizeof(pipe_ign));
+    pipe_ign.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &pipe_ign, &pipe_old);
+
     fd_set r;
     long rc;
 
     // Control: no mask, so the signal must cut the wait short.
     pselect_usr1_count = 0;
-    pid_t killer = pselect_signal_soon();
+    int go = -1;
+    pid_t killer = pselect_signal_on_go(&go);
     if (killer < 0) {
         check(0, "fork the signal sender (control)");
     } else {
         FD_ZERO(&r);
         FD_SET(p[0], &r);
         struct timespec ts = {5, 0};
+        check(pselect_usr1_count == 0, "no SIGUSR1 before the control wait");
+        if (write(go, "g", 1) != 1)
+            check(0, "signal the control sender to go");
+
         double t0 = now_sec();
         rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
         double waited = now_sec() - t0;
         check(rc < 0 && errno == EINTR, "an unmasked signal interrupts pselect6");
         check(waited < 2.0, "the interrupted wait returned early");
         check(pselect_usr1_count == 1, "the control's SIGUSR1 was delivered");
+        close(go);
         waitpid(killer, NULL, 0);
     }
 
     // The same again with SIGUSR1 blocked through the packed argument. The
     // wait has to survive the signal and run to its own timeout.
     pselect_usr1_count = 0;
-    killer = pselect_signal_soon();
+    go = -1;
+    killer = pselect_signal_on_go(&go);
     if (killer < 0) {
         check(0, "fork the signal sender (masked)");
     } else {
@@ -934,6 +975,14 @@ static void test_pselect6_sigmask(void) {
         FD_ZERO(&r);
         FD_SET(p[0], &r);
         struct timespec ts = {1, 0};
+        // Nothing has been delivered yet, so the arrival asserted below
+        // happened while the mask was on rather than before it went on. The
+        // handshake keeps the sender behind this point; this is what says so
+        // rather than assuming it.
+        check(pselect_usr1_count == 0, "no SIGUSR1 before the masked wait");
+        if (write(go, "g", 1) != 1)
+            check(0, "signal the masked sender to go");
+
         double t0 = now_sec();
         rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, &sig);
         double waited = now_sec() - t0;
@@ -947,11 +996,13 @@ static void test_pselect6_sigmask(void) {
         // It arrives once the wait puts the old mask back, which is the other
         // half of what a temporary mask means.
         check(pselect_usr1_count == 1, "the masked SIGUSR1 arrived once the wait ended");
+        close(go);
         waitpid(killer, NULL, 0);
     }
 
     close(p[0]);
     close(p[1]);
+    sigaction(SIGPIPE, &pipe_old, NULL);
     sigprocmask(SIG_SETMASK, &oldset, NULL);
     sigaction(SIGUSR1, &old, NULL);
 }
