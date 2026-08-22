@@ -192,6 +192,7 @@ struct tty {
 ssize_t tty_input(struct tty *tty, const char *input, size_t len, bool blocking);
 void tty_set_winsize(struct tty *tty, struct winsize_ winsize);
 void tty_hangup(struct tty *tty);
+void tty_disown(struct tgroup *group);
 
 // public for the benefit of ptys
 struct tty *tty_get(struct tty_driver *driver, int type, int num);

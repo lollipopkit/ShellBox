@@ -1799,6 +1799,11 @@ if not meson.is_cross_build()
         dependencies: ish)
     test('utime_symlink', utime_symlink_test)
 
+    tty_disown_test = executable('tty_disown_test',
+        ['tests/unit/tty_disown_test.c'],
+        dependencies: ish)
+    test('tty_disown', tty_disown_test)
+
     termios2_test = executable('termios2_test',
         ['tests/unit/termios2_test.c'],
         dependencies: ish)

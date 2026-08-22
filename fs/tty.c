@@ -833,6 +833,42 @@ void tty_set_winsize(struct tty *tty, struct winsize_ winsize) {
         send_group_signal(tty->fg_group, SIGWINCH_, SIGINFO_NIL);
 }
 
+/// Gives up the controlling terminal `group` holds, if it holds one.
+///
+/// `task_leave_session` does this as part of tearing a group down, and that
+/// runs only when the task is reaped. An embedder that hangs a session up is
+/// not going to reap it — nothing here waits for a task, and `auto_reap` needs
+/// a parent that ignores SIGCHLD, which init does not — so the reference the
+/// group took in `tty_set_controlling` would outlive the shell by the life of
+/// the process.
+///
+/// What that cost: the pty stayed allocated, so the `/dev/pts` it lives on
+/// could never be unmounted, so a filesystem a session had ever been opened in
+/// could never be detached. ServerBox surfaced it as a Linux system that could
+/// not be deleted until the app was restarted.
+///
+/// Hanging up is the right moment. A terminal that has gone away is not a
+/// controlling terminal, and Linux disassociates one from its session for the
+/// same reason when its last fd closes.
+void tty_disown(struct tgroup *group) {
+    lock(&group->lock);
+    struct tty *tty = group->tty;
+    group->tty = NULL;
+    unlock(&group->lock);
+    if (tty == NULL)
+        return;
+
+    // ttys_lock before the tty's own, and released outside it: tty_release
+    // takes tty->lock itself and may free what it is holding.
+    lock(&ttys_lock);
+    lock(&tty->lock);
+    tty->session = 0;
+    tty->fg_group = 0;
+    unlock(&tty->lock);
+    tty_release(tty);
+    unlock(&ttys_lock);
+}
+
 void tty_hangup(struct tty *tty) {
     tty->hung_up = true;
     // Wake up any threads blocked in tty_read via condvar.
