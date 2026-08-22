@@ -17,10 +17,13 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -318,6 +321,24 @@ static void test_signal_still_interrupts(void) {
 // always 0, leaving a killed child indistinguishable from an exited one.
 // si_uid was never assigned at all on the wait path.
 // ---------------------------------------------------------------------------
+// Whether `p` is a child, recording a failure when it is not.
+//
+// A fork that failed is not a pid, and -1 has a meaning of its own: `kill(-1,
+// …)` is "every process this caller may signal". Two of the probes below send
+// SIGSTOP and SIGKILL, so an unchecked fork does not fail a case here — it
+// signals the whole guest, this binary and the shell that started it included,
+// and the run ends stopped or dead rather than reporting anything.
+//
+// The guest, not the host: this is built for the guest and runs under `ish`,
+// so the -1 reaches ish's own sys_kill and the tasks it knows about. That
+// bounds the damage without making it acceptable.
+static int forked_ok(pid_t p, const char *what) {
+    if (p >= 0)
+        return 1;
+    check(0, what);
+    return 0;
+}
+
 static void test_waitid_siginfo(void) {
     section("waitid si_status / si_code / si_uid");
 
@@ -329,6 +350,8 @@ static void test_waitid_siginfo(void) {
         pid_t p = fork();
         if (p == 0)
             _exit(codes[i]);
+        if (!forked_ok(p, "fork for the exit-status case"))
+            continue;
         siginfo_t si;
         memset(&si, 0, sizeof si);
         int r = waitid(P_PID, p, &si, WEXITED);
@@ -350,6 +373,8 @@ static void test_waitid_siginfo(void) {
             nap(10);
             _exit(0);
         }
+        if (!forked_ok(p, "fork for the killed-child case"))
+            continue;
         nap(0.3);
         kill(p, sigs[i]);
         siginfo_t si;
@@ -369,17 +394,19 @@ static void test_waitid_siginfo(void) {
             nap(10);
             _exit(0);
         }
-        nap(0.3);
-        kill(p, SIGSTOP);
-        siginfo_t si;
-        memset(&si, 0, sizeof si);
-        int r = waitid(P_PID, p, &si, WSTOPPED);
-        check(r == 0 && si.si_code == CLD_STOPPED && si.si_status == SIGSTOP,
-              "SIGSTOP -> CLD_STOPPED, si_status=SIGSTOP");
-        kill(p, SIGCONT);
-        kill(p, SIGKILL);
-        siginfo_t reap;
-        waitid(P_PID, p, &reap, WEXITED);
+        if (forked_ok(p, "fork for the stopped-child case")) {
+            nap(0.3);
+            kill(p, SIGSTOP);
+            siginfo_t si;
+            memset(&si, 0, sizeof si);
+            int r = waitid(P_PID, p, &si, WSTOPPED);
+            check(r == 0 && si.si_code == CLD_STOPPED && si.si_status == SIGSTOP,
+                  "SIGSTOP -> CLD_STOPPED, si_status=SIGSTOP");
+            kill(p, SIGCONT);
+            kill(p, SIGKILL);
+            siginfo_t reap;
+            waitid(P_PID, p, &reap, WEXITED);
+        }
     }
 
     // A child that drops privileges must report its own uid, not the parent's.
@@ -392,6 +419,8 @@ static void test_waitid_siginfo(void) {
                 _exit(99);
             _exit(12);
         }
+        if (!forked_ok(p, "fork for the setuid case"))
+            return;
         siginfo_t si;
         memset(&si, 0, sizeof si);
         int r = waitid(P_PID, p, &si, WEXITED);
@@ -763,6 +792,247 @@ static void test_no_zombies_when_parent_will_not_wait(void) {
     check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
 }
 
+// pselect6 with a null sigmask.
+//
+// The 6th argument is optional and null means "no mask", exactly as the
+// timeout does. sys_pselect read it regardless, and `user_get(0, ...)` fails —
+// so the call answered EFAULT without ever looking at a descriptor.
+//
+// It reached only glibc programs, which is why it survived so long: glibc has
+// no `select` syscall to use on arm64 and passes NULL here, while musl passes
+// a pointer to {0, _NSIG/8}. Alpine was unaffected and every glibc
+// distribution had a `select` that could not succeed. apt reads the failure as
+// its download method having died at startup and kills a healthy one, so
+// `apt-get update` could not fetch anything.
+//
+// Called through syscall() rather than select(), so this pins the kernel's
+// contract rather than whichever libc built the test.
+static void test_pselect6_null_sigmask(void) {
+    section("pselect6 with a null sigmask");
+
+    int p[2];
+    if (pipe(p) != 0) {
+        check(0, "pipe for the pselect test");
+        return;
+    }
+
+    fd_set r;
+    FD_ZERO(&r);
+    FD_SET(p[0], &r);
+    struct timespec ts = {0, 0};   // poll and return, so this cannot hang
+
+    // No mask: the argument glibc's select() passes.
+    //
+    // The pipe is empty and the timeout is zero, so the whole correct answer
+    // is "nothing ready" — asserting only `rc >= 0` would have accepted a
+    // spurious readiness just as happily. Nothing is written to the pipe until
+    // both of these have run, so there is nothing for a wrong answer to be
+    // right about.
+    long rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
+    check(rc == 0 && !FD_ISSET(p[0], &r), "pselect6 accepts a null sigmask");
+
+    // A packed struct whose *inner* pointer is null. A distinct path from the
+    // one above — the argument is read, and only then found to carry no mask —
+    // and not a mask case: the kernel skips user_get_sigset entirely, as Linux
+    // does. test_pselect6_sigmask below is what covers a mask being applied.
+    struct {
+        const void *mask;
+        unsigned long size;
+    } sig = {NULL, 8};
+    FD_ZERO(&r);
+    FD_SET(p[0], &r);
+    ts = (struct timespec) {0, 0};
+    rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, &sig);
+    check(rc == 0 && !FD_ISSET(p[0], &r), "pselect6 accepts a packed struct holding a null mask");
+
+    // A readable descriptor is reported, so the call is doing its job and not
+    // just returning 0 for everything.
+    write(p[1], "x", 1);
+    FD_ZERO(&r);
+    FD_SET(p[0], &r);
+    ts = (struct timespec) {0, 0};
+    rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
+    check(rc == 1 && FD_ISSET(p[0], &r), "pselect6 reports a readable pipe");
+
+    close(p[0]);
+    close(p[1]);
+}
+
+// A no-op handler. SIG_IGN would not do: an ignored signal does not interrupt
+// a wait either, so the control case below could not tell a mask that works
+// from one that was never applied.
+static volatile sig_atomic_t pselect_usr1_count;
+
+static void pselect_sigusr1(int sig) { (void) sig; pselect_usr1_count++; }
+
+// Sends SIGUSR1 to this process, but not before the caller says it is about to
+// wait. `*go_fd` is the write end to say it on. Returns the child, or -1, which
+// every caller checks — an unnoticed fork failure would make both cases below
+// wait out their full timeout, and the control one would then "fail" for a
+// reason that has nothing to do with masks.
+//
+// A bare sleep was a race rather than a barrier. Nothing stopped the child
+// reaching kill() while the parent was still between fork() and the syscall,
+// and a signal landing there is delivered *unmasked*: the wait that follows is
+// then never challenged, times out, and every assertion in the masked case
+// passes having tested nothing. The caller also asserts none arrived before
+// entry, which is what closes the remaining gap between the two.
+static pid_t pselect_signal_on_go(int *go_fd) {
+    int ready[2];
+    if (pipe(ready) != 0)
+        return -1;
+    pid_t parent = getpid();
+    pid_t p = fork();
+    if (p < 0) {
+        close(ready[0]);
+        close(ready[1]);
+        return -1;
+    }
+    if (p == 0) {
+        close(ready[1]);
+        char go;
+        while (read(ready[0], &go, 1) < 0 && errno == EINTR)
+            continue;
+        struct timespec t = {0, 200 * 1000 * 1000};
+        nanosleep(&t, NULL);
+        kill(parent, SIGUSR1);
+        _exit(0);
+    }
+    close(ready[0]);
+    *go_fd = ready[1];
+    return p;
+}
+
+// The mask in the 6th argument is applied for the duration of the wait.
+//
+// Separate from the null-sigmask cases above because it asserts the opposite
+// thing: those are about the argument being *optional*, this is about it being
+// *used*. A test that only checked a masked call returns >= 0 would pass on a
+// kernel that ignored the mask entirely, so each case here is paired with its
+// control and the two must come out differently.
+//
+// Real timeouts rather than the zero-length ones above, so this also covers a
+// wait that has to actually elapse — which is the shape apt uses.
+static void test_pselect6_sigmask(void) {
+    section("pselect6 applies the mask it is given");
+
+    struct sigaction sa, old;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = pselect_sigusr1;    // no SA_RESTART: the wait must report EINTR
+    if (sigaction(SIGUSR1, &sa, &old) != 0) {
+        check(0, "install a SIGUSR1 handler");
+        return;
+    }
+
+    int p[2];
+    if (pipe(p) != 0) {
+        check(0, "pipe for the sigmask test");
+        sigaction(SIGUSR1, &old, NULL);
+        return;
+    }
+
+    // The sender is a child, so its exit raises SIGCHLD at about the moment
+    // SIGUSR1 arrives. Blocked for the duration, so an interrupted wait below
+    // can only be attributable to SIGUSR1. The masked case cannot rely on this
+    // one — sigmask_set_temp *replaces* the mask rather than adding to it — so
+    // it names SIGCHLD in the mask it passes instead.
+    sigset_t chld, oldset;
+    sigemptyset(&chld);
+    sigaddset(&chld, SIGCHLD);
+    if (sigprocmask(SIG_BLOCK, &chld, &oldset) != 0) {
+        check(0, "block SIGCHLD for the sigmask test");
+        close(p[0]);
+        close(p[1]);
+        sigaction(SIGUSR1, &old, NULL);
+        return;
+    }
+
+    // The go-ahead below is a write to a pipe the sender is reading. If that
+    // sender ever dies first the write raises SIGPIPE, whose default action
+    // would take the whole regression binary down — no result line, no failed
+    // assertion, just an exit status. A test harness should report a broken
+    // fixture, not disappear because of one.
+    struct sigaction pipe_ign, pipe_old;
+    memset(&pipe_ign, 0, sizeof(pipe_ign));
+    pipe_ign.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &pipe_ign, &pipe_old);
+
+    fd_set r;
+    long rc;
+
+    // Control: no mask, so the signal must cut the wait short.
+    pselect_usr1_count = 0;
+    int go = -1;
+    pid_t killer = pselect_signal_on_go(&go);
+    if (killer < 0) {
+        check(0, "fork the signal sender (control)");
+    } else {
+        FD_ZERO(&r);
+        FD_SET(p[0], &r);
+        struct timespec ts = {5, 0};
+        check(pselect_usr1_count == 0, "no SIGUSR1 before the control wait");
+        if (write(go, "g", 1) != 1)
+            check(0, "signal the control sender to go");
+
+        double t0 = now_sec();
+        rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
+        double waited = now_sec() - t0;
+        check(rc < 0 && errno == EINTR, "an unmasked signal interrupts pselect6");
+        check(waited < 2.0, "the interrupted wait returned early");
+        check(pselect_usr1_count == 1, "the control's SIGUSR1 was delivered");
+        close(go);
+        waitpid(killer, NULL, 0);
+    }
+
+    // The same again with SIGUSR1 blocked through the packed argument. The
+    // wait has to survive the signal and run to its own timeout.
+    pselect_usr1_count = 0;
+    go = -1;
+    killer = pselect_signal_on_go(&go);
+    if (killer < 0) {
+        check(0, "fork the signal sender (masked)");
+    } else {
+        // The guest's sigset is one word. SIGCHLD for the reason above.
+        uint64_t mask = (1ull << (SIGUSR1 - 1)) | (1ull << (SIGCHLD - 1));
+        struct {
+            const void *mask;
+            unsigned long size;
+        } sig = {&mask, sizeof(mask)};
+        FD_ZERO(&r);
+        FD_SET(p[0], &r);
+        struct timespec ts = {1, 0};
+        // Nothing has been delivered yet, so the arrival asserted below
+        // happened while the mask was on rather than before it went on. The
+        // handshake keeps the sender behind this point; this is what says so
+        // rather than assuming it.
+        check(pselect_usr1_count == 0, "no SIGUSR1 before the masked wait");
+        if (write(go, "g", 1) != 1)
+            check(0, "signal the masked sender to go");
+
+        double t0 = now_sec();
+        rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, &sig);
+        double waited = now_sec() - t0;
+        check(rc == 0, "a masked signal does not interrupt pselect6");
+        check(waited > 0.8, "the masked wait ran to its own timeout");
+        // And the signal really was sent. Without this the two checks above
+        // pass just as well when the sender never ran or its kill() failed —
+        // a wait nobody interrupted also reaches its timeout — so the case
+        // could report a mask as effective having never tested one.
+        //
+        // It arrives once the wait puts the old mask back, which is the other
+        // half of what a temporary mask means.
+        check(pselect_usr1_count == 1, "the masked SIGUSR1 arrived once the wait ended");
+        close(go);
+        waitpid(killer, NULL, 0);
+    }
+
+    close(p[0]);
+    close(p[1]);
+    sigaction(SIGPIPE, &pipe_old, NULL);
+    sigprocmask(SIG_SETMASK, &oldset, NULL);
+    sigaction(SIGUSR1, &old, NULL);
+}
+
 int main(int argc, char **argv) {
     // Optional extra path to check stat/fstat on, e.g. a fakefs mount point.
     const char *extra_path = argc > 1 ? argv[1] : NULL;
@@ -799,6 +1069,8 @@ int main(int argc, char **argv) {
     test_sigchld_siginfo();
     test_sigrtmax();
     test_no_zombies_when_parent_will_not_wait();
+    test_pselect6_null_sigmask();
+    test_pselect6_sigmask();
 
     printf("\n================ RESULT ================\n");
     printf("  PASS: %d    FAIL: %d\n", pass, fail);
