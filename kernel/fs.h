@@ -159,7 +159,9 @@ struct fs_ops {
 
     int (*stat)(struct mount *mount, const char *path, struct statbuf *stat); // required
     int (*fstat)(struct fd *fd, struct statbuf *stat); // required
-    int (*setattr)(struct mount *mount, const char *path, struct attr attr);
+    // `follow_links` is the guest's AT_SYMLINK_NOFOLLOW, inverted — see the
+    // note on `utime` below.
+    int (*setattr)(struct mount *mount, const char *path, struct attr attr, bool follow_links);
     int (*fsetattr)(struct fd *fd, struct attr attr);
     // `follow_links` is the guest's AT_SYMLINK_NOFOLLOW, inverted. An
     // implementation that resolves the last component itself has to honour it:

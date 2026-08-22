@@ -974,7 +974,7 @@ static void fake_stat_setattr(struct ish_stat *ishstat, struct attr attr) {
     }
 }
 
-static int fakefs_setattr(struct mount *mount, const char *path, struct attr attr) {
+static int fakefs_setattr(struct mount *mount, const char *path, struct attr attr, bool follow_links) {
     struct fakefs_db *fs = &mount->fakefs;
     if (is_under_readonly_bind_mount(path))
         return _EROFS;
@@ -1006,7 +1006,7 @@ static int fakefs_setattr(struct mount *mount, const char *path, struct attr att
         (void)err;
     }
     if (attr.type == attr_size)
-        return realfs.setattr(mount, path, attr);
+        return realfs.setattr(mount, path, attr, follow_links);
     db_begin_read(fs);
     struct ish_stat ishstat;
     ino_t inode;

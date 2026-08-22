@@ -1799,6 +1799,11 @@ if not meson.is_cross_build()
         dependencies: ish)
     test('utime_symlink', utime_symlink_test)
 
+    setattr_symlink_test = executable('setattr_symlink_test',
+        ['tests/unit/setattr_symlink_test.c'],
+        dependencies: ish)
+    test('setattr_symlink', setattr_symlink_test)
+
     # Built, not registered as a test: it needs a rootfs to boot, which is not
     # in the repository. tests/integration/smoke.sh fetches one and runs it.
     executable('sbm_api_test',

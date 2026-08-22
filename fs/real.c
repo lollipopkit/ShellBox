@@ -579,22 +579,38 @@ int realfs_truncate(struct mount *mount, const char *path, off_t_ size) {
     return err;
 }
 
-int realfs_setattr(struct mount *mount, const char *path, struct attr attr) {
+int realfs_setattr(struct mount *mount, const char *path, struct attr attr, bool follow_links) {
     path = fix_path(path);
     int root = mount->root_fd;
+    // AT_SYMLINK_NOFOLLOW has to reach the host call, exactly as it does in
+    // realfs_utime. `path_normalize` leaves the last component unresolved when
+    // the guest asked for NOFOLLOW, and passing 0 here made the host follow it
+    // anyway — so `lchown` on a symlink chowned its target, and on a symlink
+    // whose target does not exist yet it answered ENOENT for a call that
+    // should have succeeded.
+    //
+    // dpkg does exactly that: it lays down `<name>.dpkg-new` as a symlink
+    // pointing at a file it has not unpacked yet, then sets its ownership. The
+    // unpack failed with "error setting ownership of symlink … : No such file
+    // or directory", so no package shipping a symlink would install — which is
+    // most libraries.
+    int chown_flags = follow_links ? 0 : AT_SYMLINK_NOFOLLOW;
     int err;
     switch (attr.type) {
         case attr_uid:
-            err = fchownat(root, path, attr.uid, -1, 0);
+            err = fchownat(root, path, attr.uid, -1, chown_flags);
             if (err < 0 && errno == EPERM)
                 return 0; // silently ignore, we're not root on host
             break;
         case attr_gid:
-            err = fchownat(root, path, attr.gid, -1, 0);
+            err = fchownat(root, path, attr.gid, -1, chown_flags);
             if (err < 0 && errno == EPERM)
                 return 0;
             break;
         case attr_mode:
+            // Not given the flag: Linux has no `lchmod`, and `fchmodat` there
+            // answers EOPNOTSUPP for AT_SYMLINK_NOFOLLOW. A guest chmod on a
+            // symlink follows it, so following is the behaviour to keep.
             err = fchmodat(root, path, attr.mode, 0);
             break;
         case attr_size:
