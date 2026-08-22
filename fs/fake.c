@@ -270,9 +270,14 @@ bool fakefs_bind_mount_resolve_path(const char *resolved, char *out_path, size_t
         }
     }
     if (best >= 0) {
-        snprintf(out_path, out_size, "%s%s", g_bind_mounts[best].path, best_rest);
+        int n = snprintf(out_path, out_size, "%s%s",
+                         g_bind_mounts[best].path, best_rest);
         unlock(&g_bind_lock);
-        return true;
+        /* Truncation here names a different guest path — see the note in
+         * bind_mount_translate_path_ex. */
+        if (n >= 0 && (size_t) n < out_size)
+            return true;
+        return false;
     }
     unlock(&g_bind_lock);
     /* Static table miss — fall through to the host-provided reverse hook
@@ -395,9 +400,17 @@ static bool bind_mount_translate_path_ex(const char *path, char *out_path,
         unlock(&g_bind_lock);
         return false;
     }
-    snprintf(out_path, out_size, "%s%s",
-             g_bind_mounts[i].host_path, cmp_path + g_bind_mounts[i].path_len);
+    int n = snprintf(out_path, out_size, "%s%s",
+                     g_bind_mounts[i].host_path,
+                     cmp_path + g_bind_mounts[i].path_len);
     unlock(&g_bind_lock);
+    /* A truncated path is not a shorter answer, it is a different file — and
+     * the caller opens or stats whatever it is handed. Answer "no route"
+     * instead, which sends the caller down the ordinary meta.db path: still
+     * wrong for a bind path, but confined to the fakefs data directory rather
+     * than naming an arbitrary host one. */
+    if (n < 0 || (size_t) n >= out_size)
+        return false;
     return true;
 }
 
@@ -974,7 +987,21 @@ static void fake_stat_setattr(struct ish_stat *ishstat, struct attr attr) {
     }
 }
 
-static int fakefs_setattr(struct mount *mount, const char *path, struct attr attr) {
+/* realfs_utime does the work, but the read-only check has to happen first.
+ * `.utime` was wired straight to realfs_utime while every other mutating
+ * operation on this filesystem calls is_under_readonly_bind_mount() — so
+ * utimensat on a path under a read-only bind reached the host and changed its
+ * timestamps. A read-only mount that lets a caller stamp files is read-only in
+ * name only. */
+static int fakefs_utime(struct mount *mount, const char *path,
+                        struct timespec atime, struct timespec mtime,
+                        bool follow_links) {
+    if (is_under_readonly_bind_mount(path))
+        return _EROFS;
+    return realfs_utime(mount, path, atime, mtime, follow_links);
+}
+
+static int fakefs_setattr(struct mount *mount, const char *path, struct attr attr, bool follow_links) {
     struct fakefs_db *fs = &mount->fakefs;
     if (is_under_readonly_bind_mount(path))
         return _EROFS;
@@ -1006,7 +1033,7 @@ static int fakefs_setattr(struct mount *mount, const char *path, struct attr att
         (void)err;
     }
     if (attr.type == attr_size)
-        return realfs.setattr(mount, path, attr);
+        return realfs.setattr(mount, path, attr, follow_links);
     db_begin_read(fs);
     struct ish_stat ishstat;
     ino_t inode;
@@ -1707,7 +1734,7 @@ const struct fs_ops fakefs = {
     .setattr = fakefs_setattr,
     .fsetattr = fakefs_fsetattr,
     .getpath = realfs_getpath,
-    .utime = realfs_utime,
+    .utime = fakefs_utime,
 
     .mkdir = fakefs_mkdir,
     .rmdir = fakefs_rmdir,

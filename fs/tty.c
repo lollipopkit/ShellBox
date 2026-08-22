@@ -66,7 +66,14 @@ struct tty *tty_get(struct tty_driver *driver, int type, int num) {
         if (driver->ops->init) {
             int err = driver->ops->init(tty);
             if (err < 0) {
+                // The tty was never published, so nothing else can reach it
+                // and nothing else will free it. Returning the error alone
+                // leaked it along with the condition it had initialised —
+                // once per failed open, for as long as the process lives.
+                // Freed the way tty_release does.
                 unlock(&ttys_lock);
+                cond_destroy(&tty->produced);
+                free(tty);
                 return ERR_PTR(err);
             }
         }

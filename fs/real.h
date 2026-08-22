@@ -19,7 +19,7 @@ int realfs_mknod(struct mount *mount, const char *path, mode_t_ mode, dev_t_ UNU
 int realfs_stat(struct mount *mount, const char *path, struct statbuf *fake_stat);
 int realfs_statfs(struct mount *mount, struct statfsbuf *stat);
 int realfs_fstat(struct fd *fd, struct statbuf *fake_stat);
-int realfs_setattr(struct mount *mount, const char *path, struct attr attr);
+int realfs_setattr(struct mount *mount, const char *path, struct attr attr, bool follow_links);
 int realfs_fsetattr(struct fd *fd, struct attr attr);
 
 int realfs_mkdir(struct mount *mount, const char *path, mode_t_ mode);

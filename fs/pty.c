@@ -25,6 +25,12 @@ static int pty_master_init(struct tty *tty) {
     tty->termios.lflags = 0;
 
     struct tty *slave = tty_alloc(&pty_slave, TTY_PSEUDO_SLAVE_MAJOR, tty->num);
+    // tty_alloc can fail, and its caller in tty.c checks. Not checking here
+    // dereferenced NULL while the slave's table slot still held PTY_RESERVED,
+    // so the crash landed before ptmx_open could run the rollback that
+    // releases the reservation. An error return lets that rollback happen.
+    if (slave == NULL)
+        return _ENOMEM;
     slave->refcount = 1;
     pty_slave.ttys[tty->num] = slave;
     tty->pty.other = slave;
@@ -311,7 +317,9 @@ static int devpts_stat(struct mount *UNUSED(mount), const char *path, struct sta
     return 0;
 }
 
-static int devpts_setattr(struct mount *UNUSED(mount), const char *path, struct attr attr) {
+// `follow_links` is unused: every entry in a devpts is a pty, and there are no
+// symlinks in it for the flag to be about.
+static int devpts_setattr(struct mount *UNUSED(mount), const char *path, struct attr attr, bool UNUSED(follow_links)) {
     int pty_num = devpts_get_pty_num(path);
     if (pty_num == _ENOENT)
         return _ENOENT;

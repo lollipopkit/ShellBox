@@ -249,7 +249,7 @@ int generic_setattrat(struct fd *at, const char *path_raw, struct attr attr, boo
     struct mount *mount = find_mount_and_trim_path(path);
     err = _EPERM;
     if (mount->fs->setattr)
-        err = mount->fs->setattr(mount, path, attr);
+        err = mount->fs->setattr(mount, path, attr, follow_links);
     mount_release(mount);
     return err;
 }
