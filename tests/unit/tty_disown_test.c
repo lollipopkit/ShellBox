@@ -61,8 +61,15 @@ static struct fd *open_session_tty(struct tty **out) {
     if (IS_ERR(tty))
         return ERR_PTR(PTR_ERR(tty));
     struct fd *fd = adhoc_fd_create(&tty_dev.fd);
-    if (fd == NULL)
+    if (fd == NULL) {
+        // The tty is already allocated and holds a slot in the driver's table
+        // by now. Returning without it would leave one behind for every later
+        // case to inherit, and the table has four.
+        lock(&ttys_lock);
+        tty_release(tty);
+        unlock(&ttys_lock);
         return ERR_PTR(_ENOMEM);
+    }
     tty_open(tty, fd);
     *out = tty;
     return fd;
@@ -141,6 +148,59 @@ TEST(disowning_twice_is_not_two_references) {
     fd_close(fd);
 }
 
+// What a shell that started a background job leaves behind: `tgroup_copy`
+// copies `group->tty` into the child's group and takes its own reference, and
+// the child stays in the session. Clearing the session while that one still
+// points here would leave `/dev/tty` and `tty_is_current` treating as
+// controlling a terminal that no longer claims the session.
+TEST(a_sibling_group_that_still_holds_it_keeps_the_session) {
+    struct tty *tty = NULL;
+    struct fd *fd = open_session_tty(&tty);
+    if (IS_ERR(fd)) {
+        UNIT_FAIL("could not open a session tty: %d", (int) PTR_ERR(fd));
+        return;
+    }
+
+    // A second group in the same session holding the same terminal, which is
+    // what fork produces. Built by hand because forking in a unit test would
+    // need a scheduler.
+    struct tgroup *sibling = calloc(1, sizeof(struct tgroup));
+    if (sibling == NULL) {
+        UNIT_FAIL("out of memory");
+        fd_close(fd);
+        return;
+    }
+    lock_init(&sibling->lock);
+    sibling->sid = current->group->sid;
+    sibling->tty = tty;
+    lock(&tty->lock);
+    tty->refcount++;   // the reference tgroup_copy takes
+    unlock(&tty->lock);
+    lock(&pids_lock);
+    list_add(&current->group->session, &sibling->session);
+    unlock(&pids_lock);
+
+    tty_disown(current->group);
+
+    // Our own pointer and reference are gone...
+    CHECK(current->group->tty == NULL);
+    // ...but the terminal still belongs to the session, because the sibling
+    // still says it does.
+    CHECK_EQ_INT(tty->session, current->group->sid);
+    CHECK(sibling->tty == tty);
+
+    // And once the sibling goes, the next disown does clear it.
+    lock(&pids_lock);
+    list_remove(&sibling->session);
+    unlock(&pids_lock);
+    lock(&ttys_lock);
+    tty_release(tty);
+    unlock(&ttys_lock);
+    free(sibling);
+
+    fd_close(fd);
+}
+
 TEST(disowning_a_group_that_holds_nothing_does_nothing) {
     // The ordinary case for a non-interactive session, and the one that would
     // crash if this dereferenced without checking.
@@ -171,6 +231,7 @@ int main(void) {
     RUN(opening_a_terminal_as_a_session_leader_takes_it);
     RUN(disowning_gives_the_reference_back);
     RUN(disowning_twice_is_not_two_references);
+    RUN(a_sibling_group_that_still_holds_it_keeps_the_session);
 
     cleanup(tmpdir);
     return UNIT_REPORT();

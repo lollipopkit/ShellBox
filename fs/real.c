@@ -824,8 +824,13 @@ int realfs_ioctl(struct fd *fd, int cmd, void *arg) {
                     host_termios.c_oflag = guest->oflags;
                     host_termios.c_cflag = guest->cflags;
                     host_termios.c_lflag = guest->lflags;
-                    int how = (cmd == TCSETSW_) ? TCSADRAIN
-                            : (cmd == TCSETSF_) ? TCSAFLUSH
+                    // The `2` forms mean the same three actions. Testing
+                    // only the originals had tcsetattr(TCSADRAIN) and
+                    // (TCSAFLUSH) silently become TCSANOW for any caller
+                    // using the spelling glibc now uses — no drain, no
+                    // flush, and success reported either way.
+                    int how = (cmd == TCSETSW_ || cmd == TCSETSW2_) ? TCSADRAIN
+                            : (cmd == TCSETSF_ || cmd == TCSETSF2_) ? TCSAFLUSH
                             : TCSANOW;
                     (void)tcsetattr(fd->real_fd, how, &host_termios);
                 }

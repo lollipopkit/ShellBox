@@ -81,6 +81,7 @@ struct tty *tty_get(struct tty_driver *driver, int type, int num) {
                 // Freed the way tty_release does.
                 unlock(&ttys_lock);
                 cond_destroy(&tty->produced);
+                cond_destroy(&tty->consumed);
                 free(tty);
                 return ERR_PTR(err);
             }
@@ -123,6 +124,7 @@ void tty_release(struct tty *tty) {
         driver->ttys[tty->num] = NULL;
         unlock(&tty->lock);
         cond_destroy(&tty->produced);
+        cond_destroy(&tty->consumed);
         free(tty);
     } else {
         unlock(&tty->lock);
@@ -851,22 +853,58 @@ void tty_set_winsize(struct tty *tty, struct winsize_ winsize) {
 /// controlling terminal, and Linux disassociates one from its session for the
 /// same reason when its last fd closes.
 void tty_disown(struct tgroup *group) {
+    // pids_lock first, then the group's, which is the order
+    // `task_leave_session` documents. The caller must hold neither.
+    lock(&pids_lock);
     lock(&group->lock);
     struct tty *tty = group->tty;
+    pid_t_ sid = group->sid;
     group->tty = NULL;
     unlock(&group->lock);
-    if (tty == NULL)
+    if (tty == NULL) {
+        unlock(&pids_lock);
         return;
+    }
+
+    // Whether anything *else* in the session still holds it. `tgroup_copy`
+    // copies `group->tty` into a forked child and takes its own reference, so
+    // a shell that started a background job leaves siblings pointing here.
+    // Clearing the session out from under them would leave `/dev/tty` and
+    // `tty_is_current` treating as controlling a terminal that no longer
+    // claims the session.
+    //
+    // `task_leave_session` asks by emptiness, which it can because it removes
+    // the group from the session first. This one does not — the task is still
+    // alive and still in its session — so it has to ask each of the others.
+    struct pid *session = pid_get(sid);
+    bool last = true;
+    if (session != NULL) {
+        struct tgroup *other;
+        list_for_each_entry(&session->session, other, session) {
+            if (other == group)
+                continue;
+            lock(&other->lock);
+            bool holds = other->tty == tty;
+            unlock(&other->lock);
+            if (holds) {
+                last = false;
+                break;
+            }
+        }
+    }
 
     // ttys_lock before the tty's own, and released outside it: tty_release
     // takes tty->lock itself and may free what it is holding.
     lock(&ttys_lock);
-    lock(&tty->lock);
-    tty->session = 0;
-    tty->fg_group = 0;
-    unlock(&tty->lock);
+    if (last) {
+        lock(&tty->lock);
+        tty->session = 0;
+        tty->fg_group = 0;
+        unlock(&tty->lock);
+    }
     tty_release(tty);
     unlock(&ttys_lock);
+    unlock(&pids_lock);
 }
 
 void tty_hangup(struct tty *tty) {
