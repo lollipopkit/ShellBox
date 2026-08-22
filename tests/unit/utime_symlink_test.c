@@ -12,13 +12,23 @@
 // distribution: rpm lays down /usr/lib/.build-id/** as symlinks and stamps
 // each one with AT_SYMLINK_NOFOLLOW, which failed the whole unpack.
 //
-// realfs_utime is called directly here rather than through generic_utime. What
-// is under test is the one layer that dropped the flag, and reaching it from
-// the syscall would need a mount table, a task and a cwd — none of which had
-// anything to do with the bug.
+// Two layers are covered, because the fix changed two. The direct calls to
+// realfs_utime pin the layer that dropped the flag. The generic_utime calls
+// pin the dispatch above it, which had to start passing `follow_links` to
+// `mount->fs->utime` — back that half out alone and every direct test here
+// still passes.
+//
+// realfs both times, and not fakefs. fakefs points `.utime` at the same
+// realfs_utime, so the callback is not a second thing to reach; and its
+// symlink model stores the target in a *regular file* with an S_IFLNK bit in
+// meta.db (fs/fake.c), so the host has nothing to follow and neither value of
+// the flag can change the answer. A fakefs symlink case would assert
+// something that cannot tell the bug from the fix.
 
 #define ISH_INTERNAL
 #include "kernel/fs.h"
+#include "kernel/init.h"
+#include "fs/path.h"
 #include "fs/real.h"
 #include "tests/unit/unit.h"
 
@@ -130,6 +140,33 @@ TEST(a_plain_file_is_stamped_either_way) {
     CHECK_EQ_INT(mtime("plain2"), STAMP);
 }
 
+// The same two questions through the dispatch, with tmpdir mounted as the
+// guest root. This is the half that fails if `generic_utime` stops handing
+// `follow_links` to the fs op while realfs_utime keeps accepting it.
+TEST(dispatch_nofollow_stamps_the_link_not_the_target) {
+    make_file("dtarget");
+    make_symlink("dtarget", "dlive");
+
+    CHECK_EQ_INT(generic_utime(AT_PWD, "/dlive", at(STAMP), at(STAMP), false), 0);
+    CHECK_EQ_INT(lmtime("dlive"), STAMP);
+    CHECK(mtime("dtarget") != STAMP);
+}
+
+TEST(dispatch_follow_stamps_the_target_not_the_link) {
+    make_file("dtarget2");
+    make_symlink("dtarget2", "dlive2");
+
+    CHECK_EQ_INT(generic_utime(AT_PWD, "/dlive2", at(STAMP), at(STAMP), true), 0);
+    CHECK_EQ_INT(mtime("dtarget2"), STAMP);
+    CHECK(lmtime("dlive2") != STAMP);
+}
+
+TEST(dispatch_nofollow_stamps_a_dangling_symlink) {
+    make_symlink("nothing-here", "ddangling");
+    CHECK_EQ_INT(generic_utime(AT_PWD, "/ddangling", at(STAMP), at(STAMP), false), 0);
+    CHECK_EQ_INT(lmtime("ddangling"), STAMP);
+}
+
 int main(void) {
     snprintf(tmpdir, sizeof(tmpdir), "/tmp/ish-utime-test-%d", getpid());
     if (mkdir(tmpdir, 0755) < 0) {
@@ -146,6 +183,21 @@ int main(void) {
     RUN(nofollow_stamps_the_link_not_the_target);
     RUN(follow_stamps_the_target_not_the_link);
     RUN(a_plain_file_is_stamped_either_way);
+
+    // The dispatch needs a mount table and a task to resolve a path against.
+    int err = mount_root(&realfs, tmpdir);
+    if (err < 0) {
+        fprintf(stderr, "mount_root: %d\n", err);
+        return 2;
+    }
+    if ((err = become_first_process()) < 0) {
+        fprintf(stderr, "become_first_process: %d\n", err);
+        return 2;
+    }
+
+    RUN(dispatch_nofollow_stamps_the_link_not_the_target);
+    RUN(dispatch_follow_stamps_the_target_not_the_link);
+    RUN(dispatch_nofollow_stamps_a_dangling_symlink);
 
     close(mount.root_fd);
     char cmd[PATH_MAX + 16];
