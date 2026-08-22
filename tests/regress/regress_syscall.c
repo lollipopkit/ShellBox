@@ -321,6 +321,24 @@ static void test_signal_still_interrupts(void) {
 // always 0, leaving a killed child indistinguishable from an exited one.
 // si_uid was never assigned at all on the wait path.
 // ---------------------------------------------------------------------------
+// Whether `p` is a child, recording a failure when it is not.
+//
+// A fork that failed is not a pid, and -1 has a meaning of its own: `kill(-1,
+// …)` is "every process this caller may signal". Two of the probes below send
+// SIGSTOP and SIGKILL, so an unchecked fork does not fail a case here — it
+// signals the whole guest, this binary and the shell that started it included,
+// and the run ends stopped or dead rather than reporting anything.
+//
+// The guest, not the host: this is built for the guest and runs under `ish`,
+// so the -1 reaches ish's own sys_kill and the tasks it knows about. That
+// bounds the damage without making it acceptable.
+static int forked_ok(pid_t p, const char *what) {
+    if (p >= 0)
+        return 1;
+    check(0, what);
+    return 0;
+}
+
 static void test_waitid_siginfo(void) {
     section("waitid si_status / si_code / si_uid");
 
@@ -332,6 +350,8 @@ static void test_waitid_siginfo(void) {
         pid_t p = fork();
         if (p == 0)
             _exit(codes[i]);
+        if (!forked_ok(p, "fork for the exit-status case"))
+            continue;
         siginfo_t si;
         memset(&si, 0, sizeof si);
         int r = waitid(P_PID, p, &si, WEXITED);
@@ -353,6 +373,8 @@ static void test_waitid_siginfo(void) {
             nap(10);
             _exit(0);
         }
+        if (!forked_ok(p, "fork for the killed-child case"))
+            continue;
         nap(0.3);
         kill(p, sigs[i]);
         siginfo_t si;
@@ -372,17 +394,19 @@ static void test_waitid_siginfo(void) {
             nap(10);
             _exit(0);
         }
-        nap(0.3);
-        kill(p, SIGSTOP);
-        siginfo_t si;
-        memset(&si, 0, sizeof si);
-        int r = waitid(P_PID, p, &si, WSTOPPED);
-        check(r == 0 && si.si_code == CLD_STOPPED && si.si_status == SIGSTOP,
-              "SIGSTOP -> CLD_STOPPED, si_status=SIGSTOP");
-        kill(p, SIGCONT);
-        kill(p, SIGKILL);
-        siginfo_t reap;
-        waitid(P_PID, p, &reap, WEXITED);
+        if (forked_ok(p, "fork for the stopped-child case")) {
+            nap(0.3);
+            kill(p, SIGSTOP);
+            siginfo_t si;
+            memset(&si, 0, sizeof si);
+            int r = waitid(P_PID, p, &si, WSTOPPED);
+            check(r == 0 && si.si_code == CLD_STOPPED && si.si_status == SIGSTOP,
+                  "SIGSTOP -> CLD_STOPPED, si_status=SIGSTOP");
+            kill(p, SIGCONT);
+            kill(p, SIGKILL);
+            siginfo_t reap;
+            waitid(P_PID, p, &reap, WEXITED);
+        }
     }
 
     // A child that drops privileges must report its own uid, not the parent's.
@@ -395,6 +419,8 @@ static void test_waitid_siginfo(void) {
                 _exit(99);
             _exit(12);
         }
+        if (!forked_ok(p, "fork for the setuid case"))
+            return;
         siginfo_t si;
         memset(&si, 0, sizeof si);
         int r = waitid(P_PID, p, &si, WEXITED);
