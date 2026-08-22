@@ -20,7 +20,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -763,6 +765,63 @@ static void test_no_zombies_when_parent_will_not_wait(void) {
     check(sigaction(SIGCHLD, &saved, NULL) == 0, "SIGCHLD disposition restored");
 }
 
+// pselect6 with a null sigmask.
+//
+// The 6th argument is optional and null means "no mask", exactly as the
+// timeout does. sys_pselect read it regardless, and `user_get(0, ...)` fails —
+// so the call answered EFAULT without ever looking at a descriptor.
+//
+// It reached only glibc programs, which is why it survived so long: glibc has
+// no `select` syscall to use on arm64 and passes NULL here, while musl passes
+// a pointer to {0, _NSIG/8}. Alpine was unaffected and every glibc
+// distribution had a `select` that could not succeed. apt reads the failure as
+// its download method having died at startup and kills a healthy one, so
+// `apt-get update` could not fetch anything.
+//
+// Called through syscall() rather than select(), so this pins the kernel's
+// contract rather than whichever libc built the test.
+static void test_pselect6_null_sigmask(void) {
+    section("pselect6 with a null sigmask");
+
+    int p[2];
+    if (pipe(p) != 0) {
+        check(0, "pipe for the pselect test");
+        return;
+    }
+
+    fd_set r;
+    FD_ZERO(&r);
+    FD_SET(p[0], &r);
+    struct timespec ts = {0, 0};   // poll and return, so this cannot hang
+
+    // No mask: the argument glibc's select() passes.
+    long rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
+    check(rc >= 0, "pselect6 accepts a null sigmask");
+
+    // And with one, which has to keep working.
+    struct {
+        const void *mask;
+        unsigned long size;
+    } sig = {NULL, 8};
+    FD_ZERO(&r);
+    FD_SET(p[0], &r);
+    ts = (struct timespec) {0, 0};
+    rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, &sig);
+    check(rc >= 0, "pselect6 still accepts a sigmask argument");
+
+    // A readable descriptor is reported, so the call is doing its job and not
+    // just returning 0 for everything.
+    write(p[1], "x", 1);
+    FD_ZERO(&r);
+    FD_SET(p[0], &r);
+    ts = (struct timespec) {0, 0};
+    rc = syscall(SYS_pselect6, p[0] + 1, &r, NULL, NULL, &ts, NULL);
+    check(rc == 1 && FD_ISSET(p[0], &r), "pselect6 reports a readable pipe");
+
+    close(p[0]);
+    close(p[1]);
+}
+
 int main(int argc, char **argv) {
     // Optional extra path to check stat/fstat on, e.g. a fakefs mount point.
     const char *extra_path = argc > 1 ? argv[1] : NULL;
@@ -799,6 +858,7 @@ int main(int argc, char **argv) {
     test_sigchld_siginfo();
     test_sigrtmax();
     test_no_zombies_when_parent_will_not_wait();
+    test_pselect6_null_sigmask();
 
     printf("\n================ RESULT ================\n");
     printf("  PASS: %d    FAIL: %d\n", pass, fail);

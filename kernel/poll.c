@@ -225,18 +225,31 @@ dword_t sys_pselect(fd_t nfds, addr_t readfds_addr, addr_t writefds_addr, addr_t
         timeout_ts_addr = &timeout_ts;
     }
     // a system call can only take 6 parameters, so the last two need to be passed as a pointer to a struct
+    //
+    // Null means "no mask", exactly as the timeout above does, and reading it
+    // regardless is not a harmless read of zero — `user_get(0, ...)` fails, so
+    // the call answered EFAULT before it ever looked at a descriptor.
+    //
+    // That is every `select()` a glibc program makes: glibc has no `select`
+    // syscall to use on arm64 and passes NULL here, while musl passes a
+    // pointer to {0, _NSIG/8} and never sees it. So Alpine was fine and every
+    // glibc distribution had a `select` that could not succeed — apt reads the
+    // failure as its download method having died at startup, and kills a
+    // healthy one. `sys_ppoll` below has the guard this was missing.
     struct {
         addr_t mask_addr;
         dword_t mask_size;
-    } sigmask;
-    struct {
-        uint64_t mask_addr;
-        uint64_t mask_size;
-    } sigmask64;
-    if (user_get(sigmask_addr, sigmask64))
-        return _EFAULT;
-    sigmask.mask_addr = (addr_t) sigmask64.mask_addr;
-    sigmask.mask_size = (dword_t) sigmask64.mask_size;
+    } sigmask = {0, 0};
+    if (sigmask_addr != 0) {
+        struct {
+            uint64_t mask_addr;
+            uint64_t mask_size;
+        } sigmask64;
+        if (user_get(sigmask_addr, sigmask64))
+            return _EFAULT;
+        sigmask.mask_addr = (addr_t) sigmask64.mask_addr;
+        sigmask.mask_size = (dword_t) sigmask64.mask_size;
+    }
     sigset_t_ mask;
 
     if (sigmask.mask_addr != 0) {
